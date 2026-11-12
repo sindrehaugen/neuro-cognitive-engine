@@ -11,7 +11,7 @@ from uuid import UUID
 import asyncpg
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from nce.db_utils import scoped_pg_session
+from nce.db_utils import scoped_mongo_session, scoped_pg_session
 
 
 class OrchestratorBase:
@@ -51,6 +51,17 @@ class OrchestratorBase:
         if self.mongo_client is None:
             raise RuntimeError("MongoDB client is not initialized on this orchestrator")
         return self.mongo_client.memory_archive
+
+    @asynccontextmanager
+    async def _get_scoped_mongo(self, namespace_id: str | UUID | None):
+        """Yield a tenant-scoped MongoDB session (ScopedMongoCollection) for UUID namespaces."""
+        if self.mongo_client is None:
+            raise RuntimeError("MongoDB client is not initialized on this orchestrator")
+        if namespace_id is None or str(namespace_id) in ("", "default"):
+            yield self._mongo_db
+            return
+        async with scoped_mongo_session(self.mongo_client, namespace_id) as s_db:
+            yield s_db
 
     def _validate_path(self, filepath: str) -> None:
         """Validate filepath is within allowed directory using shared helper."""

@@ -46,14 +46,16 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncGenerator, Callable, Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, get_args
 
 import asyncpg
+import urllib3
 from minio import Minio
 from minio.error import S3Error
 
+from nce.auth import get_current_mcp_session, set_namespace_context
 from nce.config import cfg
 from nce.event_log import (
     DataIntegrityError,
@@ -126,6 +128,28 @@ class _EventRow:
     parent_event_id: uuid.UUID | None
     llm_payload_uri: str | None
     llm_payload_hash: bytes | None
+    namespace_id: uuid.UUID | None = None
+    signature_version: int | None = None
+    chain_hash: bytes | None = None
+
+
+def _parse_jsonb_dict(val: Any) -> dict[str, Any]:
+    """Decode an asyncpg JSONB value (dict, mapping, or raw JSON string) into a dict."""
+    if not val:
+        return {}
+    if isinstance(val, str):
+        parsed = json.loads(val)
+        return dict(parsed) if isinstance(parsed, dict) else {}
+    return dict(val)
+
+
+def _serialize_vector(val: Any) -> str | None:
+    """Serialise an embedding sequence or string to pgvector text format."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        return val
+    return json.dumps(list(val))
 
 
 def _row_as_dict(row: _EventRow) -> dict[str, Any]:
@@ -145,18 +169,26 @@ def _row_as_dict(row: _EventRow) -> dict[str, Any]:
 
 def _record_to_event_row(record: asyncpg.Record) -> _EventRow:
     """Convert a raw asyncpg record to ``_EventRow``."""
+    raw_res = record["result_summary"]
     return _EventRow(
         event_id=record["id"],
         event_seq=record["event_seq"],
         event_type=record["event_type"],
         occurred_at=record["occurred_at"].astimezone(timezone.utc),
         agent_id=record["agent_id"],
-        params=dict(record["params"]) if record["params"] else {},
-        result_summary=(dict(record["result_summary"]) if record["result_summary"] else None),
+        params=_parse_jsonb_dict(record["params"]),
+        result_summary=(_parse_jsonb_dict(raw_res) if raw_res is not None else None),
         parent_event_id=record["parent_event_id"],
         llm_payload_uri=record["llm_payload_uri"],
         llm_payload_hash=(
             bytes(record["llm_payload_hash"]) if record["llm_payload_hash"] else None
+        ),
+        namespace_id=record["namespace_id"] if "namespace_id" in record else None,
+        signature_version=(record["signature_version"] if "signature_version" in record else None),
+        chain_hash=(
+            bytes(record["chain_hash"])
+            if ("chain_hash" in record and record["chain_hash"])
+            else None
         ),
     )
 
@@ -181,36 +213,63 @@ async def _create_run(
 ) -> uuid.UUID:
     """INSERT a new ``replay_runs`` row and return its UUID."""
     run_id = uuid.uuid4()
-    await conn.execute(
-        """
-        INSERT INTO replay_runs (
-            id, source_namespace_id, target_namespace_id,
-            mode, replay_mode, start_seq, end_seq, divergence_seq,
-            config_overrides, status, events_applied
-        ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'running', 0
-        )
-        """,
-        run_id,
-        source_namespace_id,
-        target_namespace_id,
-        mode,
-        replay_mode,
-        start_seq,
-        end_seq,
-        divergence_seq,
-        json.dumps(config_overrides, sort_keys=True) if config_overrides else None,
-    )
-    # Mark target namespace as replay sandbox when column exists
-    try:
+    async with conn.transaction():
+        await set_namespace_context(conn, source_namespace_id)
         await conn.execute(
-            "UPDATE namespaces SET is_replay_sandbox = TRUE WHERE id = $1",
+            """
+            INSERT INTO replay_runs (
+                id, source_namespace_id, target_namespace_id,
+                mode, replay_mode, start_seq, end_seq, divergence_seq,
+                config_overrides, status, events_applied
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'running', 0
+            )
+            """,
+            run_id,
+            source_namespace_id,
             target_namespace_id,
+            mode,
+            replay_mode,
+            start_seq,
+            end_seq,
+            divergence_seq,
+            json.dumps(config_overrides, sort_keys=True) if config_overrides is not None else None,
         )
-    except Exception as exc:
-        log.debug(
-            "Could not mark target namespace %s as replay sandbox: %s", target_namespace_id, exc
-        )
+        # Mark target namespace as replay sandbox (both column + metadata JSONB) inside a SAVEPOINT
+        if target_namespace_id is not None:
+            try:
+                async with conn.transaction():
+                    await conn.execute(
+                        """
+                        UPDATE namespaces
+                        SET is_replay_sandbox = TRUE,
+                            metadata = COALESCE(metadata, '{}'::jsonb) || '{"is_replay_sandbox": true}'::jsonb
+                        WHERE id = $1
+                        """,
+                        target_namespace_id,
+                    )
+            except Exception as exc:
+                log.debug(
+                    "Could not mark target namespace %s is_replay_sandbox column (%s); falling back to metadata JSONB",
+                    target_namespace_id,
+                    exc,
+                )
+                try:
+                    async with conn.transaction():
+                        await conn.execute(
+                            """
+                            UPDATE namespaces
+                            SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"is_replay_sandbox": true}'::jsonb
+                            WHERE id = $1
+                            """,
+                            target_namespace_id,
+                        )
+                except Exception as meta_exc:
+                    log.debug(
+                        "Could not mark target namespace %s as replay sandbox in metadata: %s",
+                        target_namespace_id,
+                        meta_exc,
+                    )
     log.info(
         "replay_run created: run_id=%s mode=%s replay_mode=%s ns=%s",
         run_id,
@@ -225,12 +284,20 @@ async def _update_run_progress(
     conn: asyncpg.Connection,
     run_id: uuid.UUID,
     events_applied: int,
+    *,
+    source_namespace_id: uuid.UUID | None = None,
 ) -> None:
-    await conn.execute(
-        "UPDATE replay_runs SET events_applied = $1 WHERE id = $2",
-        events_applied,
-        run_id,
-    )
+    async with conn.transaction():
+        if source_namespace_id is not None:
+            await set_namespace_context(conn, source_namespace_id)
+        await conn.execute(
+            "UPDATE replay_runs SET events_applied = $1 WHERE id = $2",
+            events_applied,
+            run_id,
+        )
+
+
+_increment_events_applied = _update_run_progress
 
 
 async def _finish_run(
@@ -240,18 +307,22 @@ async def _finish_run(
     status: str,
     events_applied: int,
     error: str | None = None,
+    source_namespace_id: uuid.UUID | None = None,
 ) -> None:
-    await conn.execute(
-        """
-        UPDATE replay_runs
-        SET status = $1, events_applied = $2, finished_at = now(), error = $3
-        WHERE id = $4
-        """,
-        status,
-        events_applied,
-        error,
-        run_id,
-    )
+    async with conn.transaction():
+        if source_namespace_id is not None:
+            await set_namespace_context(conn, source_namespace_id)
+        await conn.execute(
+            """
+            UPDATE replay_runs
+            SET status = $1, events_applied = $2, finished_at = now(), error = $3
+            WHERE id = $4
+            """,
+            status,
+            events_applied,
+            error,
+            run_id,
+        )
     log.info(
         "replay_run finished: run_id=%s status=%s events=%d",
         run_id,
@@ -260,25 +331,46 @@ async def _finish_run(
     )
 
 
+def _coerce_optional_uuid(val: uuid.UUID | str | None) -> uuid.UUID | None:
+    if val is None:
+        return None
+    if isinstance(val, uuid.UUID):
+        return val
+    s = str(val).strip()
+    return uuid.UUID(s) if s else None
+
+
 async def get_run_status(
     pool: asyncpg.Pool,
     run_id: uuid.UUID,
+    *,
+    namespace_id: uuid.UUID | str | None = None,
 ) -> dict[str, Any]:
     """Return a JSON-safe dict for the given ``replay_run_id``."""
+    ns_uuid = _coerce_optional_uuid(namespace_id)
+    if ns_uuid is None:
+        mcp_session = get_current_mcp_session()
+        if mcp_session is not None:
+            ns_uuid = _coerce_optional_uuid(getattr(mcp_session, "namespace_id", None))
+
     async with pool.acquire(timeout=10.0) as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT id, source_namespace_id, target_namespace_id,
-                   mode, replay_mode, start_seq, end_seq, divergence_seq,
-                   config_overrides, status, events_applied,
-                   started_at, finished_at, error,
-                   source_state_digest, target_state_digest, digest_match
-            FROM replay_runs WHERE id = $1
-            """,
-            run_id,
-        )
+        async with conn.transaction():
+            if ns_uuid is not None:
+                await set_namespace_context(conn, ns_uuid)
+            row = await conn.fetchrow(
+                """
+                SELECT id, source_namespace_id, target_namespace_id,
+                       mode, replay_mode, start_seq, end_seq, divergence_seq,
+                       config_overrides, status, events_applied,
+                       started_at, finished_at, error,
+                       source_state_digest, target_state_digest, digest_match
+                FROM replay_runs WHERE id = $1
+                """,
+                run_id,
+            )
     if row is None:
         raise ReplayRunNotFoundError(f"replay_run {run_id} not found.")
+    raw_overrides = row["config_overrides"]
     return {
         "run_id": str(row["id"]),
         "source_namespace_id": str(row["source_namespace_id"]),
@@ -290,14 +382,8 @@ async def get_run_status(
         "start_seq": row["start_seq"],
         "end_seq": row["end_seq"],
         "divergence_seq": row["divergence_seq"],
-        # replay_runs.config_overrides is JSONB (nullable); asyncpg hands back a
-        # non-null value as the raw JSON string (this pool registers no jsonb
-        # codec), never a decoded dict. dict(a_json_string) doesn't parse it, it
-        # raises ValueError trying to treat the string as key-value pairs --
-        # reproduced live before this fix, for any run created with a real
-        # config_overrides value.
         "config_overrides": (
-            json.loads(row["config_overrides"]) if row["config_overrides"] else None
+            _parse_jsonb_dict(raw_overrides) if raw_overrides is not None else None
         ),
         "status": row["status"],
         "events_applied": row["events_applied"],
@@ -339,10 +425,10 @@ def _build_event_query(
 
     sql = f"""
         SELECT
-            id, event_seq, event_type, occurred_at, agent_id,
+            id, namespace_id, event_seq, event_type, occurred_at, agent_id,
             params, result_summary, parent_event_id,
             llm_payload_uri, llm_payload_hash,
-            signature, signature_key_id
+            signature, signature_key_id, signature_version, chain_hash
         FROM event_log
         WHERE {' AND '.join(conditions)}
         ORDER BY event_seq ASC
@@ -367,6 +453,7 @@ async def _fetch_event_log_snapshot(
     )
     async with pool.acquire(timeout=10.0) as conn:
         async with conn.transaction(isolation="repeatable_read"):
+            await set_namespace_context(conn, source_namespace_id)
             rows = await conn.fetch(sql, *args)
             return list(rows)
 
@@ -377,11 +464,20 @@ async def _fetch_event_log_snapshot(
 
 
 def _make_minio() -> Minio:
+    http_client = urllib3.PoolManager(
+        timeout=urllib3.Timeout(connect=2.0, read=5.0),
+        retries=urllib3.Retry(
+            total=2,
+            backoff_factor=0.2,
+            status_forcelist=[500, 502, 503, 504],
+        ),
+    )
     return Minio(
         cfg.MINIO_ENDPOINT,
         access_key=cfg.MINIO_ACCESS_KEY,
         secret_key=cfg.MINIO_SECRET_KEY,
         secure=cfg.MINIO_SECURE,
+        http_client=http_client,
     )
 
 
@@ -489,7 +585,12 @@ class ReplayContext:
         if self._mongo_client is None:
             from motor.motor_asyncio import AsyncIOMotorClient
 
-            self._mongo_client = AsyncIOMotorClient(cfg.MONGO_URI, serverSelectionTimeoutMS=5000)
+            self._mongo_client = AsyncIOMotorClient(
+                cfg.MONGO_URI,
+                serverSelectionTimeoutMS=5_000,
+                socketTimeoutMS=5_000,
+                connectTimeoutMS=5_000,
+            )
         return self._mongo_client
 
     def close(self) -> None:
@@ -702,6 +803,7 @@ async def _handle_store_memory(
     that the fork's semantic state is identical up to the divergence point.
     Full re-embedding is supported by kicking off a re-embedding job later.
     """
+    is_raw_uuid = False
     try:
         memory_id_str: str = src.params.get("memory_id", "")
         if not memory_id_str:
@@ -710,10 +812,13 @@ async def _handle_store_memory(
         src_memory_id = uuid.UUID(memory_id_str)
 
         # Fetch the source memory row (embedding + metadata).
-        # The source_namespace_id is injected into params.source_namespace_id by
-        # ForkedReplay.execute() when it enriches the params dict.
+        # Resolve source_namespace_id from params, falling back to ctx.source_namespace_id or src.namespace_id.
         raw_src_ns = src.params.get("source_namespace_id")
-        src_ns_id = uuid.UUID(raw_src_ns) if raw_src_ns else None
+        src_ns_id = uuid.UUID(str(raw_src_ns)) if raw_src_ns else None
+        if src_ns_id is None and isinstance(ctx, ReplayContext):
+            src_ns_id = ctx.source_namespace_id
+        if src_ns_id is None and src.namespace_id is not None:
+            src_ns_id = src.namespace_id
         if src_ns_id is None:
             return {"skipped": True, "reason": "source_namespace_id_missing_in_params"}
 
@@ -723,6 +828,7 @@ async def _handle_store_memory(
 
         new_memory_id = ctx.remap(src_memory_id)
 
+        await set_namespace_context(conn, src_ns_id)
         src_row = await conn.fetchrow(
             """
             SELECT embedding, assertion_type, memory_type, metadata, valid_from, created_at,
@@ -735,6 +841,7 @@ async def _handle_store_memory(
             src_ns_id,
         )
         if src_row is None:
+            await set_namespace_context(conn, ctx.target_namespace_id)
             log.warning(
                 "store_memory handler: source row not found memory_id=%s; writing stub",
                 src_memory_id,
@@ -743,18 +850,21 @@ async def _handle_store_memory(
 
         payload_ref = src.params.get("payload_ref")
         if not payload_ref:
+            await set_namespace_context(conn, ctx.target_namespace_id)
             return {"skipped": True, "reason": "payload_ref_missing_in_params"}
 
         # Copy the MongoDB document to a deterministic targets ref and update the params in-place
         target_payload_ref = await ctx.copy_mongo_doc(payload_ref, source_namespace_id=src_ns_id)
         src.params["payload_ref"] = target_payload_ref
 
-        meta = dict(src_row["metadata"]) if src_row["metadata"] else {}
+        meta = _parse_jsonb_dict(src_row["metadata"])
         meta["source_memory_id"] = str(src_memory_id)
+        emb_str = _serialize_vector(src_row["embedding"])
 
         # Part II.4: the copied Mongo doc carries the source ciphertext verbatim;
         # carry the source wrapped_dek/dek_key_id so the target can decrypt under
         # the same (global) NCE_MASTER_KEY.  Legacy rows carry NULL → plaintext.
+        await set_namespace_context(conn, ctx.target_namespace_id)
         await conn.execute(
             """
             INSERT INTO memories (
@@ -766,7 +876,7 @@ async def _handle_store_memory(
                 change_origin
             ) VALUES (
                 $1, $2, $3,
-                $4, $5, $6,
+                $4::vector, $5, $6,
                 $7, $8::jsonb,
                 $9, $10,
                 $11, $12,
@@ -777,7 +887,7 @@ async def _handle_store_memory(
             new_memory_id,
             ctx.target_namespace_id,
             src.agent_id,
-            src_row["embedding"],
+            emb_str,
             src_row["assertion_type"],
             src_row["memory_type"],
             target_payload_ref,
@@ -789,6 +899,7 @@ async def _handle_store_memory(
         )
 
         # Carry over salience score if it exists in the source namespace
+        await set_namespace_context(conn, src_ns_id)
         salience_row = await conn.fetchrow(
             """
             SELECT salience_score
@@ -799,6 +910,7 @@ async def _handle_store_memory(
             src.agent_id,
             src_ns_id,
         )
+        await set_namespace_context(conn, ctx.target_namespace_id)
         if salience_row is not None:
             salience_score = salience_row["salience_score"]
             await conn.execute(
@@ -953,12 +1065,22 @@ async def _handle_consolidation_run(
     The handler writes the resulting consolidated memory and returns the
     result_summary for the fork's event_log entry.
     """
+    is_raw_uuid = False
     try:
-        if llm_payload is None:
+        if llm_payload is not None:
+            response: dict[str, Any] = _parse_jsonb_dict(llm_payload.get("response", {}))
+        elif "abstraction" in src.params:
+            response = {
+                "abstraction": src.params.get("abstraction", ""),
+                "confidence": src.params.get("confidence", 1.0),
+                "supporting_memory_ids": src.params.get("supporting_memory_ids", []),
+                "key_entities": src.params.get("key_entities", []),
+                "key_relations": src.params.get("key_relations", []),
+            }
+        else:
             return {"skipped": True, "reason": "llm_payload_unavailable"}
 
-        response: dict = llm_payload.get("response", {})
-        abstraction: str = response.get("abstraction", "")
+        abstraction: str = str(response.get("abstraction", ""))
         confidence: float = float(response.get("confidence", 0.0))
 
         if confidence < 0.3:
@@ -976,7 +1098,11 @@ async def _handle_consolidation_run(
             return {"skipped": True, "reason": "payload_ref_missing_in_params"}
 
         raw_src_ns = src.params.get("source_namespace_id")
-        src_ns_id = uuid.UUID(raw_src_ns) if raw_src_ns else None
+        src_ns_id = uuid.UUID(str(raw_src_ns)) if raw_src_ns else None
+        if src_ns_id is None and isinstance(ctx, ReplayContext):
+            src_ns_id = ctx.source_namespace_id
+        if src_ns_id is None and src.namespace_id is not None:
+            src_ns_id = src.namespace_id
 
         is_raw_uuid = isinstance(ctx, uuid.UUID)
         if isinstance(ctx, uuid.UUID):
@@ -993,14 +1119,13 @@ async def _handle_consolidation_run(
             new_memory_id = uuid.uuid4()
 
         # Fetch valid_from and created_at from source memories table if it exists
-        raw_src_ns = src.params.get("source_namespace_id")
-        src_ns_id = uuid.UUID(raw_src_ns) if raw_src_ns else None
         src_valid_from = None
         src_created_at = None
         src_wrapped_dek = None
         src_dek_key_id = None
         if consolidated_memory_id_str and src_ns_id:
             try:
+                await set_namespace_context(conn, src_ns_id)
                 row = await conn.fetchrow(
                     "SELECT valid_from, created_at, wrapped_dek, dek_key_id FROM memories WHERE id = $1 AND namespace_id = $2",
                     uuid.UUID(consolidated_memory_id_str),
@@ -1026,6 +1151,7 @@ async def _handle_consolidation_run(
         from nce import embeddings as _emb  # local import to avoid module-level circular
 
         vector = await _emb.embed(abstraction)
+        vector_str = _serialize_vector(vector)
 
         meta = {
             "source_memory_ids": response.get("supporting_memory_ids", []),
@@ -1036,6 +1162,7 @@ async def _handle_consolidation_run(
         if consolidated_memory_id_str:
             meta["source_memory_id"] = consolidated_memory_id_str
 
+        await set_namespace_context(conn, ctx.target_namespace_id)
         await conn.execute(
             """
             INSERT INTO memories (
@@ -1047,7 +1174,7 @@ async def _handle_consolidation_run(
                 change_origin
             ) VALUES (
                 $1, $2, $3,
-                $4, 'fact', 'consolidated',
+                $4::vector, 'fact', 'consolidated',
                 $5, $6::jsonb,
                 $7, $8,
                 $9, $10,
@@ -1058,7 +1185,7 @@ async def _handle_consolidation_run(
             new_memory_id,
             ctx.target_namespace_id,
             src.agent_id,
-            vector,
+            vector_str,
             target_payload_ref,
             json.dumps(meta),
             src_valid_from,
@@ -1223,6 +1350,7 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     "saga_recovered",
     "a2a_grant_created",
     "a2a_grant_revoked",
+    "a2a_grant_updated",
     "a2a_shared_query",
     "signing_key_rotated",
     "chain_verification_failed",
@@ -1361,11 +1489,7 @@ async def _handle_quarantine_confirmed(
     if queue_row is None:
         return {"skipped": True, "reason": "queue_item_not_found_in_target_namespace"}
 
-    payload_data = (
-        json.loads(queue_row["payload"])
-        if isinstance(queue_row["payload"], str)
-        else dict(queue_row["payload"])
-    )
+    payload_data = _parse_jsonb_dict(queue_row["payload"])
     payload_ref: str | None = payload_data.get("payload_ref")
     if not payload_ref:
         return {"skipped": True, "reason": "payload_ref_absent_in_queue_payload"}
@@ -1712,6 +1836,7 @@ class ObservationalReplay:
             # The transaction keeps the cursor alive across yield boundaries.
             async with self.pool.acquire(timeout=10.0) as cursor_conn:
                 async with cursor_conn.transaction(isolation="repeatable_read"):
+                    await set_namespace_context(cursor_conn, source_namespace_id)
                     async for record in cursor_conn.cursor(sql, *args, prefetch=_CURSOR_PREFETCH):
                         try:
                             await verify_event_signature(cursor_conn, record)
@@ -1728,6 +1853,7 @@ class ObservationalReplay:
                                     status="failed",
                                     events_applied=events_streamed,
                                     error=str(exc),
+                                    source_namespace_id=source_namespace_id,
                                 )
                             raise
 
@@ -1739,7 +1865,12 @@ class ObservationalReplay:
                             # Progress update uses a *different* connection to avoid
                             # nesting statements on the cursor connection.
                             async with self.pool.acquire(timeout=10.0) as prog_conn:
-                                await _update_run_progress(prog_conn, run_id, events_streamed)
+                                await _update_run_progress(
+                                    prog_conn,
+                                    run_id,
+                                    events_streamed,
+                                    source_namespace_id=source_namespace_id,
+                                )
                             yield {
                                 "type": "progress",
                                 "run_id": str(run_id),
@@ -1752,6 +1883,7 @@ class ObservationalReplay:
                     run_id,
                     status="success",
                     events_applied=events_streamed,
+                    source_namespace_id=source_namespace_id,
                 )
 
             yield {
@@ -1774,6 +1906,7 @@ class ObservationalReplay:
                         status="failed",
                         events_applied=events_streamed,
                         error=str(exc),
+                        source_namespace_id=source_namespace_id,
                     )
             yield {
                 "type": "error",
@@ -1824,6 +1957,13 @@ async def _dispatch_and_apply_event(
     elif isinstance(ctx, uuid.UUID):
         ctx = ReplayContext(ctx, source_namespace_id=source_namespace_id)
 
+    orig_params = dict(src.params)
+    src = replace(
+        src,
+        params={**orig_params, "source_namespace_id": str(source_namespace_id)},
+    )
+
+    await set_namespace_context(write_conn, ctx.target_namespace_id)
     handler = _HANDLER_REGISTRY.get(src.event_type)
     if handler is None:
         log.warning("No handler for event_type=%s; writing provenance only", src.event_type)
@@ -1837,13 +1977,34 @@ async def _dispatch_and_apply_event(
             config_overrides,
         )
 
-    enriched_params: dict = {
+    await set_namespace_context(write_conn, ctx.target_namespace_id)
+
+    enriched_params: dict[str, Any] = {
         **src.params,
         "replay_run_id": str(run_id),
         "source_event_id": str(src.event_id),
         "source_namespace_id": str(source_namespace_id),
         "is_replay_sandbox": getattr(ctx, "is_replay_sandbox", True),
     }
+
+    raw_mid = orig_params.get("memory_id")
+    if raw_mid:
+        try:
+            orig_mid_uuid = uuid.UUID(str(raw_mid))
+            if orig_mid_uuid in ctx.uuid_remap:
+                enriched_params["source_memory_id"] = str(orig_mid_uuid)
+                enriched_params["memory_id"] = str(ctx.uuid_remap[orig_mid_uuid])
+        except (ValueError, TypeError):
+            pass
+    elif (
+        src.event_type == "consolidation_run"
+        and isinstance(result_summary, dict)
+        and result_summary.get("memory_id")
+    ):
+        orig_cons_id = orig_params.get("consolidated_memory_id")
+        if orig_cons_id:
+            enriched_params.setdefault("source_memory_id", str(orig_cons_id))
+        enriched_params.setdefault("memory_id", str(result_summary["memory_id"]))
 
     det_event_id = ctx.remap(src.event_id)
 
@@ -1938,16 +2099,18 @@ class ForkedReplay:
             # 2.  Check for prior progress (idempotency on resume)
             # ------------------------------------------------------------------
             async with self.pool.acquire(timeout=10.0) as chk_conn:
-                prior = await chk_conn.fetchval(
-                    """
-                    SELECT COALESCE(MAX(event_seq), 0)
-                    FROM event_log
-                    WHERE namespace_id = $1
-                      AND params->>'replay_run_id' = $2
-                    """,
-                    target_namespace_id,
-                    str(run_id),
-                )
+                async with chk_conn.transaction():
+                    await set_namespace_context(chk_conn, target_namespace_id)
+                    prior = await chk_conn.fetchval(
+                        """
+                        SELECT COALESCE(MAX(event_seq), 0)
+                        FROM event_log
+                        WHERE namespace_id = $1
+                          AND params->>'replay_run_id' = $2
+                        """,
+                        target_namespace_id,
+                        str(run_id),
+                    )
             resume_from_seq = int(prior) + 1 if prior else start_seq
             if resume_from_seq > start_seq:
                 log.info(
@@ -1970,7 +2133,9 @@ class ForkedReplay:
             for record in records:
                 try:
                     async with self.pool.acquire(timeout=10.0) as sig_conn:
-                        await verify_event_signature(sig_conn, record)
+                        async with sig_conn.transaction():
+                            await set_namespace_context(sig_conn, source_namespace_id)
+                            await verify_event_signature(sig_conn, record)
                 except DataIntegrityError as exc:
                     yield {
                         "type": "error",
@@ -1984,6 +2149,7 @@ class ForkedReplay:
                             status="failed",
                             events_applied=events_applied,
                             error=str(exc),
+                            source_namespace_id=source_namespace_id,
                         )
                     raise
 
@@ -2029,7 +2195,12 @@ class ForkedReplay:
 
                 if events_applied % _PROGRESS_INTERVAL == 0:
                     async with self.pool.acquire(timeout=10.0) as prog_conn:
-                        await _update_run_progress(prog_conn, run_id, events_applied)
+                        await _update_run_progress(
+                            prog_conn,
+                            run_id,
+                            events_applied,
+                            source_namespace_id=source_namespace_id,
+                        )
                     yield {
                         "type": "progress",
                         "run_id": str(run_id),
@@ -2042,6 +2213,7 @@ class ForkedReplay:
                     run_id,
                     status="success",
                     events_applied=events_applied,
+                    source_namespace_id=source_namespace_id,
                 )
 
             yield {
@@ -2062,6 +2234,7 @@ class ForkedReplay:
                         status="failed",
                         events_applied=events_applied,
                         error=str(exc),
+                        source_namespace_id=source_namespace_id,
                     )
             yield {
                 "type": "error",
@@ -2156,16 +2329,18 @@ class ReconstructiveReplay:
 
             # 2. Check for prior progress (idempotent resume)
             async with self.pool.acquire(timeout=10.0) as chk_conn:
-                prior = await chk_conn.fetchval(
-                    """
-                    SELECT COALESCE(MAX(event_seq), 0)
-                    FROM event_log
-                    WHERE namespace_id = $1
-                      AND params->>'replay_run_id' = $2
-                    """,
-                    target_namespace_id,
-                    str(run_id),
-                )
+                async with chk_conn.transaction():
+                    await set_namespace_context(chk_conn, target_namespace_id)
+                    prior = await chk_conn.fetchval(
+                        """
+                        SELECT COALESCE(MAX(event_seq), 0)
+                        FROM event_log
+                        WHERE namespace_id = $1
+                          AND params->>'replay_run_id' = $2
+                        """,
+                        target_namespace_id,
+                        str(run_id),
+                    )
             resume_from_seq = int(prior) + 1 if prior else start_seq
             if resume_from_seq > start_seq:
                 log.info(
@@ -2186,6 +2361,7 @@ class ReconstructiveReplay:
 
             async with self.pool.acquire(timeout=10.0) as cursor_conn:
                 async with cursor_conn.transaction(isolation="repeatable_read"):
+                    await set_namespace_context(cursor_conn, source_namespace_id)
                     async for record in cursor_conn.cursor(sql, *args, prefetch=_CURSOR_PREFETCH):
                         try:
                             await verify_event_signature(cursor_conn, record)
@@ -2202,10 +2378,20 @@ class ReconstructiveReplay:
                                     status="failed",
                                     events_applied=events_applied,
                                     error=str(exc),
+                                    source_namespace_id=source_namespace_id,
                                 )
                             raise
 
                         src = _record_to_event_row(record)
+                        llm_payload: dict[str, Any] | None = None
+                        if src.llm_payload_uri is not None:
+                            llm_payload, _, _ = await _resolve_llm_payload(
+                                src,
+                                replay_mode="deterministic",
+                                config_overrides=None,
+                                target_namespace_id=target_namespace_id,
+                                source_namespace_id=source_namespace_id,
+                            )
 
                         # Apply event in its own Saga transaction
                         async with self.pool.acquire(timeout=10.0) as write_conn:
@@ -2215,7 +2401,7 @@ class ReconstructiveReplay:
                                     src=src,
                                     ctx=ctx,
                                     target_namespace_id=ctx.target_namespace_id,
-                                    llm_payload=None,
+                                    llm_payload=llm_payload,
                                     config_overrides=None,
                                     run_id=run_id,
                                     source_namespace_id=source_namespace_id,
@@ -2234,7 +2420,12 @@ class ReconstructiveReplay:
 
                         if events_applied % _PROGRESS_INTERVAL == 0:
                             async with self.pool.acquire(timeout=10.0) as prog_conn:
-                                await _update_run_progress(prog_conn, run_id, events_applied)
+                                await _update_run_progress(
+                                    prog_conn,
+                                    run_id,
+                                    events_applied,
+                                    source_namespace_id=source_namespace_id,
+                                )
                             yield {
                                 "type": "progress",
                                 "run_id": str(run_id),
@@ -2250,36 +2441,41 @@ class ReconstructiveReplay:
 
             try:
                 async with self.pool.acquire(timeout=10.0) as digest_conn:
-                    as_of_dt = await digest_conn.fetchval(
-                        "SELECT occurred_at FROM event_log WHERE namespace_id = $1 AND event_seq = $2",
-                        source_namespace_id,
-                        end_seq,
-                    )
-                    source_digest = await compute_namespace_state_digest(
-                        digest_conn, source_namespace_id, as_of=as_of_dt
-                    )
-                    target_digest = await compute_namespace_state_digest(
-                        digest_conn, target_namespace_id, as_of=as_of_dt
-                    )
-                    digest_match = source_digest == target_digest
+                    async with digest_conn.transaction():
+                        await set_namespace_context(digest_conn, source_namespace_id)
+                        as_of_dt = await digest_conn.fetchval(
+                            "SELECT occurred_at FROM event_log WHERE namespace_id = $1 AND event_seq = $2",
+                            source_namespace_id,
+                            end_seq,
+                        )
+                        source_digest = await compute_namespace_state_digest(
+                            digest_conn, source_namespace_id, as_of=as_of_dt
+                        )
+                        await set_namespace_context(digest_conn, target_namespace_id)
+                        target_digest = await compute_namespace_state_digest(
+                            digest_conn, target_namespace_id, as_of=as_of_dt
+                        )
+                        digest_match = source_digest == target_digest
             except Exception as e:
                 log.warning("Failed to compute namespace state digests: %s", e)
 
             # Store digests in replay_runs
             async with self.pool.acquire(timeout=10.0) as store_conn:
-                await store_conn.execute(
-                    """
-                    UPDATE replay_runs
-                    SET source_state_digest = $1,
-                        target_state_digest = $2,
-                        digest_match = $3
-                    WHERE id = $4
-                    """,
-                    source_digest,
-                    target_digest,
-                    digest_match,
-                    run_id,
-                )
+                async with store_conn.transaction():
+                    await set_namespace_context(store_conn, source_namespace_id)
+                    await store_conn.execute(
+                        """
+                        UPDATE replay_runs
+                        SET source_state_digest = $1,
+                            target_state_digest = $2,
+                            digest_match = $3
+                        WHERE id = $4
+                        """,
+                        source_digest,
+                        target_digest,
+                        digest_match,
+                        run_id,
+                    )
 
             async with self.pool.acquire(timeout=10.0) as finish_conn:
                 await _finish_run(
@@ -2287,6 +2483,7 @@ class ReconstructiveReplay:
                     run_id,
                     status="success",
                     events_applied=events_applied,
+                    source_namespace_id=source_namespace_id,
                 )
 
             yield {
@@ -2311,6 +2508,7 @@ class ReconstructiveReplay:
                         status="failed",
                         events_applied=events_applied,
                         error=str(exc),
+                        source_namespace_id=source_namespace_id,
                     )
             yield {
                 "type": "error",
@@ -2330,6 +2528,8 @@ class ReconstructiveReplay:
 async def get_event_provenance(
     pool: asyncpg.Pool,
     memory_id: uuid.UUID,
+    *,
+    namespace_id: uuid.UUID | str | None = None,
 ) -> dict[str, Any]:
     """
     Return the causal DAG for a memory: the creating event and all its
@@ -2340,117 +2540,154 @@ async def get_event_provenance(
     ``memory_id``.  Each entry includes a ``parent_event_ids`` field listing
     all causal parents recorded in ``event_parents``.
     """
+    ns_uuid = _coerce_optional_uuid(namespace_id)
+    if ns_uuid is None:
+        mcp_session = get_current_mcp_session()
+        if mcp_session is not None:
+            ns_uuid = _coerce_optional_uuid(getattr(mcp_session, "namespace_id", None))
+
     async with pool.acquire(timeout=10.0) as conn:
-        # Find the event_log row that created this memory.
-        root = await conn.fetchrow(
-            """
-            SELECT id, namespace_id, agent_id, event_type, event_seq,
-                   occurred_at, params, result_summary, parent_event_id,
-                   signature, signature_key_id, signature_version, chain_hash
-            FROM event_log
-            WHERE params->>'memory_id' = $1
-            ORDER BY event_seq ASC
-            LIMIT 1
-            """,
-            str(memory_id),
-        )
-        if root is None:
-            return {"memory_id": str(memory_id), "chain": []}
+        async with conn.transaction():
+            if ns_uuid is not None:
+                await set_namespace_context(conn, ns_uuid)
 
-        chain: list[dict] = []
-
-        # BFS over the multi-parent DAG (bounded to 200 nodes to guard against
-        # deep chains; cycles are broken by the visited set).
-        visited: set[uuid.UUID] = set()
-        frontier: collections.deque[uuid.UUID] = collections.deque([root["id"]])
-
-        while frontier and len(visited) < 200:
-            current_id = frontier.popleft()
-            if current_id in visited:
-                continue
-            visited.add(current_id)
-
-            row = await conn.fetchrow(
+            # Find the event_log row that created this memory.
+            root = await conn.fetchrow(
                 """
                 SELECT id, namespace_id, agent_id, event_type, event_seq,
                        occurred_at, params, result_summary, parent_event_id,
                        signature, signature_key_id, signature_version, chain_hash
-                FROM event_log WHERE id = $1
+                FROM event_log
+                WHERE params->>'memory_id' = $1
+                  AND ($2::uuid IS NULL OR namespace_id = $2::uuid)
+                ORDER BY event_seq ASC
+                LIMIT 1
                 """,
-                current_id,
+                str(memory_id),
+                ns_uuid,
             )
-            if row is None:
-                continue
+            if root is None:
+                return {"memory_id": str(memory_id), "chain": []}
 
-            verified = True
-            try:
-                await verify_event_signature(conn, row)
-            except DataIntegrityError:
-                verified = False
-            except Exception:
-                verified = False
+            active_ns: uuid.UUID | None = ns_uuid or root["namespace_id"]
+            if active_ns is not None and active_ns != ns_uuid:
+                await set_namespace_context(conn, active_ns)
 
-            sig_val = row["signature"]
-            if isinstance(sig_val, memoryview):
-                sig_val = bytes(sig_val)
-            sig_hex = sig_val.hex() if sig_val else ""
+            fallback_namespaces: list[uuid.UUID] = []
+            if active_ns is not None:
+                fallback_namespaces.append(active_ns)
 
-            # Robust JSON decoding of params
-            params_val = row["params"]
-            if isinstance(params_val, str):
-                params_dict = json.loads(params_val)
-            elif params_val is not None:
-                params_dict = dict(params_val)
-            else:
-                params_dict = {}
+            chain: list[dict] = []
 
-            # Robust JSON decoding of result_summary
-            res_val = row["result_summary"]
-            if isinstance(res_val, str):
-                res_dict = json.loads(res_val)
-            elif res_val is not None:
-                res_dict = dict(res_val)
-            else:
-                res_dict = None
+            # BFS over the multi-parent DAG (bounded to 200 nodes to guard against
+            # deep chains; cycles are broken by the visited set).
+            visited: set[uuid.UUID] = set()
+            frontier: collections.deque[uuid.UUID] = collections.deque([root["id"]])
 
-            # Fetch multi-parent IDs from event_parents table.
-            ep_rows = await conn.fetch(
-                "SELECT parent_event_id FROM event_parents WHERE event_id = $1",
-                current_id,
-            )
-            multi_parent_ids: list[str] = [str(r["parent_event_id"]) for r in ep_rows]
-
-            # Fall back to scalar column for single-parent legacy events.
-            if not multi_parent_ids and row["parent_event_id"] is not None:
-                multi_parent_ids = [str(row["parent_event_id"])]
-
-            chain.append(
-                {
-                    "event_id": str(row["id"]),
-                    "namespace_id": str(row["namespace_id"]),
-                    "agent_id": row["agent_id"],
-                    "event_type": row["event_type"],
-                    "event_seq": row["event_seq"],
-                    "occurred_at": row["occurred_at"].isoformat(),
-                    "params": params_dict,
-                    "result_summary": res_dict,
-                    "parent_event_id": (
-                        str(row["parent_event_id"]) if row["parent_event_id"] else None
-                    ),
-                    "parent_event_ids": multi_parent_ids,
-                    "signature": sig_hex,
-                    "verified": verified,
-                }
-            )
-
-            # Enqueue parents from event_parents for BFS traversal.
-            for pid_str in multi_parent_ids:
-                try:
-                    pid = uuid.UUID(pid_str)
-                except ValueError:
+            while frontier and len(visited) < 200:
+                current_id = frontier.popleft()
+                if current_id in visited:
                     continue
-                if pid not in visited:
-                    frontier.append(pid)
+                visited.add(current_id)
+
+                row = await conn.fetchrow(
+                    """
+                    SELECT id, namespace_id, agent_id, event_type, event_seq,
+                           occurred_at, params, result_summary, parent_event_id,
+                           signature, signature_key_id, signature_version, chain_hash
+                    FROM event_log WHERE id = $1
+                    """,
+                    current_id,
+                )
+                if row is None:
+                    for cand_ns in fallback_namespaces:
+                        if cand_ns == active_ns:
+                            continue
+                        await set_namespace_context(conn, cand_ns)
+                        active_ns = cand_ns
+                        row = await conn.fetchrow(
+                            """
+                            SELECT id, namespace_id, agent_id, event_type, event_seq,
+                                   occurred_at, params, result_summary, parent_event_id,
+                                   signature, signature_key_id, signature_version, chain_hash
+                            FROM event_log WHERE id = $1
+                            """,
+                            current_id,
+                        )
+                        if row is not None:
+                            break
+                if row is None:
+                    continue
+
+                row_ns = row["namespace_id"]
+                if row_ns is not None and row_ns != active_ns:
+                    await set_namespace_context(conn, row_ns)
+                    active_ns = row_ns
+
+                verified = True
+                try:
+                    await verify_event_signature(conn, row)
+                except DataIntegrityError:
+                    verified = False
+                except Exception:
+                    verified = False
+
+                sig_val = row["signature"]
+                if isinstance(sig_val, memoryview):
+                    sig_val = bytes(sig_val)
+                sig_hex = sig_val.hex() if sig_val else ""
+
+                params_dict = _parse_jsonb_dict(row["params"])
+                res_val = row["result_summary"]
+                res_dict = _parse_jsonb_dict(res_val) if res_val is not None else None
+
+                src_ns_raw = params_dict.get("source_namespace_id")
+                if src_ns_raw:
+                    try:
+                        src_ns_uuid = uuid.UUID(str(src_ns_raw))
+                        if src_ns_uuid not in fallback_namespaces:
+                            fallback_namespaces.append(src_ns_uuid)
+                    except ValueError:
+                        pass
+
+                # Fetch multi-parent IDs from event_parents table.
+                ep_rows = await conn.fetch(
+                    "SELECT parent_event_id FROM event_parents WHERE event_id = $1",
+                    current_id,
+                )
+                multi_parent_ids: list[str] = [str(r["parent_event_id"]) for r in ep_rows]
+
+                # Fall back to scalar column for single-parent legacy events.
+                if not multi_parent_ids and row["parent_event_id"] is not None:
+                    multi_parent_ids = [str(row["parent_event_id"])]
+
+                chain.append(
+                    {
+                        "event_id": str(row["id"]),
+                        "namespace_id": str(row["namespace_id"]),
+                        "agent_id": row["agent_id"],
+                        "event_type": row["event_type"],
+                        "event_seq": row["event_seq"],
+                        "occurred_at": row["occurred_at"].isoformat(),
+                        "params": params_dict,
+                        "result_summary": res_dict,
+                        "parent_event_id": (
+                            str(row["parent_event_id"]) if row["parent_event_id"] else None
+                        ),
+                        "parent_event_ids": multi_parent_ids,
+                        "signature": sig_hex,
+                        "verified": verified,
+                    }
+                )
+
+                # Enqueue parents from event_parents for BFS traversal.
+                for pid_str in multi_parent_ids:
+                    try:
+                        pid = uuid.UUID(pid_str)
+                    except ValueError:
+                        continue
+                    if pid not in visited:
+                        frontier.append(pid)
 
     chain.reverse()  # root first
     return {"memory_id": str(memory_id), "chain": chain}

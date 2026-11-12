@@ -143,8 +143,8 @@ def test_static_schema_rls_declarations() -> None:
         | EXPECTED_GLOBAL_TABLES
     )
 
-    # Exclude root namespaces and custom tables that handle RLS differently
-    ignore_tables = {"namespaces", "replay_runs"}
+    # Exclude root namespaces registry table (root of tenant hierarchy, not tenant-scoped itself)
+    ignore_tables = {"namespaces"}
     unregistered = []
 
     for name, body in extract_tables(schema_content):

@@ -717,7 +717,7 @@ class _Config:
     # ALWAYS remain back-compatible with legacy rows whose ``wrapped_dek IS NULL``
     # (those carry plaintext raw_data).  Default OFF so rollout is controlled —
     # flip on only once NCE_MASTER_KEY is provisioned in the target environment.
-    NCE_ENVELOPE_ENCRYPTION_ENABLED: bool = _bool_env("NCE_ENVELOPE_ENCRYPTION_ENABLED", False)
+    NCE_ENVELOPE_ENCRYPTION_ENABLED: bool = _bool_env("NCE_ENVELOPE_ENCRYPTION_ENABLED", True)
 
     # --- MCP Sizing Limits ---
     NCE_MAX_ARGUMENTS_JSON_SIZE: int = _int_env(

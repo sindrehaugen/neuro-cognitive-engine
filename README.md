@@ -4,7 +4,7 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.4.2-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-3.4.3-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -311,7 +311,7 @@ Migration tools (`start_migration`, `validate_migration`, `commit_migration`, �
 
 ## Security Model
 
-- **Multi-tenant by construction.** Every application checkout passes through `scoped_pg_session`, which sets `SET LOCAL nce.namespace_id = '<tenant-uuid>'`. All **36** tenant-scoped Core relational tables (out of 43 Core SQL tables; expanding to **121** verified tenant tables in `EXPECTED_TENANT_RLS_TABLES` when `nce-vertical-engines` is installed) have RLS **enabled and forced**; policies validate via `get_nce_namespace()`. Privileged GC runs under a separate `BYPASSRLS` role, out of band.
+- **Multi-tenant by construction.** Every application checkout passes through `scoped_pg_session`, which sets `SET LOCAL nce.namespace_id = '<tenant-uuid>'`. All **36** tenant-scoped Core relational tables (`35` single-namespace tables in `EXPECTED_TENANT_RLS_TABLES` plus `a2a_grants` in `EXPECTED_SPECIAL_RLS_TABLES`, out of 43 Core SQL tables; dynamically expanding by **96** plugin forced-RLS tables via `nce.plugins` when `nce-vertical-engines` is installed) have RLS **enabled and forced**; policies validate via `get_nce_namespace()`. Privileged GC runs under a separate `BYPASSRLS` role, out of band.
 - **Encryption at rest & GDPR crypto-shredding.** KEK/DEK AES-256-GCM envelope encryption (`encryption_deks` / `wrapped_dek`) allows cryptographic deletion of forgotten memories by nulling the wrapped DEK. PII, credentials, and sensitive cognitive payloads are encrypted under versioned KEK rings derived from `NCE_MASTER_KEY` — see [docs/pii.md](docs/pii.md).
 - **Integrity & WORM serialization.** The `event_log` is append-only (a `prevent_mutation` trigger blocks edits) and hash-chained. Per-namespace WORM serialization via `pg_advisory_xact_lock` (`acquire_event_log_worm_lock`) prevents Merkle-chain races. Entries are HMAC-SHA256 signed over RFC 8785 (JCS) canonical JSON, with rotatable signing keys — see [docs/signing.md](docs/signing.md).
 - **AuthN/Z & Anti-Replay.** HMAC-authenticated admin HTTP with mandatory production nonces validated against a Redis distributed store; sliding timestamp drift window; fail-closed production guards (`live_admin_override_enabled()`); JWT Bearer tokens (`RS256`/`ES256`/`PS256` public key or `HS256` secret) for A2A and protected routes; optional **mTLS** behind your edge proxy.
@@ -398,5 +398,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-NCE — Neuro-Cognitive Engine · v3.4.2 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
+NCE — Neuro-Cognitive Engine · v3.4.3 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
 

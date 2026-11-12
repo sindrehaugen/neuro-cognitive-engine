@@ -257,7 +257,8 @@ async def verify_worm_enforcement(conn: asyncpg.Connection) -> None:
 # ---------------------------------------------------------------------------
 
 EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
-    # table_name: namespace ownership column
+    # Pure-Core single-namespace forced-RLS tenant tables (schema.sql + Core migrations 001..036).
+    # Vertical/plugin tables are registered dynamically via nce.plugins (see _plugin_tenant_rls_tables).
     "memories": "namespace_id",
     "kg_nodes": "namespace_id",
     "kg_edges": "namespace_id",
@@ -281,173 +282,18 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "topology_graph": "namespace_id",
     "audit_log": "namespace_id",
     "active_learning_queue": "namespace_id",
-    "d365_integrations": "namespace_id",
-    "d365_netbox_mappings": "namespace_id",
-    "d365_sync_runs": "namespace_id",
-    "d365_delta_tokens": "namespace_id",
     "processed_outbox_events": "namespace_id",
     "actor_trust": "namespace_id",
     "event_parents": "namespace_id",
     "action_approval_queue": "namespace_id",
     "action_idempotency": "namespace_id",
-    # Diagnostics engine (prod hotfix) — tenant-scoped diagnostic state.
-    # (Also added independently on rl/refactor-sequence; merged 1:1, no dup keys.)
-    "diag_ingestions": "namespace_id",
-    "diag_anomalies": "namespace_id",
-    "device_health_rollup": "namespace_id",
-    # NOTE: d365_sync_runs / d365_delta_tokens (migrations 023/024) are declared
-    # above; ml/foundation re-declared them here — kept single to avoid dup keys.
-    # Shared-core foundation (Module 0): C1 entity-resolution + C5 source-mode.
-    "node_ownership_registry": "namespace_id",
-    "entity_merge_queue": "namespace_id",
-    "source_mode_config": "namespace_id",
-    "divergence_log": "namespace_id",
-    # C5 flip-gate staleness heartbeat (migration 098) -- one row per
-    # (namespace_id, engine), upserted on every "both"-mode resolve() call,
-    # so "a comparison ran" is observable independent of whether it found
-    # a divergence (divergence_log only ever writes on a real mismatch).
-    "source_mode_heartbeat": "namespace_id",
-    # Module 0, Wave 31 (Batch 132a): shared, top-level BOM_LINE content
-    # store -- written by both system_design and sales, never engine-prefixed.
-    "bom_line_content": "namespace_id",
-    # Product engine (Module 2): prices (W2), match feedback (W6),
-    # enrichment review log (W7). Each new RLS table MUST be declared here.
-    # product_catalog is NOT here: it is a global shared parts library, see
-    # EXPECTED_GLOBAL_TABLES. product_prices stays tenant-scoped because
-    # supplier-bid pricing is per-tenant commercial confidential.
-    "product_prices": "namespace_id",
-    "product_match_feedback": "namespace_id",
-    "product_enrichment_log": "namespace_id",
-    # Product engine, Wave B-7: package catalog definitions. Tenant-scoped,
-    # unlike product_catalog -- a package is a tenant's own commercial
-    # bundling, not a universal shared parts fact.
-    "product_packages": "namespace_id",
-    # Procurement engine (Module 1): consumer cache for Product's BID projections (W5) + PO lines (PR-2).
-    "procurement_bid_prices": "namespace_id",
-    "procurement_po_lines": "namespace_id",
-    # Procurement engine Wave B-15: supplier deal registrations.
-    "procurement_deal_registrations": "namespace_id",
-    # System Design engine (Module 6) Phase-2: device capability attributes (W12).
-    "system_design_device_capabilities": "namespace_id",
-    # System Design engine (Module 6) W14: canvas geometry + the per-DESIGN
-    # optimistic-concurrency version row (two key grains, one table).
-    "system_design_geometry": "namespace_id",
-    # System Design engine (Module 6) W16: per-node lifecycle state (status /
-    # revision / salience) for DEVICE / RACK / CABLE. A node with no row here
-    # has no state -- absence is meaningful and is never defaulted.
-    "system_design_node_state": "namespace_id",
-    # System Design engine, charter Wave C-4: DESIGN_REQUEST satellite table
-    # (kg_nodes-primary identity, real fields here -- joined by node_label,
-    # FK'd to kg_nodes same as sales_contacts/097 and the DEVICE/PORT/RACK/
-    # CABLE satellites, migration 104).
-    "system_design_design_requests": "namespace_id",
-    # Sales engine (Module 5): read model (W2) + targets (W2) + signed baselines (W8)
-    "sales_read_model": "namespace_id",
-    "sales_targets": "namespace_id",
-    "sales_signed_baselines": "namespace_id",
-    # Sales engine, Wave B-2: CONTACT satellite table (kg_nodes-primary
-    # identity, name/email/phone here -- joined by label, FK'd to kg_nodes
-    # same as system_design's satellite tables, migration 097).
-    "sales_contacts": "namespace_id",
-    # Sales engine, Wave B-7: reusable quote starting-point templates.
-    "sales_quote_templates": "namespace_id",
-    # Sales engine, Wave B-3 sub-resource half: deal stakeholders (plain
-    # relational child table, FK'd to sales_deals(id), migration 107).
-    "sales_deal_participants": "namespace_id",
-    "economy_billing_runs": "namespace_id",
-    "economy_billing_candidates": "namespace_id",
-    "economy_billing_candidate_lines": "namespace_id",
-    "economy_customer_invoices": "namespace_id",
-    "vendor_scorecards": "namespace_id",
-    "contractor_profiles": "namespace_id",
-    # Agreements Engine (Module 3): review queue (W2) & extraction runs (W2).
-    "agreement_review_queue": "namespace_id",
-    "agreement_extraction_runs": "namespace_id",
-    # Economy engine (Module 8): BOM-line actual-cost cascade write-path (W5).
-    "economy_bom_actual_costs": "namespace_id",
-    # Economy engine (Module 8): balanced-ledger table behind the POSTING
-    # kg_node (W6).
-    "economy_postings": "namespace_id",
-    # Economy engine (Module 8): recurring-revenue contract store (W10).
-    "economy_contracts": "namespace_id",
-    # Inventory engine (Module 11, Wave 1): locations-stock-tables.
-    "stock_locations": "namespace_id",
-    "inventory_items": "namespace_id",
-    # Inventory engine (Module 11, Wave 11): append-only transaction ledger
-    # (transactions-valuation).
-    "inventory_transactions": "namespace_id",
-    # Inventory engine (Module 11, Wave 4): goods-receipt record (Batch 132).
-    "goods_receipts": "namespace_id",
-    # Inventory engine (Module 11, Wave 10): returns/RMA + WEEE disposal state.
-    "inventory_rma": "namespace_id",
-    # Assets engine (Module 9, Wave 2): relational asset register (seed-from-bom).
-    "assets": "namespace_id",
-    # Assets engine (Module 9, Wave 5): manufacturer telemetry reading stream.
-    "telemetry_samples": "namespace_id",
-    # Support engine (Module 10, Wave 1): native service tickets, SLA clocks, customer health.
-    "service_tickets": "namespace_id",
-    "sla_clocks": "namespace_id",
-    "customer_health": "namespace_id",
-    "support_ticket_actions": "namespace_id",
-    # Field Tech engine (Module 12, Wave 1): work orders, checklists, time entries.
-    "work_orders": "namespace_id",
-    "checklists": "namespace_id",
-    "time_entries": "namespace_id",
-    # HR engine (Module 13, Wave 1): employees, skills, certifications, absences.
-    "employees": "namespace_id",
-    "skills": "namespace_id",
-    "certifications": "namespace_id",
-    "absences": "namespace_id",
-    # Marketing engine (Module 14, Wave 1): case studies, testimonials, content assets.
-    "case_studies": "namespace_id",
-    "testimonials": "namespace_id",
-    "content_assets": "namespace_id",
-    # Staff & Resources engine (Module 15, Phase 1): resources registry.
-    "resources": "namespace_id",
-    # Staff & Resources engine (Module 15, Phase 2): allocations, travel, lodging, per-diem.
-    "allocations": "namespace_id",
-    "travel_legs": "namespace_id",
-    "stays": "namespace_id",
-    "per_diems": "namespace_id",
-    # Customer Portal engine (Module 17, Wave 1): users, document shares, service requests.
-    "portal_users": "namespace_id",
-    "portal_document_shares": "namespace_id",
-    "portal_service_requests": "namespace_id",
-    # Business Insights engine (Module 16, Wave 1): KPI snapshots & roll-up trends.
-    "business_insights_kpi_snapshots": "namespace_id",
-    # C10 Decision-Feedback Service (Cross-Engine, Wave 1): ground-truth human decision signal.
-    "decision_feedback": "namespace_id",
-    # Signing Service (Sales / Cross-Engine Wave Q-4): encrypted provider credentials.
     "signing_credentials": "namespace_id",
-    # C13 Notifications and Reminders (Shared Core, Wave A-3): inbox, reminders, and subscriptions.
-    "notifications": "namespace_id",
-    "reminders": "namespace_id",
-    "notification_subscriptions": "namespace_id",
-    # C14 Document Register (Shared Core, Wave A-4): documents, links, and shares.
-    "documents": "namespace_id",
-    "document_links": "namespace_id",
-    "document_shares": "namespace_id",
-    # C15 Legal-Entity Register (Shared Core, Wave A-5): legal entities.
-    "legal_entities": "namespace_id",
-    # C16 Principal Mapping (Shared Core, Wave A-6): principal bindings.
     "principal_bindings": "namespace_id",
-    # C4 Outbound Webhooks (Shared Core, Wave A-7): outbound webhooks.
     "outbound_webhooks": "namespace_id",
-    # C17 Site Master Data (Shared Core, Wave A-9): sites and building master data.
-    "sites": "namespace_id",
-    # C12 Sales Resource Surface (Sales Engine, Wave B-1): customers, leads, deals, quotes.
-    "sales_customers": "namespace_id",
-    "sales_leads": "namespace_id",
-    "sales_deals": "namespace_id",
-    "sales_quotes": "namespace_id",
-    # C12 Agreements Resource Surface (Agreements Engine, Wave B-9): agreements, parties, templates.
-    "agreements": "namespace_id",
-    "agreement_parties": "namespace_id",
-    "agreement_templates": "namespace_id",
-    # v3.3.0 Zero-Trust Streamable HTTP /mcp Gateway & Envelope Crypto (migration 035):
     "mcp_client_tokens": "namespace_id",
     "encryption_deks": "namespace_id",
     "procedural_heuristics": "namespace_id",
+    "replay_runs": "source_namespace_id",
 }
 
 
@@ -457,34 +303,13 @@ EXPECTED_SPECIAL_RLS_TABLES: dict[str, tuple[str, ...]] = {
 }
 
 EXPECTED_GLOBAL_TABLES: set[str] = {
-    # Tables intentionally without RLS — shared across all tenants.
+    # Pure-Core tables intentionally without RLS — shared across all tenants.
+    # Plugin global tables are merged dynamically via _plugin_global_tables().
     "embedding_models",
     "kg_node_embeddings",
     "reembedding_runs",
     "event_sequences",
-    # The product catalogue is a global shared parts library: a manufacturer
-    # part number names the same physical part for every tenant (Sindre's
-    # ruling, 2026-09-04; migration 064).
-    "product_catalog",
-    # Deployment state, not tenant data: which migration files this database
-    # has applied (see nce/migration_ledger.py).
     "applied_migrations",
-    # OpenStreetMap elements describe the physical world, not a tenant's
-    # data — the same reasoning as product_catalog above (MLV16F Wave F-11,
-    # migration 086).
-    "geodata_osm_elements",
-    # Kartverket's N50 land-cover classification describes the physical
-    # world, not a tenant's data — the same reasoning as product_catalog
-    # above (MLV16F Wave F-12, migration 089).
-    "geodata_n50_land_cover",
-    # Place names describe the physical world, not a tenant's data — the
-    # same reasoning as product_catalog above (MLV16F Wave F-13, migration
-    # 090).
-    "geodata_place_names",
-    # An EUR/NOK exchange rate describes the world, not a tenant's data —
-    # the same reasoning as product_catalog above (MLV16F Wave F-15,
-    # migration 092).
-    "pricing_fx_rates",
 }
 
 
@@ -543,16 +368,28 @@ async def verify_rls_enforcement(conn: asyncpg.Connection, table_name: str) -> N
     log.info("[rls-probe] %s: unscoped SELECT returned 0 rows — RLS active ✅", table_name)
 
 
+def _plugin_global_tables() -> set[str]:
+    """Return plugin-contributed global tables not already owned by Core tenant/special sets."""
+    from nce.plugins import get_all_plugin_global_tables
+
+    return {
+        tbl
+        for tbl in get_all_plugin_global_tables()
+        if tbl not in EXPECTED_TENANT_RLS_TABLES and tbl not in EXPECTED_SPECIAL_RLS_TABLES
+    }
+
+
 def _plugin_tenant_rls_tables() -> dict[str, str]:
-    """Return plugin-contributed tenant RLS tables not already owned by Core."""
+    """Return plugin-contributed tenant RLS tables not already owned by Core or global sets."""
     from nce.plugins import get_all_plugin_tenant_rls_tables
 
+    effective_global_tables = EXPECTED_GLOBAL_TABLES | _plugin_global_tables()
     return {
         tbl: col
         for tbl, col in get_all_plugin_tenant_rls_tables().items()
         if tbl not in EXPECTED_TENANT_RLS_TABLES
         and tbl not in EXPECTED_SPECIAL_RLS_TABLES
-        and tbl not in EXPECTED_GLOBAL_TABLES
+        and tbl not in effective_global_tables
     }
 
 
@@ -587,14 +424,13 @@ async def verify_rls_catalog_consistency(
             c.relname                   AS table_name,
             c.relrowsecurity            AS rls_enabled,
             c.relforcerowsecurity       AS force_rls_enabled,
-            EXISTS (
-                SELECT 1
+            ARRAY(
+                SELECT a.attname
                 FROM pg_attribute a
                 WHERE a.attrelid = c.oid
-                  AND a.attname  = 'namespace_id'
                   AND a.attnum   > 0
                   AND NOT a.attisdropped
-            )                           AS has_namespace_id,
+            )                           AS columns,
             (
                 SELECT count(*)
                 FROM pg_policies p
@@ -611,6 +447,7 @@ async def verify_rls_catalog_consistency(
 
     by_table = {row["table_name"]: row for row in rows}
     errors: list[str] = []
+    effective_global_tables = EXPECTED_GLOBAL_TABLES | _plugin_global_tables()
     plugin_tenant_tables = _plugin_tenant_rls_tables()
     effective_tenant_tables = {**EXPECTED_TENANT_RLS_TABLES, **plugin_tenant_tables}
 
@@ -621,8 +458,9 @@ async def verify_rls_catalog_consistency(
             if table_name in EXPECTED_TENANT_RLS_TABLES or require_plugin_tables:
                 errors.append(f"{table_name}: expected tenant table does not exist in schema")
             continue
-        if not row["has_namespace_id"]:
-            errors.append(f"{table_name}: missing namespace_id column")
+        row_columns = set(row["columns"] or ())
+        if namespace_column not in row_columns:
+            errors.append(f"{table_name}: missing {namespace_column} column")
         if not row["rls_enabled"]:
             errors.append(f"{table_name}: RLS is not enabled")
         if row["policy_count"] == 0:
@@ -683,9 +521,13 @@ async def verify_rls_catalog_consistency(
                 errors.append(
                     f"{table_name}: no policy references ownership column {ownership_column!r}"
                 )
+        if not row["force_rls_enabled"]:
+            errors.append(
+                f"{table_name}: FORCE ROW LEVEL SECURITY is not enabled (relforcerowsecurity=false)"
+            )
 
     # --- Global tables (must NOT have RLS enabled) ---
-    for table_name in EXPECTED_GLOBAL_TABLES:
+    for table_name in effective_global_tables:
         row = by_table.get(table_name)
         if row is None:
             continue
@@ -697,11 +539,12 @@ async def verify_rls_catalog_consistency(
 
     # --- Undeclared namespace tables (drift detection) ---
     declared = (
-        set(effective_tenant_tables) | set(EXPECTED_SPECIAL_RLS_TABLES) | EXPECTED_GLOBAL_TABLES
+        set(effective_tenant_tables) | set(EXPECTED_SPECIAL_RLS_TABLES) | effective_global_tables
     )
     for table_name, row in by_table.items():
+        row_columns = set(row["columns"] or ())
         if (
-            row["has_namespace_id"]
+            "namespace_id" in row_columns
             and table_name not in declared
             and not table_name.endswith("_default")
         ):

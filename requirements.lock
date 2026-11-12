@@ -460,7 +460,9 @@ python-dotenv==1.2.4
     #   -r requirements.txt
     #   pydantic-settings
 python-multipart==0.0.32
-    # via mcp
+    # via
+    #   -r requirements.txt
+    #   mcp
 python-pptx==1.0.2
     # via -r requirements.txt
 pyyaml==6.0.3
@@ -486,6 +488,8 @@ requests==2.34.2
     #   opentelemetry-exporter-otlp-proto-http
     #   smart-open
     #   spacy
+restrictedpython==9.0
+    # via -r requirements.txt
 rich==15.0.0
     # via typer
 rpds-py==2026.9.1

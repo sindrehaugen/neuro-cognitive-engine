@@ -7,14 +7,25 @@ external plugins (such as nce-vertical-engines) via Python's entry_points API.
 from __future__ import annotations
 
 import importlib.metadata
+import inspect
 import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, TypedDict, runtime_checkable
 
 log = logging.getLogger(__name__)
 
 ENTRY_POINT_GROUP = "nce.plugins"
+
+
+@dataclass(frozen=True)
+class PluginCapabilities:
+    """Declarative database and governance capabilities exported by an NCEPlugin."""
+
+    tenant_rls_tables: dict[str, str] = field(default_factory=dict)
+    global_tables: frozenset[str] = frozenset()
+    unmanaged_pg_sites: frozenset[str] = frozenset()
 
 
 class EngineDescriptor(TypedDict, total=False):
@@ -39,7 +50,27 @@ class EngineDescriptor(TypedDict, total=False):
 
 @runtime_checkable
 class NCEPlugin(Protocol):
-    """Protocol that all NCE plugins must implement."""
+    """Protocol that all NCE plugins must implement.
+
+    Optional capability and lifecycle hooks recognized by the plugin spine
+    (inspected dynamically via ``getattr`` so existing plugins remain valid
+    ``@runtime_checkable`` instances without implementing every optional hook):
+
+    - ``get_capabilities() -> PluginCapabilities``:
+        Structured declaration of ``tenant_rls_tables``, ``global_tables``, and
+        ``unmanaged_pg_sites`` owned by this plugin.
+    - ``get_tenant_rls_tables() -> dict[str, str] | set[str] | frozenset[str] | list[str] | tuple[str, ...]``:
+        Explicit ``{table_name: namespace_column}`` mapping (or table-name
+        collection defaulting to ``"namespace_id"``) for forced-RLS tenant tables.
+    - ``get_global_tables() -> set[str] | frozenset[str]``:
+        Global (non-tenant, non-RLS) PostgreSQL tables provisioned by this plugin.
+    - ``get_unmanaged_pg_sites() -> frozenset[str]``:
+        Audited ``relpath:func_name`` call-site IDs permitted to acquire raw pool
+        connections outside ``scoped_pg_session``.
+    - ``on_namespace_created(conn: Any, namespace_id: Any) -> Awaitable[None] | None``:
+        Lifecycle hook invoked inside ``NamespaceOrchestrator._create_namespace``
+        after core namespace creation and RLS context initialization.
+    """
 
     plugin_id: str
 
@@ -161,42 +192,98 @@ _SQL_ENABLE_RLS_RE = re.compile(
     r"ENABLE\s+ROW\s+LEVEL\s+SECURITY",
     re.IGNORECASE,
 )
+_SQL_DISABLE_RLS_RE = re.compile(
+    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:public\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s+"
+    r"DISABLE\s+ROW\s+LEVEL\s+SECURITY",
+    re.IGNORECASE,
+)
+_SQL_TOGGLE_RLS_RE = re.compile(
+    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:public\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s+"
+    r"(ENABLE|DISABLE)\s+ROW\s+LEVEL\s+SECURITY",
+    re.IGNORECASE,
+)
+
+
+def _coerce_tenant_rls_mapping(raw: Any) -> dict[str, str]:
+    """Normalize dict or collection of table names into ``{table: namespace_col}``."""
+    out: dict[str, str] = {}
+    if isinstance(raw, dict):
+        for tbl, col in raw.items():
+            if isinstance(tbl, str) and isinstance(col, str) and tbl.strip() and col.strip():
+                out[tbl.strip().lower()] = col.strip()
+    elif isinstance(raw, (set, frozenset, list, tuple)):
+        for tbl in raw:
+            if isinstance(tbl, str) and tbl.strip():
+                out[tbl.strip().lower()] = "namespace_id"
+    return out
 
 
 def get_all_plugin_tenant_rls_tables() -> dict[str, str]:
     """Collect tenant RLS table -> namespace column declarations from discovered plugins.
 
-    Combines explicit ``plugin.get_tenant_rls_tables()`` mappings (when provided)
-    with ``ALTER TABLE ... ENABLE ROW LEVEL SECURITY`` statements declared in
-    each plugin's SQL migration directory so external plugins remain decoupled
-    from Core's static catalog while still undergoing fail-closed RLS policy checks.
+    Prefers explicit ``plugin.get_capabilities().tenant_rls_tables`` and
+    ``plugin.get_tenant_rls_tables()`` declarations (accepting ``dict[str, str]``
+    or a collection of table names defaulting to ``"namespace_id"``). When a
+    plugin provides an explicit non-empty tenant RLS table set, that declaration
+    is trusted for its migration directory rather than blindly scanning SQL files.
+    For plugins without explicit tenant RLS declarations, falls back to scanning
+    ``mdir.glob("*.sql")`` in sorted migration order, applying both
+    ``ENABLE ROW LEVEL SECURITY`` and ``DISABLE ROW LEVEL SECURITY`` so tables
+    converted to global scope (e.g. ``product_catalog``) are excluded.
     """
     tables: dict[str, str] = {}
+    explicit_plugin_ids: set[str] = set()
+    explicit_resolved_mdirs: set[Path] = set()
+
     plugins = load_plugins()
     for plugin_id, plugin in plugins.items():
+        plugin_explicit: dict[str, str] = {}
+
+        cap_getter = getattr(plugin, "get_capabilities", None)
+        if callable(cap_getter):
+            try:
+                caps = cap_getter()
+                if caps is not None and hasattr(caps, "tenant_rls_tables"):
+                    plugin_explicit.update(_coerce_tenant_rls_mapping(caps.tenant_rls_tables))
+            except Exception as exc:
+                log.exception("Error reading capabilities from plugin %s: %s", plugin_id, exc)
+
         getter = getattr(plugin, "get_tenant_rls_tables", None)
         if callable(getter):
             try:
-                explicit = getter()
-                if isinstance(explicit, dict):
-                    for tbl, col in explicit.items():
-                        if (
-                            isinstance(tbl, str)
-                            and isinstance(col, str)
-                            and tbl.strip()
-                            and col.strip()
-                        ):
-                            tables[tbl.strip().lower()] = col.strip()
+                plugin_explicit.update(_coerce_tenant_rls_mapping(getter()))
             except Exception as exc:
                 log.exception("Error reading tenant RLS tables from plugin %s: %s", plugin_id, exc)
 
+        if plugin_explicit:
+            tables.update(plugin_explicit)
+            explicit_plugin_ids.add(plugin_id)
+            try:
+                mdir = plugin.get_migration_dir()
+                if mdir is not None and Path(mdir).is_dir():
+                    explicit_resolved_mdirs.add(Path(mdir).resolve())
+            except Exception as exc:
+                log.exception(
+                    "Error resolving migration dir for explicit RLS plugin %s: %s", plugin_id, exc
+                )
+
     for plugin_id, mdir in get_all_plugin_migration_dirs().items():
         try:
+            if plugin_id in explicit_plugin_ids or Path(mdir).resolve() in explicit_resolved_mdirs:
+                continue
+            scanned: dict[str, str] = {}
             for sql_file in sorted(mdir.glob("*.sql")):
                 raw_sql = sql_file.read_text(encoding="utf-8")
                 cleaned = _SQL_LINE_COMMENT_RE.sub("", _SQL_BLOCK_COMMENT_RE.sub("", raw_sql))
-                for match in _SQL_ENABLE_RLS_RE.finditer(cleaned):
-                    tables.setdefault(match.group(1).lower(), "namespace_id")
+                for match in _SQL_TOGGLE_RLS_RE.finditer(cleaned):
+                    tbl_name = match.group(1).lower()
+                    action = match.group(2).upper()
+                    if action == "ENABLE":
+                        scanned.setdefault(tbl_name, "namespace_id")
+                    elif action == "DISABLE":
+                        scanned.pop(tbl_name, None)
+            for tbl_name, col_name in scanned.items():
+                tables.setdefault(tbl_name, col_name)
         except Exception as exc:
             log.exception(
                 "Error scanning RLS tables in migrations for plugin %s: %s", plugin_id, exc
@@ -205,10 +292,63 @@ def get_all_plugin_tenant_rls_tables() -> dict[str, str]:
     return tables
 
 
+def get_all_plugin_global_tables() -> set[str]:
+    """Collect global (non-tenant, non-RLS) PostgreSQL table names declared by plugins."""
+    global_tables: set[str] = set()
+    for plugin_id, plugin in load_plugins().items():
+        cap_getter = getattr(plugin, "get_capabilities", None)
+        if callable(cap_getter):
+            try:
+                caps = cap_getter()
+                raw_caps_globals = (
+                    getattr(caps, "global_tables", None) if caps is not None else None
+                )
+                if isinstance(raw_caps_globals, (set, frozenset, list, tuple)):
+                    for item in raw_caps_globals:
+                        if isinstance(item, str) and item.strip():
+                            global_tables.add(item.strip().lower())
+            except Exception as exc:
+                log.exception(
+                    "Error reading global tables via capabilities from plugin %s: %s",
+                    plugin_id,
+                    exc,
+                )
+
+        getter = getattr(plugin, "get_global_tables", None)
+        if callable(getter):
+            try:
+                declared = getter()
+                if isinstance(declared, (set, frozenset, list, tuple)):
+                    for item in declared:
+                        if isinstance(item, str) and item.strip():
+                            global_tables.add(item.strip().lower())
+            except Exception as exc:
+                log.exception("Error reading global tables from plugin %s: %s", plugin_id, exc)
+    return global_tables
+
+
 def get_all_plugin_unmanaged_pg_sites() -> frozenset[str]:
     """Collect audited global/non-tenant unmanaged PG call-site IDs declared by plugins."""
     sites: set[str] = set()
     for plugin_id, plugin in load_plugins().items():
+        cap_getter = getattr(plugin, "get_capabilities", None)
+        if callable(cap_getter):
+            try:
+                caps = cap_getter()
+                raw_caps_sites = (
+                    getattr(caps, "unmanaged_pg_sites", None) if caps is not None else None
+                )
+                if isinstance(raw_caps_sites, (set, frozenset, list, tuple)):
+                    for item in raw_caps_sites:
+                        if isinstance(item, str) and item.strip():
+                            sites.add(item.strip())
+            except Exception as exc:
+                log.exception(
+                    "Error reading unmanaged PG sites via capabilities from plugin %s: %s",
+                    plugin_id,
+                    exc,
+                )
+
         getter = getattr(plugin, "get_unmanaged_pg_sites", None)
         if callable(getter):
             try:
@@ -220,6 +360,16 @@ def get_all_plugin_unmanaged_pg_sites() -> frozenset[str]:
             except Exception as exc:
                 log.exception("Error reading unmanaged PG sites from plugin %s: %s", plugin_id, exc)
     return frozenset(sites)
+
+
+async def run_plugin_namespace_created_hooks(conn: Any, namespace_id: Any) -> None:
+    """Invoke optional ``on_namespace_created(conn, namespace_id)`` hooks on loaded plugins."""
+    for plugin in load_plugins().values():
+        hook = getattr(plugin, "on_namespace_created", None)
+        if callable(hook):
+            result = hook(conn, namespace_id)
+            if inspect.isawaitable(result):
+                await result
 
 
 def _normalize_filter_tokens(raw: str | None) -> set[str]:

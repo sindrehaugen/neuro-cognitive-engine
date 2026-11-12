@@ -15,7 +15,7 @@ from uuid import UUID
 import asyncpg  # type: ignore[import-untyped]
 
 from nce.auth import set_namespace_context
-from nce.entity_resolution.ownership_seed import seed_node_ownership_registry
+from nce.plugins import run_plugin_namespace_created_hooks
 
 log = logging.getLogger("nce-orchestrator.namespace")
 
@@ -182,7 +182,7 @@ class NamespaceOrchestrator(OrchestratorBase):
                         ),
                     },
                 )
-                await seed_node_ownership_registry(conn, row["id"])
+                await run_plugin_namespace_created_hooks(conn, row["id"])
             return dict(row)
 
     async def _list_namespaces(self, payload) -> dict:

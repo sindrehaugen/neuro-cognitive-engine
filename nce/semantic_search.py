@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -324,6 +325,10 @@ async def semantic_search(
     """
     if as_of is None and at_timestamp is not None:
         as_of = at_timestamp
+    if isinstance(as_of, str):
+        as_of = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+    if isinstance(as_of, datetime) and as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=timezone.utc)
     limit = max(1, min(int(limit), _MAX_TOP_K))
     offset = max(0, int(offset))
     need = offset + limit
@@ -368,11 +373,36 @@ async def semantic_search(
         p_agent_id = builder.param(agent_id)
         p_candidate_k = builder.param(candidate_k)
         p_query = builder.param(query)
+        p_as_of = builder.param(as_of) if as_of is not None else None
 
         m = Table("memories").as_("m")
         me = Table("memory_embeddings").as_("me")
         s = Table("memory_salience").as_("s")
         s_sys = Table("memory_salience").as_("s_sys")
+
+        if p_as_of is not None:
+            raw_salience_sql = (
+                f"LEAST("
+                f"CASE WHEN s.updated_at IS NOT NULL AND s.updated_at <= {p_as_of} "
+                f"AND s.salience_score > 0.0 THEN s.salience_score ELSE 1.0 END, "
+                f"CASE WHEN s_sys.updated_at IS NOT NULL AND s_sys.updated_at <= {p_as_of} "
+                f"AND s_sys.salience_score > 0.0 THEN s_sys.salience_score ELSE 1.0 END"
+                f")"
+            )
+            last_updated_sql = (
+                f"COALESCE("
+                f"CASE WHEN s.updated_at IS NOT NULL AND s.updated_at <= {p_as_of} "
+                f"AND s.salience_score > 0.0 THEN s.updated_at END, "
+                f"CASE WHEN s_sys.updated_at IS NOT NULL AND s_sys.updated_at <= {p_as_of} "
+                f"AND s_sys.salience_score > 0.0 THEN s_sys.updated_at END, "
+                f"m.created_at"
+                f")"
+            )
+        else:
+            raw_salience_sql = (
+                "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0))"
+            )
+            last_updated_sql = "COALESCE(s.updated_at, s_sys.updated_at, m.created_at)"
 
         v_cand_query = Query.from_(m)
         if active_model_id:
@@ -392,21 +422,18 @@ async def semantic_search(
                 m.payload_ref,
                 m.id.as_("memory_id"),
                 distance_expr.as_("distance"),
-                RawExpression(
-                    "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0))"
-                ).as_("raw_salience"),
-                RawExpression("COALESCE(s.updated_at, s_sys.updated_at, m.created_at)").as_(
-                    "last_updated"
-                ),
+                RawExpression(raw_salience_sql).as_("raw_salience"),
+                RawExpression(last_updated_sql).as_("last_updated"),
             )
             .where(m.namespace_id == p_namespace_id)
             .where(RawExpression("m.memory_type IN ('episodic', 'consolidated', 'semantic')"))
-            .where(
+        )
+        if p_as_of is None:
+            v_cand_query = v_cand_query.where(
                 RawExpression(
                     "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0)) > 0.0"
                 )
             )
-        )
 
         exact_identifiers = extract_exact_identifiers(query)
 
@@ -419,8 +446,11 @@ async def semantic_search(
                 f"OR COALESCE(m.search_tsv, m.content_fts) @@ plainto_tsquery('simple', {p_ident})"
             )
         ident_sql_cond = ""
+        ident_boost_sql = ""
         if ident_predicates:
-            ident_sql_cond = " OR (" + " OR ".join(ident_predicates) + ")"
+            ident_or_expr = " OR ".join(f"({pred})" for pred in ident_predicates)
+            ident_sql_cond = f" OR ({ident_or_expr})"
+            ident_boost_sql = f" + CASE WHEN ({ident_or_expr}) THEN 1.0 ELSE 0.0 END"
 
         fts_cand_query = (
             Query.from_(m)
@@ -440,14 +470,10 @@ async def semantic_search(
                 m.id.as_("memory_id"),
                 RawExpression(
                     "COALESCE(ts_rank_cd(COALESCE(m.search_tsv, m.content_fts), query.q_eng), 0.0) + "
-                    "COALESCE(ts_rank_cd(COALESCE(m.search_tsv, m.content_fts), query.q_simple), 0.0)"
+                    f"COALESCE(ts_rank_cd(COALESCE(m.search_tsv, m.content_fts), query.q_simple), 0.0){ident_boost_sql}"
                 ).as_("ts_score"),
-                RawExpression(
-                    "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0))"
-                ).as_("raw_salience"),
-                RawExpression("COALESCE(s.updated_at, s_sys.updated_at, m.created_at)").as_(
-                    "last_updated"
-                ),
+                RawExpression(raw_salience_sql).as_("raw_salience"),
+                RawExpression(last_updated_sql).as_("last_updated"),
             )
             .where(m.namespace_id == p_namespace_id)
             .where(
@@ -457,12 +483,13 @@ async def semantic_search(
                 )
             )
             .where(RawExpression("m.memory_type IN ('episodic', 'consolidated', 'semantic')"))
-            .where(
+        )
+        if p_as_of is None:
+            fts_cand_query = fts_cand_query.where(
                 RawExpression(
                     "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0)) > 0.0"
                 )
             )
-        )
 
         kg_cand_query = (
             Query.from_(m)
@@ -490,34 +517,37 @@ async def semantic_search(
                 m.payload_ref,
                 m.id.as_("memory_id"),
                 RawExpression("kg.kg_score").as_("kg_score"),
-                RawExpression(
-                    "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0))"
-                ).as_("raw_salience"),
-                RawExpression("COALESCE(s.updated_at, s_sys.updated_at, m.created_at)").as_(
-                    "last_updated"
-                ),
+                RawExpression(raw_salience_sql).as_("raw_salience"),
+                RawExpression(last_updated_sql).as_("last_updated"),
             )
             .where(m.namespace_id == p_namespace_id)
             .where(RawExpression("m.memory_type IN ('episodic', 'consolidated', 'semantic')"))
-            .where(
+        )
+        if p_as_of is None:
+            kg_cand_query = kg_cand_query.where(
                 RawExpression(
                     "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0)) > 0.0"
                 )
             )
-        )
 
         if temporal_retention_days is not None:
             p_days = builder.param(int(temporal_retention_days))
-            retention_expr = RawExpression(
-                f"m.created_at >= NOW() - ({p_days}::int * INTERVAL '1 day')"
-            )
+            if p_as_of is not None:
+                retention_expr = RawExpression(
+                    f"m.created_at >= {p_as_of}::timestamptz - ({p_days}::int * INTERVAL '1 day')"
+                )
+            else:
+                retention_expr = RawExpression(
+                    f"m.created_at >= NOW() - ({p_days}::int * INTERVAL '1 day')"
+                )
             v_cand_query = v_cand_query.where(retention_expr)
             fts_cand_query = fts_cand_query.where(retention_expr)
             kg_cand_query = kg_cand_query.where(retention_expr)
 
-        if as_of:
-            p_as_of = builder.param(as_of)
-            as_of_expr = RawExpression(f"m.created_at <= {p_as_of}")
+        if p_as_of is not None:
+            as_of_expr = RawExpression(
+                f"m.created_at <= {p_as_of} AND (m.valid_to IS NULL OR m.valid_to > {p_as_of})"
+            )
             v_cand_query = v_cand_query.where(as_of_expr)
             fts_cand_query = fts_cand_query.where(as_of_expr)
             kg_cand_query = kg_cand_query.where(as_of_expr)
@@ -567,6 +597,21 @@ async def semantic_search(
         p_half_life = builder.param(float(cognitive_config.half_life_days))
         p_need = builder.param(need)
 
+        if p_as_of is not None:
+            decay_score_sql = (
+                f"CASE WHEN {p_half_life}::double precision <= 0.0 "
+                f"THEN COALESCE(v.raw_salience, f.raw_salience, k.raw_salience) "
+                f"ELSE COALESCE(v.raw_salience, f.raw_salience, k.raw_salience) * EXP("
+                f"-LEAST((LN(2.0) / {p_half_life}::double precision) * GREATEST(0.0, "
+                f"EXTRACT(EPOCH FROM ({p_as_of}::timestamptz - COALESCE(v.last_updated, f.last_updated, k.last_updated))) / 86400.0), 20.0)"
+                f") END"
+            )
+        else:
+            decay_score_sql = (
+                f"nce_decayed_score(COALESCE(v.raw_salience, f.raw_salience, k.raw_salience), "
+                f"COALESCE(v.last_updated, f.last_updated, k.last_updated), {p_half_life}::double precision)"
+            )
+
         final_query = (
             Query.with_(vector_candidates, "vector_candidates")
             .with_(vector_ranked, "vector_ranked")
@@ -587,8 +632,7 @@ async def semantic_search(
                 RawExpression(
                     f"(COALESCE(1.0 / (60 + v.rank), 0.0) + COALESCE(1.0 / (60 + f.rank), 0.0) + COALESCE(1.0 / (60 + k.rank), 0.0))"
                     f" * ({p_alpha}::double precision + (1.0::double precision - {p_alpha}::double precision) "
-                    f"* nce_decayed_score(COALESCE(v.raw_salience, f.raw_salience, k.raw_salience), "
-                    f"COALESCE(v.last_updated, f.last_updated, k.last_updated), {p_half_life}::double precision))"
+                    f"* {decay_score_sql})"
                 ).as_("final_score"),
                 RawExpression("COALESCE(v.raw_salience, f.raw_salience, k.raw_salience)").as_(
                     "raw_salience"
@@ -698,8 +742,6 @@ async def semantic_search(
             ):
                 docs[str(doc["_id"])] = doc
 
-    from datetime import datetime, timezone
-
     from nce.envelope import maybe_decrypt_raw_data
     from nce.temporal_decay import retention
 
@@ -726,7 +768,11 @@ async def semantic_search(
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
 
-                retention_result = retention(ts, "episodic")
+                retention_result = retention(
+                    ts,
+                    "episodic",
+                    _now=as_of if isinstance(as_of, datetime) else None,
+                )
                 stale = retention_result.prune_eligible
                 confidence = min(1.0, max(0.0, salience_score * retention_result.retention))
             except Exception:
@@ -875,4 +921,6 @@ async def semantic_search(
                 if "stale_memory_retention" in r["epistemic_warnings"]:
                     c_score *= 0.8
                 r["confidence_score"] = float(min(1.0, max(0.0, round(c_score, 4))))
-    return results
+    if offset > 0:
+        return results[offset : offset + limit]
+    return results[:limit]

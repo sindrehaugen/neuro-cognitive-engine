@@ -604,7 +604,7 @@ async def _collect_minio_orphans(
             return
 
         for bucket in buckets:
-            if not bucket.name.startswith("mcp-"):
+            if not (bucket.name == "nce-artifacts" or bucket.name.startswith("mcp-")):
                 continue
             try:
                 objects = minio_client.list_objects(bucket.name, recursive=True)

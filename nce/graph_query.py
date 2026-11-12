@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -360,6 +361,21 @@ async def adapt_synaptic_weights(
     return updated_count
 
 
+@asynccontextmanager
+async def _ensure_tx(conn: Any):
+    """Ensure ``conn`` executes within a transaction (or savepoint) when supported."""
+    tx_fn = getattr(conn, "transaction", None)
+    if callable(tx_fn):
+        ctx = tx_fn()
+        if hasattr(ctx, "__aenter__"):
+            async with ctx:
+                yield
+            return
+        if asyncio.iscoroutine(ctx):
+            ctx.close()
+    yield
+
+
 class GraphRAGTraverser:
     def __init__(
         self,
@@ -380,6 +396,7 @@ class GraphRAGTraverser:
         self,
         conn: asyncpg.Connection,
         event_ids: list[str],
+        namespace_id: str | UUID | None = None,
     ) -> None:
         """
         Verify HMAC signatures on event_log rows that contributed to a time-travel result.
@@ -393,37 +410,51 @@ class GraphRAGTraverser:
         """
         if not event_ids:
             return
+        from nce.auth import set_namespace_context
         from nce.event_log import DataIntegrityError, verify_event_signature
 
         # Deduplicate — the same event may appear from multiple CTE branches.
         unique_ids = list(set(event_ids))
 
-        # Fetch full event_log rows.  event_log is RANGE-partitioned so this
-        # scans all partitions, but the subgraph size is bounded by MAX_NODES.
-        rows = await conn.fetch(
-            "SELECT * FROM event_log WHERE id = ANY($1::uuid[])",
-            unique_ids,
-        )
-        found_ids = {str(r["id"]) for r in rows}
-        missing = set(unique_ids) - found_ids
-        if missing:
-            raise DataIntegrityError(
-                f"Missing event_log rows for signature verification: {missing}"
+        async with _ensure_tx(conn):
+            if namespace_id is not None:
+                await set_namespace_context(conn, UUID(str(namespace_id)))
+
+            # Fetch full event_log rows.  event_log is RANGE-partitioned so this
+            # scans all partitions, but the subgraph size is bounded by MAX_NODES.
+            rows = await conn.fetch(
+                "SELECT * FROM event_log WHERE id = ANY($1::uuid[])",
+                unique_ids,
             )
-        for row in rows:
-            try:
-                await verify_event_signature(conn, row)
-            except DataIntegrityError:
-                raise  # re-raise — tampering is a critical security event
-            except Exception as exc:
-                log.error(
-                    "Signature verification failed for event_id=%s: %s",
-                    row.get("id"),
-                    exc,
-                )
+            found_ids = {str(r["id"]) for r in rows}
+            missing = set(unique_ids) - found_ids
+            if missing:
                 raise DataIntegrityError(
-                    f"Event signature verification error for event_id={row.get('id')}: {exc}"
-                ) from exc
+                    f"Missing event_log rows for signature verification: {missing}"
+                )
+            for row in rows:
+                try:
+                    row_ns = row.get("namespace_id") if hasattr(row, "get") else row["namespace_id"]
+                    if (
+                        row_ns is not None
+                        and namespace_id is not None
+                        and str(row_ns) != str(namespace_id)
+                    ):
+                        await set_namespace_context(conn, UUID(str(row_ns)))
+                    await verify_event_signature(conn, row)
+                except DataIntegrityError:
+                    raise  # re-raise — tampering is a critical security event
+                except Exception as exc:
+                    log.error(
+                        "Signature verification failed for event_id=%s: %s",
+                        row.get("id"),
+                        exc,
+                    )
+                    raise DataIntegrityError(
+                        f"Event signature verification error for event_id={row.get('id')}: {exc}"
+                    ) from exc
+            if namespace_id is not None:
+                await set_namespace_context(conn, UUID(str(namespace_id)))
 
     # --- Step 1: Vector anchor search ---
 
@@ -470,43 +501,52 @@ class GraphRAGTraverser:
                 rows = await c.fetch(
                     """
                     WITH ns AS (
-                        SELECT id, parent_id, (metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
-                        FROM namespaces WHERE id = $3::uuid
+                        SELECT namespaces.id,
+                               namespaces.parent_id,
+                               (namespaces.metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
+                        FROM namespaces
+                        WHERE namespaces.id = $3::uuid
                     ),
                     memory_events AS (
-                        SELECT DISTINCT ON ((params->>'memory_id')::uuid)
-                            (params->>'memory_id')::uuid AS memory_id,
-                            event_type,
-                            params->'entities' AS entities,
-                            id AS event_id
+                        SELECT DISTINCT ON ((event_log.params->>'memory_id')::uuid)
+                            (event_log.params->>'memory_id')::uuid AS memory_id,
+                            event_log.event_type AS event_type,
+                            event_log.params->'entities' AS entities,
+                            event_log.id AS event_id
                         FROM event_log
                         CROSS JOIN ns
-                        WHERE (
-                            (namespace_id = ns.id AND occurred_at <= $4)
-                            OR
-                            (namespace_id = ns.parent_id AND occurred_at <= LEAST($4, ns.forked_as_of))
-                        )
-                          AND event_type IN ('store_memory', 'forget_memory')
-                        ORDER BY (params->>'memory_id')::uuid, occurred_at DESC, event_seq DESC
+                        WHERE (event_log.params->>'memory_id') IS NOT NULL
+                          AND (
+                              (event_log.namespace_id = ns.id AND event_log.occurred_at <= $4)
+                              OR
+                              (event_log.namespace_id = ns.parent_id AND event_log.occurred_at <= LEAST($4, ns.forked_as_of))
+                          )
+                          AND event_log.event_type IN ('store_memory', 'forget_memory', 'memory_shredded')
+                        ORDER BY (event_log.params->>'memory_id')::uuid, event_log.occurred_at DESC, event_log.event_seq DESC
                     ),
                     active_memories AS (
-                        SELECT memory_id, entities, event_id
-                        FROM memory_events
-                        WHERE event_type = 'store_memory'
+                        SELECT me.memory_id, me.entities, me.event_id
+                        FROM memory_events me
+                        WHERE me.event_type = 'store_memory'
                     ),
                     historical_nodes AS (
-                        SELECT DISTINCT ON (label)
-                            jsonb_array_elements(entities)->>'label' AS label,
-                            jsonb_array_elements(entities)->>'entity_type' AS entity_type,
-                            memory_id,
-                            event_id
-                        FROM active_memories
+                        SELECT DISTINCT ON (ent->>'label')
+                            ent->>'label' AS label,
+                            COALESCE(ent->>'entity_type', ent->>'type') AS entity_type,
+                            am.memory_id,
+                            am.event_id
+                        FROM active_memories am
+                        CROSS JOIN LATERAL jsonb_array_elements(
+                            COALESCE(CASE WHEN jsonb_typeof(am.entities) = 'array' THEN am.entities END, '[]'::jsonb)
+                        ) AS ent
+                        WHERE ent->>'label' IS NOT NULL
                     )
                     SELECT n.label, n.entity_type, m.payload_ref,
                            m.embedding <=> $1::vector AS distance,
                            n.event_id
                     FROM historical_nodes n
                     JOIN memories m ON n.memory_id = m.id
+                    WHERE m.embedding IS NOT NULL
                     ORDER BY distance ASC
                     LIMIT $2
                     """,
@@ -517,7 +557,9 @@ class GraphRAGTraverser:
                 )
                 # Verify signatures on event_log rows that contributed to this result.
                 event_ids = [str(r["event_id"]) for r in rows if r.get("event_id")]
-                await self._verify_time_travel_event_signatures(c, event_ids)
+                await self._verify_time_travel_event_signatures(
+                    c, event_ids, namespace_id=namespace_id
+                )
             else:
                 rows = await c.fetch(
                     """
@@ -525,6 +567,7 @@ class GraphRAGTraverser:
                            embedding <=> $1::vector AS distance
                     FROM kg_nodes
                     WHERE ($3::uuid IS NULL OR namespace_id = $3::uuid)
+                      AND embedding IS NOT NULL
                     ORDER BY distance ASC
                     LIMIT $2
                     """,
@@ -614,34 +657,48 @@ class GraphRAGTraverser:
                         FROM traversal t
                         JOIN LATERAL (
                             WITH ns AS (
-                                SELECT id, parent_id,
-                                       (metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
-                                FROM namespaces WHERE id = $3::uuid
+                                SELECT namespaces.id,
+                                       namespaces.parent_id,
+                                       (namespaces.metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
+                                FROM namespaces
+                                WHERE namespaces.id = $3::uuid
                             ),
                             memory_events AS (
-                                SELECT DISTINCT ON ((params->>'memory_id')::uuid)
-                                    (params->>'memory_id')::uuid AS memory_id,
-                                    event_type, params->'triplets' AS triplets, id AS event_id
-                                FROM event_log CROSS JOIN ns
-                                WHERE (
-                                    (namespace_id = ns.id AND occurred_at <= $4)
-                                    OR (namespace_id = ns.parent_id AND occurred_at <= LEAST($4, ns.forked_as_of))
-                                )
-                                  AND event_type IN ('store_memory', 'forget_memory')
-                                ORDER BY (params->>'memory_id')::uuid, occurred_at DESC, event_seq DESC
+                                SELECT DISTINCT ON ((event_log.params->>'memory_id')::uuid)
+                                    (event_log.params->>'memory_id')::uuid AS memory_id,
+                                    event_log.event_type AS event_type,
+                                    event_log.params->'triplets' AS triplets,
+                                    event_log.id AS event_id
+                                FROM event_log
+                                CROSS JOIN ns
+                                WHERE (event_log.params->>'memory_id') IS NOT NULL
+                                  AND (
+                                      (event_log.namespace_id = ns.id AND event_log.occurred_at <= $4)
+                                      OR (event_log.namespace_id = ns.parent_id AND event_log.occurred_at <= LEAST($4, ns.forked_as_of))
+                                  )
+                                  AND event_log.event_type IN ('store_memory', 'forget_memory', 'memory_shredded')
+                                ORDER BY (event_log.params->>'memory_id')::uuid, event_log.occurred_at DESC, event_log.event_seq DESC
                             ),
                             active_memories AS (
-                                SELECT memory_id, triplets, event_id
-                                FROM memory_events WHERE event_type = 'store_memory'
+                                SELECT me.memory_id, me.triplets, me.event_id
+                                FROM memory_events me
+                                WHERE me.event_type = 'store_memory'
                             ),
                             historical_edges AS (
                                 SELECT
-                                    jsonb_array_elements(triplets)->>'subject_label' AS subject_label,
-                                    jsonb_array_elements(triplets)->>'predicate' AS predicate,
-                                    jsonb_array_elements(triplets)->>'object_label' AS object_label,
-                                    (jsonb_array_elements(triplets)->>'confidence')::float AS confidence,
-                                    memory_id, event_id
-                                FROM active_memories
+                                    COALESCE(trip->>'subject_label', trip->>'subject') AS subject_label,
+                                    trip->>'predicate' AS predicate,
+                                    COALESCE(trip->>'object_label', trip->>'object') AS object_label,
+                                    COALESCE((trip->>'confidence')::float, 1.0) AS confidence,
+                                    am.memory_id,
+                                    am.event_id
+                                FROM active_memories am
+                                CROSS JOIN LATERAL jsonb_array_elements(
+                                    COALESCE(CASE WHEN jsonb_typeof(am.triplets) = 'array' THEN am.triplets END, '[]'::jsonb)
+                                ) AS trip
+                                WHERE COALESCE(trip->>'subject_label', trip->>'subject') IS NOT NULL
+                                  AND trip->>'predicate' IS NOT NULL
+                                  AND COALESCE(trip->>'object_label', trip->>'object') IS NOT NULL
                             )
                             SELECT 
                                 CASE WHEN e.subject_label = t.label THEN e.object_label ELSE e.subject_label END AS neighbor
@@ -671,34 +728,48 @@ class GraphRAGTraverser:
                     edge_rows = await c.fetch(
                         """
                         WITH ns AS (
-                            SELECT id, parent_id,
-                                   (metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
-                            FROM namespaces WHERE id = $2::uuid
+                            SELECT namespaces.id,
+                                   namespaces.parent_id,
+                                   (namespaces.metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
+                            FROM namespaces
+                            WHERE namespaces.id = $2::uuid
                         ),
                         memory_events AS (
-                            SELECT DISTINCT ON ((params->>'memory_id')::uuid)
-                                (params->>'memory_id')::uuid AS memory_id,
-                                event_type, params->'triplets' AS triplets, id AS event_id
-                            FROM event_log CROSS JOIN ns
-                            WHERE (
-                                (namespace_id = ns.id AND occurred_at <= $3)
-                                OR (namespace_id = ns.parent_id AND occurred_at <= LEAST($3, ns.forked_as_of))
-                            )
-                              AND event_type IN ('store_memory', 'forget_memory')
-                            ORDER BY (params->>'memory_id')::uuid, occurred_at DESC, event_seq DESC
+                            SELECT DISTINCT ON ((event_log.params->>'memory_id')::uuid)
+                                (event_log.params->>'memory_id')::uuid AS memory_id,
+                                event_log.event_type AS event_type,
+                                event_log.params->'triplets' AS triplets,
+                                event_log.id AS event_id
+                            FROM event_log
+                            CROSS JOIN ns
+                            WHERE (event_log.params->>'memory_id') IS NOT NULL
+                              AND (
+                                  (event_log.namespace_id = ns.id AND event_log.occurred_at <= $3)
+                                  OR (event_log.namespace_id = ns.parent_id AND event_log.occurred_at <= LEAST($3, ns.forked_as_of))
+                              )
+                              AND event_log.event_type IN ('store_memory', 'forget_memory', 'memory_shredded')
+                            ORDER BY (event_log.params->>'memory_id')::uuid, event_log.occurred_at DESC, event_log.event_seq DESC
                         ),
                         active_memories AS (
-                            SELECT memory_id, triplets, event_id
-                            FROM memory_events WHERE event_type = 'store_memory'
+                            SELECT me.memory_id, me.triplets, me.event_id
+                            FROM memory_events me
+                            WHERE me.event_type = 'store_memory'
                         ),
                         historical_edges AS (
                             SELECT
-                                jsonb_array_elements(triplets)->>'subject_label' AS subject_label,
-                                jsonb_array_elements(triplets)->>'predicate' AS predicate,
-                                jsonb_array_elements(triplets)->>'object_label' AS object_label,
-                                (jsonb_array_elements(triplets)->>'confidence')::float AS confidence,
-                                memory_id, event_id
-                            FROM active_memories
+                                COALESCE(trip->>'subject_label', trip->>'subject') AS subject_label,
+                                trip->>'predicate' AS predicate,
+                                COALESCE(trip->>'object_label', trip->>'object') AS object_label,
+                                COALESCE((trip->>'confidence')::float, 1.0) AS confidence,
+                                am.memory_id,
+                                am.event_id
+                            FROM active_memories am
+                            CROSS JOIN LATERAL jsonb_array_elements(
+                                COALESCE(CASE WHEN jsonb_typeof(am.triplets) = 'array' THEN am.triplets END, '[]'::jsonb)
+                            ) AS trip
+                            WHERE COALESCE(trip->>'subject_label', trip->>'subject') IS NOT NULL
+                              AND trip->>'predicate' IS NOT NULL
+                              AND COALESCE(trip->>'object_label', trip->>'object') IS NOT NULL
                         )
                         SELECT DISTINCT ON (e.subject_label, e.predicate, e.object_label)
                             e.subject_label, e.predicate, e.object_label, m.payload_ref,
@@ -793,7 +864,9 @@ class GraphRAGTraverser:
 
             # Verify signatures on event_log rows if time-travel mode.
             if bfs_event_ids:
-                await self._verify_time_travel_event_signatures(c, bfs_event_ids)
+                await self._verify_time_travel_event_signatures(
+                    c, bfs_event_ids, namespace_id=namespace_id
+                )
             return visited, all_edges
 
         if conn is not None:
@@ -891,13 +964,17 @@ class GraphRAGTraverser:
             # to the plaintext path below, which is the same behaviour as a
             # legacy NULL dek -- degraded, never cross-tenant.
             try:
+                from nce.auth import set_namespace_context
+
                 async with self.pg_pool.acquire(timeout=10.0) as c:
-                    dek_rows = await c.fetch(
-                        "SELECT payload_ref, wrapped_dek FROM memories "
-                        "WHERE payload_ref = ANY($1::text[]) AND namespace_id = $2::uuid",
-                        list(ep_docs.keys()),
-                        namespace_id,
-                    )
+                    async with c.transaction():
+                        await set_namespace_context(c, UUID(str(namespace_id)))
+                        dek_rows = await c.fetch(
+                            "SELECT payload_ref, wrapped_dek FROM memories "
+                            "WHERE payload_ref = ANY($1::text[]) AND namespace_id = $2::uuid",
+                            list(ep_docs.keys()),
+                            namespace_id,
+                        )
                 for dek_row in dek_rows:
                     wd = dek_row["wrapped_dek"]
                     wrapped_by_ref[str(dek_row["payload_ref"])] = (
@@ -1046,37 +1123,45 @@ class GraphRAGTraverser:
         """Returns the common recursive CTE query prefix for fetching historical node metadata."""
         return """
             WITH ns AS (
-                SELECT id, parent_id, (metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
-                FROM namespaces WHERE id = $2::uuid
+                SELECT namespaces.id,
+                       namespaces.parent_id,
+                       (namespaces.metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
+                FROM namespaces
+                WHERE namespaces.id = $2::uuid
             ),
             memory_events AS (
-                SELECT DISTINCT ON ((params->>'memory_id')::uuid)
-                    (params->>'memory_id')::uuid AS memory_id,
-                    event_type,
-                    params->'entities' AS entities,
-                    id AS event_id
+                SELECT DISTINCT ON ((event_log.params->>'memory_id')::uuid)
+                    (event_log.params->>'memory_id')::uuid AS memory_id,
+                    event_log.event_type AS event_type,
+                    event_log.params->'entities' AS entities,
+                    event_log.id AS event_id
                 FROM event_log
                 CROSS JOIN ns
-                WHERE (
-                    (namespace_id = ns.id AND occurred_at <= $3)
-                    OR 
-                    (namespace_id = ns.parent_id AND occurred_at <= LEAST($3, ns.forked_as_of))
-                )
-                  AND event_type IN ('store_memory', 'forget_memory')
-                ORDER BY (params->>'memory_id')::uuid, occurred_at DESC, event_seq DESC
+                WHERE (event_log.params->>'memory_id') IS NOT NULL
+                  AND (
+                      (event_log.namespace_id = ns.id AND event_log.occurred_at <= $3)
+                      OR
+                      (event_log.namespace_id = ns.parent_id AND event_log.occurred_at <= LEAST($3, ns.forked_as_of))
+                  )
+                  AND event_log.event_type IN ('store_memory', 'forget_memory', 'memory_shredded')
+                ORDER BY (event_log.params->>'memory_id')::uuid, event_log.occurred_at DESC, event_log.event_seq DESC
             ),
             active_memories AS (
-                SELECT memory_id, entities, event_id
-                FROM memory_events 
-                WHERE event_type = 'store_memory'
+                SELECT me.memory_id, me.entities, me.event_id
+                FROM memory_events me
+                WHERE me.event_type = 'store_memory'
             ),
             historical_nodes AS (
-                SELECT DISTINCT ON (label)
-                    jsonb_array_elements(entities)->>'label' AS label,
-                    jsonb_array_elements(entities)->>'entity_type' AS entity_type,
-                    memory_id,
-                    event_id
-                FROM active_memories
+                SELECT DISTINCT ON (ent->>'label')
+                    ent->>'label' AS label,
+                    COALESCE(ent->>'entity_type', ent->>'type') AS entity_type,
+                    am.memory_id,
+                    am.event_id
+                FROM active_memories am
+                CROSS JOIN LATERAL jsonb_array_elements(
+                    COALESCE(CASE WHEN jsonb_typeof(am.entities) = 'array' THEN am.entities END, '[]'::jsonb)
+                ) AS ent
+                WHERE ent->>'label' IS NOT NULL
             )
             SELECT n.label, n.entity_type, m.payload_ref, n.event_id
             FROM historical_nodes n
@@ -1103,7 +1188,9 @@ class GraphRAGTraverser:
             )
             # Verify signatures on event_log rows that contributed to node metadata.
             event_ids = [str(r["event_id"]) for r in rows if r.get("event_id")]
-            await self._verify_time_travel_event_signatures(conn, event_ids)
+            await self._verify_time_travel_event_signatures(
+                conn, event_ids, namespace_id=namespace_id
+            )
         elif as_of and not namespace_id:
             # Case 2 (as_of + no namespace_id): Explicitly raise NotImplementedError
             raise NotImplementedError(

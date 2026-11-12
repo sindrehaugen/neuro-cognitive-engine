@@ -594,6 +594,153 @@ async def discover_tools_handler(
     }
 
 
+def _normalize_uuid_str(val: Any) -> str:
+    """Normalise a UUID-like value for canonical equality comparison."""
+    s = str(val).strip()
+    try:
+        return str(uuid.UUID(s))
+    except (ValueError, AttributeError):
+        return s
+
+
+def _get_tool_request_models() -> dict[str, Any]:
+    """Return mapping of tool name -> strict Pydantic request model class."""
+    from nce import models as m
+
+    return {
+        "store_memory": m.StoreMemoryRequest,
+        "store_artifact": m.StoreArtifactRequest,
+        "store_media": m.MediaPayload,
+        "semantic_search": m.SemanticSearchRequest,
+        "compile_working_memory": m.CompileWorkingMemoryRequest,
+        "graph_search": m.GraphSearchRequest,
+        "get_recent_context": m.GetRecentContextRequest,
+        "index_code_file": m.IndexCodeFileRequest,
+        "boost_memory": m.BoostMemoryRequest,
+        "forget_memory": m.ForgetMemoryRequest,
+        "unredact_memory": m.UnredactMemoryRequest,
+        "shred_memory": m.ShredMemoryRequest,
+        "replay_observe": m.ReplayObserveRequest,
+        "replay_fork": m.ReplayForkRequest,
+        "a2a_query_shared": m.A2AQuerySharedRequest,
+        "manage_namespace": m.ManageNamespaceRequest,
+        "manage_quotas": m.ManageQuotasRequest,
+        "create_snapshot": m.CreateSnapshotRequest,
+        "compare_states": m.CompareStatesRequest,
+        "start_migration": m.MigrationStartRequest,
+    }
+
+
+def _tool_accepts_namespace_id(tool_name: str) -> bool:
+    """Inspect Pydantic request models and MCP inputSchema to see if ``namespace_id`` is accepted."""
+    model_cls = _get_tool_request_models().get(tool_name)
+    if model_cls is not None:
+        return "namespace_id" in model_cls.model_fields
+
+    for tool_dict in _all_gateway_tools():
+        if tool_dict["name"] == tool_name:
+            schema = tool_dict.get("inputSchema") or {}
+            if "properties" in schema and isinstance(schema["properties"], dict):
+                return "namespace_id" in schema["properties"]
+            # Synthetic / ad-hoc registered tool with bare {"type": "object"}
+            return True
+
+    return False
+
+
+def bind_session_tenant_arguments(
+    tool_name: str,
+    arguments: dict[str, Any],
+    session: MCPGatewaySession,
+    *,
+    req_id: Any = None,
+) -> dict[str, Any] | None:
+    """Schema-aware tenant binding for ``/mcp`` ``tools/call`` arguments.
+
+    Mutates *arguments* (which must already be a shallow copy of the caller's
+    dict) in-place and returns ``None`` when permitted, or returns a JSON-RPC
+    ``-32005`` error payload when a non-admin session attempts cross-tenant access.
+    """
+    is_admin = "admin" in (session.scopes or ())
+    sess_ns = str(session.namespace_id)
+    norm_sess_ns = _normalize_uuid_str(sess_ns)
+
+    def _forbidden(detail: str) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {
+                "code": -32005,
+                "message": detail,
+                "data": {"detail": detail},
+            },
+        }
+
+    # 1. replay_fork & replay_reconstruct: extra="forbid", uses source_namespace_id.
+    # Enforce source_namespace_id == session.namespace_id even when the tenant token
+    # carries "admin" scope (required to invoke replay_fork), unless a valid global
+    # server admin_api_key is explicitly presented.
+    if tool_name in ("replay_fork", "replay_reconstruct"):
+        has_global_admin_key = False
+        if arguments.get("admin_api_key"):
+            from nce.auth import ScopeError, _validate_scope
+
+            try:
+                _validate_scope("admin", {"admin_api_key": arguments["admin_api_key"]})
+                has_global_admin_key = True
+            except ScopeError:
+                has_global_admin_key = False
+        raw_src = arguments.get("source_namespace_id")
+        if raw_src is None or str(raw_src).strip() == "":
+            arguments["source_namespace_id"] = sess_ns
+        elif not has_global_admin_key and _normalize_uuid_str(raw_src) != norm_sess_ns:
+            return _forbidden("Cross-tenant source_namespace_id forbidden for session token.")
+        return None
+
+    # 2. a2a_query_shared: extra="forbid", uses consumer_namespace_id
+    if tool_name == "a2a_query_shared":
+        raw_cons = arguments.get("consumer_namespace_id")
+        if raw_cons is None or str(raw_cons).strip() == "":
+            arguments["consumer_namespace_id"] = sess_ns
+        elif not is_admin and _normalize_uuid_str(raw_cons) != norm_sess_ns:
+            return _forbidden("Cross-tenant consumer_namespace_id forbidden for session token.")
+        return None
+
+    # 3. import_snapshot: uses target_namespace_id (no namespace_id parameter)
+    if tool_name == "import_snapshot":
+        raw_tgt = arguments.get("target_namespace_id")
+        if raw_tgt is None or str(raw_tgt).strip() == "":
+            arguments["target_namespace_id"] = sess_ns
+        elif not is_admin and _normalize_uuid_str(raw_tgt) != norm_sess_ns:
+            return _forbidden("Cross-tenant target_namespace_id forbidden for session token.")
+        return None
+
+    # 4. Tools whose Pydantic model / inputSchema does NOT accept namespace_id
+    if not _tool_accepts_namespace_id(tool_name):
+        if (
+            "namespace_id" in arguments
+            and arguments["namespace_id"] not in (None, "")
+            and not is_admin
+            and _normalize_uuid_str(arguments["namespace_id"]) != norm_sess_ns
+        ):
+            return _forbidden("Cross-tenant namespace_id forbidden for session token.")
+        return None
+
+    # 5. Tools that DO accept namespace_id
+    if tool_name == "explain_past_decision" and not is_admin:
+        raw_src = arguments.get("source_namespace_id")
+        if raw_src not in (None, "") and _normalize_uuid_str(raw_src) != norm_sess_ns:
+            return _forbidden("Cross-tenant source_namespace_id forbidden for session token.")
+
+    if is_admin:
+        if arguments.get("namespace_id") in (None, ""):
+            arguments["namespace_id"] = sess_ns
+    else:
+        arguments["namespace_id"] = sess_ns
+
+    return None
+
+
 def _check_session_rate_limit(session: MCPGatewaySession) -> bool:
     """Sliding-window rate limiter checking rate_limit_rpm. Returns True if OK, False if exceeded."""
     now = time.time()
@@ -613,7 +760,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
             {
                 "status": "ok",
                 "service": "mcp-gateway",
-                "version": "3.4.2",
+                "version": "3.4.3",
             }
         )
 
@@ -748,7 +895,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     },
                     "serverInfo": {
                         "name": "nce-memory-gateway",
-                        "version": "3.4.2",
+                        "version": "3.4.3",
                     },
                 },
             }
@@ -816,7 +963,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
 
         if method == "tools/call":
             tool_name = params.get("name")
-            arguments = params.get("arguments") or {}
+            arguments = dict(params.get("arguments") or {})
 
             if not tool_name:
                 return {
@@ -837,7 +984,9 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     },
                 }
 
+            from nce.auth import ScopeError, _validate_scope, bind_mcp_http_session
             from nce.config import cfg
+            from nce.mcp_errors import McpError
             from nce.plugins import list_plugin_engine_descriptors
             from nce.tool_governance import GOVERNANCE, GovernanceUnavailable
             from nce.tool_registry import TOOL_REGISTRY, infer_tool_engine
@@ -867,8 +1016,16 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     },
                 }
 
-            # Inoculate against cross-tenant spoofing: inject session namespace_id
-            arguments["namespace_id"] = session.namespace_id
+            # Schema-aware tenant binding (prevents cross-tenant spoofing without
+            # polluting extra="forbid" schemas that do not accept namespace_id)
+            bind_error = bind_session_tenant_arguments(
+                tool_name,
+                arguments,
+                session,
+                req_id=req_id,
+            )
+            if bind_error is not None:
+                return bind_error
 
             redis_client = getattr(engine, "redis_client", None) if engine else None
             is_prod = bool(
@@ -981,19 +1138,27 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
 
             if getattr(spec, "admin_only", False):
                 if "admin" not in session.scopes:
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "error": {
-                            "code": -32005,
-                            "message": "Scope forbidden",
-                            "data": {"detail": "Admin scope required for this tool."},
-                        },
-                    }
+                    has_explicit_admin_key = bool(arguments.get("admin_api_key"))
+                    if has_explicit_admin_key:
+                        try:
+                            _validate_scope("admin", arguments)
+                        except ScopeError:
+                            has_explicit_admin_key = False
+                    if not has_explicit_admin_key:
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {
+                                "code": -32005,
+                                "message": "Scope forbidden",
+                                "data": {"detail": "Admin scope required for this tool."},
+                            },
+                        }
 
-            # Execute tool handler
+            # Execute tool handler with active HTTP session bound in ContextVar
             try:
-                raw_result = await spec.handler(engine, arguments)
+                with bind_mcp_http_session(session):
+                    raw_result = await spec.handler(engine, arguments)
 
                 if getattr(spec, "mutation", False) and redis_client:
                     try:
@@ -1018,6 +1183,28 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     "result": {
                         "content": [{"type": "text", "text": res_text}],
                         "isError": False,
+                    },
+                }
+            except McpError as mcp_exc:
+                err_payload: dict[str, Any] = {
+                    "code": mcp_exc.code,
+                    "message": mcp_exc.message,
+                }
+                if mcp_exc.data is not None:
+                    err_payload["data"] = mcp_exc.data
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": err_payload,
+                }
+            except ScopeError as scope_exc:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {
+                        "code": -32005,
+                        "message": "Scope forbidden",
+                        "data": {"detail": str(scope_exc)},
                     },
                 }
             except Exception as handler_exc:

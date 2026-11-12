@@ -108,6 +108,7 @@ class LocalCognitiveProvider(LLMProvider):
                 timeout=self._timeout,
                 model_id=self.model_identifier(),
                 error_prefix="HTTP request to local cognitive model failed",
+                allow_loopback=True,
             ),
         )
 

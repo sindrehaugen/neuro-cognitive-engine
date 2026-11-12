@@ -306,8 +306,12 @@ class TestSagaRollbackMocked:
                     ):
                         await engine.store_memory(payload)
 
-        # Verify MongoDB delete was called to clean up the episode
-        collection.delete_one.assert_called_once_with({"_id": fake_inserted_id})
+        # Verify MongoDB delete was called to clean up the episode (scoped by ObjectId + namespace_id)
+        from bson import ObjectId
+
+        collection.delete_one.assert_called_once_with(
+            {"_id": ObjectId(fake_inserted_id), "namespace_id": str(payload.namespace_id)}
+        )
 
         # Verify PG safety cleanup was attempted (since pg_committed is False, it goes to the elif inserted_mongo_id block)
         # It should delete from kg_edges, kg_nodes, and update memories

@@ -760,17 +760,43 @@ class KGEdge(BaseModel):
         return self
 
 
+ArtifactTypeLiteral = Literal["image", "audio", "video", "pdf", "binary", "log"]
+
+
 class MediaPayload(BaseModel):
-    """Input for the store_media MCP tool (Phase 1.2)."""
+    """Input for the store_artifact / store_media MCP tools (Phase 1.2+)."""
 
     model_config = ConfigDict(extra="forbid")
 
     namespace_id: UUID4
-    user_id: str
-    session_id: str
-    media_type: Literal["audio", "video", "image"]
+    user_id: str = "system"
+    session_id: str = "default"
+    artifact_type: ArtifactTypeLiteral
+    media_type: ArtifactTypeLiteral
     file_path_on_disk: str
     summary: str = Field(max_length=_MAX_SUMMARY_LEN)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_artifact_and_media_type(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        raw_at = out.get("artifact_type")
+        raw_mt = out.get("media_type")
+        if raw_at == "other":
+            raw_at = "binary"
+            out["artifact_type"] = raw_at
+        if raw_mt == "other":
+            raw_mt = "binary"
+            out["media_type"] = raw_mt
+        if raw_at is not None and raw_mt is None:
+            out["media_type"] = raw_at
+        elif raw_mt is not None and raw_at is None:
+            out["artifact_type"] = raw_mt
+        elif raw_at is not None and raw_mt is not None and raw_at != raw_mt:
+            raise ValueError(f"artifact_type ({raw_at!r}) and media_type ({raw_mt!r}) conflict")
+        return out
 
     @field_validator("user_id", "session_id")
     @classmethod
@@ -780,8 +806,9 @@ class MediaPayload(BaseModel):
         return v
 
 
-# Backward-compat alias for MediaPayload (Phase 1.2 -> Phase 1.3 Transition)
+# Backward-compat and canonical aliases for MediaPayload
 ArtifactPayload = MediaPayload
+StoreArtifactRequest = MediaPayload
 
 
 class GetHealthResponse(BaseModel):
@@ -979,6 +1006,7 @@ class ForgetMemoryRequest(BaseModel):
     memory_id: UUID4
     agent_id: str
     namespace_id: UUID4
+    crypto_shred: bool = False
 
     @field_validator("agent_id")
     @classmethod
@@ -1346,6 +1374,7 @@ class A2AGrantRequest(BaseModel):
     scopes: list[A2AScope] = Field(..., min_length=1)
     expires_in_seconds: int = Field(3600, ge=60, le=86400 * 30)
     can_delegate: bool = Field(default=False)
+    one_time: bool = Field(default=False)
 
     @field_validator("target_agent_id")
     @classmethod
@@ -1545,6 +1574,7 @@ class SagaState(StrEnum):
     PG_COMMITTED = "pg_committed"
     COMPLETED = "completed"
     ROLLED_BACK = "rolled_back"
+    RECOVERY_NEEDED = "recovery_needed"
     DEFERRED = "deferred"
 
 

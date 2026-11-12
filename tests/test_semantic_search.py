@@ -761,7 +761,11 @@ class TestWaveI1CandidateQueriesAndSalience:
                 )
 
         sql = mock_conn.fetch.call_args[0][0]
-        assert "m.valid_to IS NULL" not in sql
+        assert "(m.valid_to IS NULL OR m.valid_to >" in sql
+        assert (
+            "LEAST(COALESCE(s.salience_score, 1.0), COALESCE(s_sys.salience_score, 1.0)) > 0.0"
+            not in sql
+        )
         assert "m.created_at <=" in sql
 
 

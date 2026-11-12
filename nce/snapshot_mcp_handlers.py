@@ -345,7 +345,30 @@ def _serialize_memory_row(row: Any) -> dict[str, Any]:
 @mcp_handler
 async def handle_import_snapshot(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     """Rebuild a namespace from an exported NDJSON snapshot via the Saga path."""
-    target_ns = arguments["target_namespace_id"]
+    from nce.auth import ScopeError, get_current_mcp_session
+
+    session = get_current_mcp_session()
+    raw_target = arguments.get("target_namespace_id")
+    if session is not None:
+        sess_ns = str(session.namespace_id)
+        is_admin = "admin" in (getattr(session, "scopes", None) or ())
+        if raw_target is None or str(raw_target).strip() == "":
+            target_ns = sess_ns
+        else:
+            target_ns = str(raw_target).strip()
+            if not is_admin:
+                try:
+                    same_ns = uuid.UUID(target_ns) == uuid.UUID(sess_ns)
+                except ValueError:
+                    same_ns = target_ns == sess_ns
+                if not same_ns:
+                    raise ScopeError(
+                        "tenant",
+                        "Cross-tenant target_namespace_id forbidden for session token.",
+                    )
+    else:
+        target_ns = arguments["target_namespace_id"]
+
     snapshot_data = arguments["snapshot_data"]
     res = await restore_namespace(engine, target_ns, snapshot_data)
     return json.dumps(res)

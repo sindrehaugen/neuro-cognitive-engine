@@ -196,6 +196,7 @@ services:
       NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
       TMPDIR: /dev/shm/nce-staging
       NCE_APP_PASSWORD: nce_app_secret
+      NCE_ENVELOPE_ENCRYPTION_ENABLED: ${NCE_ENVELOPE_ENCRYPTION_ENABLED:-true}
       # File-based secret (closes /proc/<pid>/environ exposure). The master key
       # is mounted at /run/secrets/nce_master_key and read via secret_env.
       # If you have not created deploy/secrets/nce_master_key, drop this var and
@@ -295,6 +296,7 @@ services:
       NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
       TMPDIR: /dev/shm/nce-staging
       NCE_APP_PASSWORD: nce_app_secret
+      NCE_ENVELOPE_ENCRYPTION_ENABLED: ${NCE_ENVELOPE_ENCRYPTION_ENABLED:-true}
       # File-based master key (Batch 123/118): cron needs the master key for
       # saga signing/re-embed sweeps; use the file-based secret to keep it out
       # of /proc/<pid>/environ.  NCE_ADMIN_API_KEY is coordinator-only.
@@ -372,6 +374,7 @@ services:
       NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
       TMPDIR: /dev/shm/nce-staging
       NCE_APP_PASSWORD: nce_app_secret
+      NCE_ENVELOPE_ENCRYPTION_ENABLED: ${NCE_ENVELOPE_ENCRYPTION_ENABLED:-true}
       # File-based secrets (out of /proc/<pid>/environ); see secret_env.
       NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
       # RL-H19: suppress the env_file value so the key is not readable in
@@ -476,6 +479,7 @@ services:
       NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
       TMPDIR: /dev/shm/nce-staging
       NCE_APP_PASSWORD: nce_app_secret
+      NCE_ENVELOPE_ENCRYPTION_ENABLED: ${NCE_ENVELOPE_ENCRYPTION_ENABLED:-true}
       # File-based master key (out of /proc/<pid>/environ); see secret_env.
       NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
       # RL-H19: suppress the env_file value so the key is not readable in
@@ -570,6 +574,7 @@ services:
       NCE_ARTIFACT_STAGING_DIR: ${NCE_ARTIFACT_STAGING_DIR:-/dev/shm/nce-staging}
       TMPDIR: /dev/shm/nce-staging
       NCE_APP_PASSWORD: nce_app_secret
+      NCE_ENVELOPE_ENCRYPTION_ENABLED: ${NCE_ENVELOPE_ENCRYPTION_ENABLED:-true}
       NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
       NCE_MASTER_KEY: ""
       NCE_DISABLE_MIGRATION_MCP: "true"

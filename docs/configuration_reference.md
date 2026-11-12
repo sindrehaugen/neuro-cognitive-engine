@@ -358,7 +358,7 @@ SMTP sends via port 587 using STARTTLS (`aiosmtplib`). Host is configured progra
 |---|---|---|---|
 | `NCE_MAX_ATTACHMENT_BYTES` | `int` | `20971520` (20 MB) | Maximum accepted blob size for `extract_bytes` and `store_media` to prevent worker OOM. |
 | `NCE_MAX_OCR_PAGES` | `int` | `10` | Maximum pages processed by OCR per document (minimum `1`). |
-| `NCE_ENVELOPE_ENCRYPTION_ENABLED` | `bool` | `false` | When `true`, `store_memory` encrypts raw payload dispatched to MongoDB `episodes.raw_data` with per-memory DEKs wrapped under `NCE_MASTER_KEY`. |
+| `NCE_ENVELOPE_ENCRYPTION_ENABLED` | `bool` | `true` | When `true`, `store_memory` encrypts raw payload dispatched to MongoDB `episodes.raw_data` with per-memory DEKs wrapped under `NCE_MASTER_KEY`. |
 | `NCE_MAX_ARGUMENTS_JSON_SIZE` | `int` | `1000000` (1 MB) | Maximum allowed JSON size in bytes for tool call arguments (minimum `1024`). |
 | `NCE_MAX_METADATA_KEYS` | `int` | `512` | Maximum number of metadata keys allowed per memory (minimum `1`). |
 | `NCE_MAX_METADATA_KEY_LEN` | `int` | `256` | Maximum length in characters of a metadata key string (minimum `1`). |

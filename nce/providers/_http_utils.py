@@ -33,6 +33,8 @@ async def post_with_error_handling(
     model_id: str,
     headers: dict[str, str] | None = None,
     error_prefix: str = "HTTP request failed",
+    *,
+    allow_loopback: bool = False,
 ) -> dict[str, Any]:
     """Execute an async HTTP POST request to an LLM provider and handle errors in a unified way.
 
@@ -43,7 +45,7 @@ async def post_with_error_handling(
     # (LLM gateways, cognitive sidecars) can continue the distributed trace.
     outbound_headers = inject_trace_headers(dict(headers or {}))
     try:
-        async with SafeAsyncClient(timeout=timeout) as client:
+        async with SafeAsyncClient(timeout=timeout, allow_loopback=allow_loopback) as client:
             resp = await client.post(
                 url,
                 headers=outbound_headers,

@@ -179,7 +179,7 @@ jobs:
         NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
         NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: '1'
       run: pytest tests/test_rls_isolation_integration.py tests/test_schema_bootstrap.py tests/test_rls_catalog.py tests/test_outbox_fanout.py
-        tests/test_event_log_hardening.py tests/test_node_ownership_seed_bulk.py tests/test_namespace_fk_cascade.py tests/test_namespace_fixture_teardown.py
+        tests/test_event_log_hardening.py tests/test_namespace_fk_cascade.py tests/test_namespace_fixture_teardown.py
         tests/test_worm_registry.py
         -m integration -q --tb=short
     - name: "Integration \u2014 WORM TRUNCATE guard (RL-H18)"
@@ -201,31 +201,23 @@ jobs:
         NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
         NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: '1'
       run: pytest tests/test_health_probes.py -m integration -q --tb=short
-    - name: "Integration \u2014 product, sales & project (Q-12)"
+    - name: "Integration \u2014 graph & consolidation (Q-12)"
       env:
         PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
         NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
         NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: '1'
-      run: pytest tests/test_price_resolution.py tests/test_pricing_surface.py -m integration -q --tb=short
-    - name: "Integration \u2014 graph, entity resolution & consolidation (Q-12)"
-      env:
-        PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
-        NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
-        NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: '1'
-      run: pytest tests/test_cascade_residual.py tests/test_causal_dag.py tests/test_consolidation_depth.py tests/test_entity_merge_queue.py
-        tests/test_entity_resolution_surface.py tests/test_entity_resolver.py tests/test_explain_memory.py tests/test_grounded_helper.py
-        tests/test_merge_queue_api.py tests/test_node_ownership_registry.py tests/test_ownership_guard.py tests/test_survivorship.py
+      run: pytest tests/test_cascade_residual.py tests/test_causal_dag.py tests/test_consolidation_depth.py
+        tests/test_explain_memory.py tests/test_grounded_helper.py
         -m integration -q --tb=short
     - name: "Integration \u2014 platform, migrations & the rest (Q-12)"
       env:
         PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
         NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
         NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: '1'
-      run: pytest tests/test_autonomy_schema.py tests/test_c1_donewhen.py tests/test_c2_donewhen.py tests/test_c5_donewhen.py
+      run: pytest tests/test_autonomy_schema.py tests/test_c2_donewhen.py
         tests/test_event_bus_interface.py tests/test_migration_003_quota_check.py tests/test_migration_004_event_sequences_backfill.py
-        tests/test_outbox_idempotency.py tests/test_pg_trgm_extension.py tests/test_principal_sessions.py tests/test_generic_source_mode_endpoint.py
-        tests/test_schema_contract.py tests/test_source_mode_flip.py tests/test_source_mode_heartbeat.py tests/test_source_mode_resolver.py
-        tests/test_source_mode_table.py -m integration -q --tb=short
+        tests/test_outbox_idempotency.py tests/test_pg_trgm_extension.py tests/test_principal_sessions.py
+        tests/test_schema_contract.py -m integration -q --tb=short
     - name: "Integration \u2014 security controls (ML-CI1)"
       env:
         PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta

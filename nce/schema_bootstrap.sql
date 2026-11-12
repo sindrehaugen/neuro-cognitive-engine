@@ -45,11 +45,15 @@ END $$;
 
 -- --- Phase 0.1: Namespaces ---
 CREATE TABLE IF NOT EXISTS namespaces (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    slug       TEXT UNIQUE NOT NULL,
-    parent_id  UUID REFERENCES namespaces(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    metadata   JSONB NOT NULL DEFAULT '{}'::jsonb
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug               TEXT UNIQUE NOT NULL,
+    parent_id          UUID REFERENCES namespaces(id),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    metadata           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    embedding_provider TEXT,
+    embedding_model    TEXT,
+    embedding_dim      INTEGER,
+    is_replay_sandbox  BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE INDEX IF NOT EXISTS idx_namespaces_parent_id ON namespaces(parent_id);
