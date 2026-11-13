@@ -1078,6 +1078,12 @@
           </div>
         </div>
         <div class="form-group">
+          <label class="form-label" for="mint-scope-admin" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <input type="checkbox" id="mint-scope-admin" value="admin">
+            <span>Grant <code>admin</code> scope (allows admin-only MCP tools)</span>
+          </label>
+        </div>
+        <div class="form-group">
           <label class="form-label" for="mint-exposure-mode">Tool Exposure Mode</label>
           <select id="mint-exposure-mode" class="form-select">
             <option value="compact" selected>Compact (1 Meta-Tool: nce_discover_tools + Dynamic Expansion)</option>
@@ -1696,6 +1702,7 @@
       var mintNamespaceId = document.getElementById("mint-namespace-id");
       var mintPrincipalId = document.getElementById("mint-principal-id");
       var mintScopesPreview = document.getElementById("mint-scopes-preview");
+      var mintScopeAdmin = document.getElementById("mint-scope-admin");
       var mintExposureMode = document.getElementById("mint-exposure-mode");
       var mintRateLimit = document.getElementById("mint-rate-limit");
       var mintExpiresDays = document.getElementById("mint-expires-days");
@@ -1721,6 +1728,9 @@
             activeScopes.push("cat:" + state.selectedCategories[j]);
           }
         }
+        if (mintScopeAdmin && mintScopeAdmin.checked) {
+          activeScopes.push("scope:admin");
+        }
         if (activeScopes.length === 0) {
           activeScopes.push("* (All Discovered Vertical Engines)");
         }
@@ -1733,7 +1743,14 @@
         }
       }
 
+      if (mintScopeAdmin) {
+        mintScopeAdmin.addEventListener("change", updateModalScopesPreview);
+      }
+
       function openMintModal() {
+        if (mintScopeAdmin) {
+          mintScopeAdmin.checked = false;
+        }
         updateModalScopesPreview();
         mintResultPanel.style.display = "none";
         mintTokenVal.textContent = "";
@@ -1755,6 +1772,9 @@
           rate_limit_rpm: parseInt(mintRateLimit.value, 10) || 120,
           expires_in_days: parseInt(mintExpiresDays.value, 10) || 30
         };
+        if (mintScopeAdmin && mintScopeAdmin.checked) {
+          payload.scopes = ["mcp:tools:call", "mcp:tools:discover", "admin"];
+        }
 
         submitMintBtn.disabled = true;
         submitMintBtn.textContent = "Minting Token...";

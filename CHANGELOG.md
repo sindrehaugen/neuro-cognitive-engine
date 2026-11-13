@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.4.4] - 2026-11-13
+
+### Changed
+- **Sub-2s Redis Fail-Closed Timeouts (`nce/config.py`, `nce/orchestrator.py`, `nce/auth.py`):** Added `REDIS_SOCKET_TIMEOUT_S` and `REDIS_CONNECT_TIMEOUT_S` (default `1.5`s) and wired them into engine Redis pools and `NonceStore`, ensuring paused/unreachable Redis fails closed (`-32005`) in `< 2000 ms`.
+- **True Compact MCP Router (`nce/mcp_http_gateway.py`):** Trimmed `tool_exposure_mode="compact"` initial `tools/list` to the 12 core working-memory tools (`discover_tools` + 11 core memory/graph/contradiction tools, `<= 16`), deferring admin/A2A/bridge/replay schemas to `discover_tools(query=...)` while preserving all tools in `full` mode.
+- **Admin Token Scopes & Documentation (`admin/plugins.html`, `README.md`):** Added an `admin` scope checkbox to the `/admin/plugins` token-minting modal and updated the `README.md` MinIO storage table to include `PDF/logs/binary`.
+
+---
+
 ## [3.4.3] - 2026-11-12
 
 ### Added

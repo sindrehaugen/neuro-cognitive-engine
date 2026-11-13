@@ -687,6 +687,8 @@ class _Config:
     # --- Redis ---
     REDIS_TTL: int = int(os.getenv("REDIS_TTL", "3600"))
     REDIS_MAX_CONNECTIONS: int = int(os.getenv("REDIS_MAX_CONNECTIONS", "20"))
+    REDIS_SOCKET_TIMEOUT_S: float = float(os.getenv("REDIS_SOCKET_TIMEOUT_S", "1.5"))
+    REDIS_CONNECT_TIMEOUT_S: float = float(os.getenv("REDIS_CONNECT_TIMEOUT_S", "1.5"))
 
     # --- PostgreSQL connection pool ---
     PG_MIN_POOL: int = int(os.getenv("PG_MIN_POOL", "1"))

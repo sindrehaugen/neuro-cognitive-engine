@@ -149,7 +149,7 @@ Duties are split across four engines so each does only what it is best at:
 | **PostgreSQL + pgvector** | Relational core & vector index | Semantic embeddings (HNSW), knowledge-graph triplets (`kg_nodes` / `kg_edges`), RLS policies, the WORM `event_log` |
 | **MongoDB** | Episodic payload archive | Heavy unstructured content — transcripts, code, document pages — referenced by ObjectID |
 | **Redis** | Transient & coordination | TTL context caches, rate limits, distributed locks, single-use HMAC nonces, RQ job queues |
-| **MinIO** | Object storage (S3 API) | Binary artifacts (image/audio/video) and the deterministic LLM response cache used by replay |
+| **MinIO** | Object storage (S3 API) | Binary artifacts (image/audio/video/PDF/logs/binary) and the deterministic LLM response cache used by replay |
 
 ---
 

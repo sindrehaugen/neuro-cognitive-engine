@@ -510,6 +510,23 @@ async def _persist_session_redis(redis_client: Any, session: MCPGatewaySession) 
         pass
 
 
+_COMPACT_CORE_WORKING_MEMORY_TOOLS: frozenset[str] = frozenset(
+    {
+        "store_memory",
+        "store_artifact",
+        "semantic_search",
+        "compile_working_memory",
+        "graph_search",
+        "describe_schema",
+        "boost_memory",
+        "forget_memory",
+        "list_contradictions",
+        "resolve_contradiction",
+        "verify_memory",
+    }
+)
+
+
 async def discover_tools_handler(
     session: MCPGatewaySession,
     arguments: dict[str, Any],
@@ -933,8 +950,8 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                         t_name = tool_dict["name"]
                         spec = TOOL_REGISTRY.get(t_name)
                         tool_engine = infer_tool_engine(spec) if spec else None
-                        if tool_engine is None:
-                            # Core memory tool
+                        if t_name in _COMPACT_CORE_WORKING_MEMORY_TOOLS:
+                            # Core working-memory tool exposed upfront in compact mode
                             exposed_tools.append(tool_dict)
                         elif t_name in session.expanded_tools:
                             if is_engine_allowed_for_session(
