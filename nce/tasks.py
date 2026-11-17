@@ -12,7 +12,6 @@ breaking the infinite-retry CPU spin-loop.
 
 import asyncio
 import hashlib
-import inspect
 import json
 import logging
 from datetime import datetime, timezone
@@ -94,6 +93,8 @@ def _get_job_id() -> str:
 
 _redis_client: Redis | None = None
 _REAL_ENGINE_CLS = NCEEngine
+_REAL_ENGINE_CONNECT = NCEEngine.connect
+_REAL_ENGINE_DISCONNECT = NCEEngine.disconnect
 _worker_engines: dict[asyncio.AbstractEventLoop, NCEEngine] = {}
 
 
@@ -114,22 +115,15 @@ def _is_real_engine(engine: Any) -> bool:
     if NCEEngine is not _REAL_ENGINE_CLS or type(engine) is not _REAL_ENGINE_CLS:
         return False
     return (
-        getattr(engine.connect, "__func__", None) is _REAL_ENGINE_CLS.connect
-        and getattr(engine.disconnect, "__func__", None) is _REAL_ENGINE_CLS.disconnect
+        getattr(engine.connect, "__func__", None) is _REAL_ENGINE_CONNECT
+        and getattr(engine.disconnect, "__func__", None) is _REAL_ENGINE_DISCONNECT
     )
 
 
 async def _connect_lightweight_engine(engine: Any) -> None:
-    """Connect *engine* skipping startup checks when ``run_startup_checks`` is supported."""
+    """Connect *engine* skipping startup checks when unpatched ``NCEEngine.connect``."""
     connect_fn = engine.connect
-    try:
-        sig = inspect.signature(connect_fn)
-        supports_flag = "run_startup_checks" in sig.parameters or any(
-            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-        )
-    except (ValueError, TypeError):
-        supports_flag = False
-    if supports_flag:
+    if getattr(connect_fn, "__func__", None) is _REAL_ENGINE_CONNECT:
         await connect_fn(run_startup_checks=False)
     else:
         await connect_fn()

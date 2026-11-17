@@ -70,31 +70,36 @@ async def test_tasks_caches_real_engine_per_loop_and_closes(
     from nce.orchestrator import NCEEngine
 
     tasks._worker_engines.clear()
-    connect_calls: list[bool | None] = []
-    disconnect_calls = 0
+    fake_pool = MagicMock()
+    fake_pool.close = AsyncMock()
+    create_pool_mock = AsyncMock(return_value=fake_pool)
+    schema_spy = AsyncMock()
 
-    async def fake_connect(self: NCEEngine, *, run_startup_checks: bool = True) -> None:
-        connect_calls.append(run_startup_checks)
-        self.pg_pool = MagicMock()
-        self.mongo_client = MagicMock()
-        self.redis_client = MagicMock()
-
-    async def fake_disconnect(self: NCEEngine) -> None:
-        nonlocal disconnect_calls
-        disconnect_calls += 1
-
-    monkeypatch.setattr(NCEEngine, "connect", fake_connect)
-    monkeypatch.setattr(NCEEngine, "disconnect", fake_disconnect)
+    monkeypatch.setattr("nce.orchestrator.cfg.validate", MagicMock())
+    monkeypatch.setattr("nce.orchestrator.cfg.DB_READ_URL", "")
+    monkeypatch.setattr("nce.orchestrator.AsyncIOMotorClient", MagicMock())
+    monkeypatch.setattr("nce.orchestrator.asyncpg.create_pool", create_pool_mock)
+    monkeypatch.setattr(
+        "nce._client_factory.make_async_redis",
+        lambda *a, **kw: MagicMock(aclose=AsyncMock()),
+    )
+    monkeypatch.setattr(
+        "nce._client_factory.make_sync_redis",
+        lambda *a, **kw: MagicMock(close=MagicMock()),
+    )
+    monkeypatch.setattr("nce.orchestrator.Minio", MagicMock())
+    monkeypatch.setattr(NCEEngine, "_init_pg_schema", schema_spy)
 
     try:
         e1, cached1 = await tasks._acquire_worker_engine()
         e2, cached2 = await tasks._acquire_worker_engine()
         assert cached1 is True and cached2 is True
         assert e1 is e2
-        assert connect_calls == [False]
+        assert create_pool_mock.await_count == 1
+        assert schema_spy.await_count == 0
 
         await tasks.close_cached_worker_engines()
-        assert disconnect_calls == 1
+        assert fake_pool.close.await_count == 1
         assert len(tasks._worker_engines) == 0
     finally:
         tasks._worker_engines.clear()
