@@ -804,8 +804,10 @@ class NamespaceContext(BaseModel):
     @field_validator("principal_kind", mode="before")
     @classmethod
     def validate_principal_kind(cls, v: Any) -> str:
-        allowed = {"employee", "contractor", "external-customer"}
+        allowed = {"employee", "contractor", "external-customer", "unverified"}
         val = str(v or "employee").strip().lower()
+        if val == "external_customer":
+            val = "external-customer"
         if val not in allowed:
             # Unknown kind → safe default (employee = no external scope set)
             return "employee"
@@ -1765,26 +1767,29 @@ def extract_caller_identity(request: Any) -> str:
     headers = getattr(request, "headers", {})
     scope = getattr(request, "scope", {})
 
-    # 1. mTLS certificate headers (proxy / ingress forwarded)
-    san = headers.get("x-client-cert-san")
-    if san and str(san).strip():
-        return f"san:{str(san).strip().lower()}"
+    # 1. mTLS certificate headers (fail-closed in prod unless NCE_ADMIN_MTLS_ENABLED)
+    if bool(getattr(cfg, "NCE_ADMIN_MTLS_ENABLED", False)) or not bool(
+        getattr(cfg, "IS_PROD", False)
+    ):
+        fwd_cert = headers.get("x-forwarded-client-cert")
+        if fwd_cert and str(fwd_cert).strip():
+            for part in str(fwd_cert).split(";"):
+                k, sep, v = part.partition("=")
+                if sep:
+                    k = k.strip().lower()
+                    v = v.strip()
+                    if k in ("hash", "fingerprint", "sha256") and v:
+                        return f"fp:{v.lower()}"
+                    if k == "san" and v:
+                        return f"san:{v.lower()}"
 
-    fp = headers.get("x-client-cert-fingerprint")
-    if fp and str(fp).strip():
-        return f"fp:{str(fp).strip().lower()}"
+        san = headers.get("x-client-cert-san")
+        if san and str(san).strip():
+            return f"san:{str(san).strip().lower()}"
 
-    fwd_cert = headers.get("x-forwarded-client-cert")
-    if fwd_cert and str(fwd_cert).strip():
-        for part in str(fwd_cert).split(";"):
-            k, sep, v = part.partition("=")
-            if sep:
-                k = k.strip().lower()
-                v = v.strip()
-                if k in ("hash", "fingerprint", "sha256") and v:
-                    return f"fp:{v.lower()}"
-                if k == "san" and v:
-                    return f"san:{v.lower()}"
+        fp = headers.get("x-client-cert-fingerprint")
+        if fp and str(fp).strip():
+            return f"fp:{str(fp).strip().lower()}"
 
     # 2. Direct ASGI SSL scope
     ssl_info = scope.get("ssl") or scope.get("client_cert")

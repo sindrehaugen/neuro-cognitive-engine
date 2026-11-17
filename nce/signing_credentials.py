@@ -22,14 +22,23 @@ import uuid
 from typing import Any, Literal
 
 import asyncpg
+from cachetools import TTLCache
 
 from nce.config import secret_env
 from nce.event_log import append_event
-from nce.signing import MasterKey, decrypt_signing_key, encrypt_signing_key, require_master_key
+from nce.signing import (
+    MasterKey,
+    SigningKeyDecryptionError,
+    decrypt_signing_key,
+    encrypt_signing_key,
+    master_key_fingerprint_bytes,
+    require_master_key,
+)
 
 logger = logging.getLogger("nce.signing_credentials")
 
 PrecedenceOrder = Literal["db_first", "env_first"]
+_CRED_DECRYPT_CACHE: TTLCache[tuple[str, str, bytes, bytes], str] = TTLCache(maxsize=256, ttl=60.0)
 
 
 def compute_secret_fingerprint(secret: str) -> str:
@@ -319,11 +328,33 @@ async def resolve_signing_credential(
             return None, None
         cid = str(row["client_id"])
         enc_bytes = bytes(row["encrypted_secret"])
+        blob_digest = hashlib.sha256(enc_bytes).digest()
         if master_key is not None:
-            decrypted = decrypt_signing_key(enc_bytes, master_key).decode("utf-8")
+            mk_fp = master_key_fingerprint_bytes(master_key)
+            cache_k = (str(ns_uuid), norm_provider, blob_digest, mk_fp)
+            decrypted = _CRED_DECRYPT_CACHE.get(cache_k)
+            if decrypted is None:
+                decrypted = decrypt_signing_key(enc_bytes, master_key).decode("utf-8")
+                _CRED_DECRYPT_CACHE[cache_k] = decrypted
         else:
             with require_master_key() as mk:
-                decrypted = decrypt_signing_key(enc_bytes, mk).decode("utf-8")
+                mk_fp = master_key_fingerprint_bytes(mk)
+                cache_k = (str(ns_uuid), norm_provider, blob_digest, mk_fp)
+                decrypted = _CRED_DECRYPT_CACHE.get(cache_k)
+                if decrypted is None:
+                    try:
+                        decrypted = decrypt_signing_key(enc_bytes, mk).decode("utf-8")
+                    except SigningKeyDecryptionError:
+                        from nce.master_key_ring import previous_master_key
+
+                        prev_mk = previous_master_key()
+                        if prev_mk is None:
+                            raise
+                        try:
+                            decrypted = decrypt_signing_key(enc_bytes, prev_mk).decode("utf-8")
+                        finally:
+                            prev_mk.zero()
+                    _CRED_DECRYPT_CACHE[cache_k] = decrypted
         return cid, decrypted
 
     if precedence == "db_first":

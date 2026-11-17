@@ -432,6 +432,42 @@ class GraphRAGTraverser:
                 raise DataIntegrityError(
                     f"Missing event_log rows for signature verification: {missing}"
                 )
+
+            # Batch-preload predecessor chain_hash values on real asyncpg connections
+            # to eliminate N+1 per-row predecessor lookups in verify_event_signature().
+            prev_hashes: dict[tuple[str, int], str] = {}
+            if isinstance(conn, asyncpg.Connection) and rows:
+                prev_pairs: dict[tuple[str, int], UUID] = {}
+                for row in rows:
+                    row_seq = int(row.get("event_seq") or 0)
+                    sig_v = row.get("signature_version")
+                    needs_v2_prev = sig_v is None or int(sig_v) == 2
+                    row_ns = row.get("namespace_id")
+                    if needs_v2_prev and row_seq > 1 and row_ns is not None:
+                        ns_uuid = UUID(str(row_ns))
+                        if namespace_id is None or str(ns_uuid) == str(namespace_id):
+                            prev_pairs[(str(ns_uuid), row_seq - 1)] = ns_uuid
+                if prev_pairs:
+                    ns_list = [ns for ns in prev_pairs.values()]
+                    seq_list = [seq for (_ns, seq) in prev_pairs.keys()]
+                    prev_rows = await conn.fetch(
+                        """
+                        SELECT namespace_id, event_seq, chain_hash
+                        FROM   event_log
+                        WHERE  (namespace_id, event_seq) IN (
+                            SELECT * FROM UNNEST($1::uuid[], $2::bigint[])
+                        )
+                        """,
+                        ns_list,
+                        seq_list,
+                    )
+                    for pr in prev_rows:
+                        ch = pr["chain_hash"]
+                        if ch is not None:
+                            if isinstance(ch, memoryview):
+                                ch = bytes(ch)
+                            prev_hashes[(str(pr["namespace_id"]), int(pr["event_seq"]))] = ch.hex()
+
             for row in rows:
                 try:
                     row_ns = row.get("namespace_id") if hasattr(row, "get") else row["namespace_id"]
@@ -441,7 +477,15 @@ class GraphRAGTraverser:
                         and str(row_ns) != str(namespace_id)
                     ):
                         await set_namespace_context(conn, UUID(str(row_ns)))
-                    await verify_event_signature(conn, row)
+                    row_for_verify: Any = row
+                    if prev_hashes and row_ns is not None:
+                        prev_hex = prev_hashes.get(
+                            (str(UUID(str(row_ns))), int(row["event_seq"]) - 1)
+                        )
+                        if prev_hex is not None:
+                            row_for_verify = dict(row)
+                            row_for_verify["_prev_chain_hash_hex"] = prev_hex
+                    await verify_event_signature(conn, row_for_verify)
                 except DataIntegrityError:
                     raise  # re-raise — tampering is a critical security event
                 except Exception as exc:

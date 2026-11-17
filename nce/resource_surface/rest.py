@@ -1822,7 +1822,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    events = await fetch_entity_events(conn, session_ns, spec, str(item_id))
+                    canonical_id = await resolve_canonical_identifier(
+                        conn, spec, session_ns, str(item_id), is_global
+                    ) or str(item_id)
+                    events = await fetch_entity_events(conn, session_ns, spec, canonical_id)
                     return JSONResponse({"events": events, "count": len(events)})
             except Exception as exc:
                 return admin_error_response(f"Failed to query events: {exc}", exc, status_code=500)
@@ -1846,7 +1849,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    comments = await fetch_entity_comments(conn, session_ns, spec, str(item_id))
+                    canonical_id = await resolve_canonical_identifier(
+                        conn, spec, session_ns, str(item_id), is_global
+                    ) or str(item_id)
+                    comments = await fetch_entity_comments(conn, session_ns, spec, canonical_id)
                     return JSONResponse({"comments": comments, "count": len(comments)})
             except Exception as exc:
                 return admin_error_response(
@@ -1944,7 +1950,10 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
             try:
                 session_ns = ns_uuid or UUID("00000000-0000-0000-0000-000000000000")
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
-                    tags = await fetch_entity_tags(conn, session_ns, spec, str(item_id))
+                    canonical_id = await resolve_canonical_identifier(
+                        conn, spec, session_ns, str(item_id), is_global
+                    ) or str(item_id)
+                    tags = await fetch_entity_tags(conn, session_ns, spec, canonical_id)
                     return JSONResponse({"tags": tags, "count": len(tags)})
             except Exception as exc:
                 return admin_error_response(f"Failed to query tags: {exc}", exc, status_code=500)
@@ -2070,11 +2079,14 @@ def make_resource_routes(spec: ResourceSpec) -> list[Route]:
         if admin_state.engine and getattr(admin_state.engine, "pg_pool", None):
             try:
                 async with scoped_pg_session(admin_state.engine.pg_pool, session_ns) as conn:
+                    canonical_id = await resolve_canonical_identifier(
+                        conn, spec, session_ns, str(item_id), is_global
+                    ) or str(item_id)
                     docs = await list_entity_documents(
                         conn,
                         session_ns,
                         spec.node_type,
-                        str(item_id),
+                        canonical_id,
                         include_archived=include_archived,
                     )
             except Exception as exc:

@@ -7,12 +7,77 @@ import re
 import zipfile
 from typing import Any
 
-# --- ZIP-based Office (OOXML) quick encryption check ---
+# --- ZIP-based Office (OOXML) quick encryption & bomb guards ---
 OOXML_ENCRYPTED_MARKERS = (
     "EncryptionInfo",
     "encryptedPackage",
     "EncryptedPackage",
 )
+
+MAX_DECOMPRESSED_SIZE = 500 * 1024 * 1024  # 500 MB
+MAX_ENTRY_DECOMPRESSED_SIZE = 200 * 1024 * 1024  # 200 MB per entry
+MAX_XML_ENTITY_DECLARATIONS = 20  # Reasonable OOXML files have 0-5 entity decls
+_XML_ENTITY_DECL_RE = re.compile(rb"<!ENTITY\s+\S+")
+
+
+def check_ooxml_zip_bomb(
+    blob: bytes,
+    *,
+    max_total_bytes: int = MAX_DECOMPRESSED_SIZE,
+    max_entry_bytes: int = MAX_ENTRY_DECOMPRESSED_SIZE,
+) -> str | None:
+    """Return an error string if *blob* OOXML archive exceeds uncompressed byte limits."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            total = 0
+            for info in z.infolist():
+                if info.file_size > max_entry_bytes:
+                    return (
+                        f"decompression_bomb: entry {info.filename!r} has "
+                        f"{info.file_size} bytes uncompressed, exceeds "
+                        f"MAX_ENTRY_DECOMPRESSED_SIZE ({max_entry_bytes})"
+                    )
+                total += info.file_size
+    except Exception as exc:
+        return f"zip_scan_failed:{exc}"
+
+    if total > max_total_bytes:
+        return (
+            f"decompression_bomb: estimated {total} bytes uncompressed "
+            f"exceeds MAX_DECOMPRESSED_SIZE ({max_total_bytes})"
+        )
+    return None
+
+
+def check_ooxml_entity_expansion(
+    blob: bytes,
+    *,
+    max_entity_declarations: int = MAX_XML_ENTITY_DECLARATIONS,
+    max_entry_bytes: int = MAX_ENTRY_DECOMPRESSED_SIZE,
+) -> str | None:
+    """Lexically scan ``.xml`` and ``.rels`` entries in an OOXML archive for entity bombs."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            for info in z.infolist():
+                name = info.filename
+                if not (name.endswith(".xml") or name.endswith(".rels")):
+                    continue
+                if info.file_size > max_entry_bytes:
+                    continue
+                try:
+                    content = z.read(name)
+                except Exception:
+                    continue
+                entity_count = len(_XML_ENTITY_DECL_RE.findall(content))
+                if entity_count > max_entity_declarations:
+                    return (
+                        f"xml_entity_bomb: {name} contains {entity_count} entity "
+                        f"declarations (limit: {max_entity_declarations}) — "
+                        f"possible Billion Laughs attack"
+                    )
+    except Exception as exc:
+        return f"xml_entity_scan_failed:{exc}"
+    return None
 
 
 def is_zip_encrypted_ooxml(blob: bytes) -> bool:

@@ -147,7 +147,7 @@ def _modules_calling_encrypt() -> set[str]:
     callers: set[str] = set()
     for path in sorted(NCE_DIR.rglob("*.py")):
         text = path.read_text(encoding="utf-8", errors="replace")
-        if "encrypt_signing_key" not in text:
+        if "encrypt_signing_key" not in text and "encrypt_fast_data_key" not in text:
             continue
         try:
             tree = ast.parse(text)
@@ -158,7 +158,7 @@ def _modules_calling_encrypt() -> set[str]:
                 continue
             func = node.func
             name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
-            if name == "encrypt_signing_key":
+            if name in ("encrypt_signing_key", "encrypt_fast_data_key"):
                 rel = path.relative_to(REPO_ROOT).with_suffix("")
                 callers.add(".".join(rel.parts))
                 break

@@ -51,8 +51,9 @@ from nce.signing import (
     MasterKey,
     SecureKeyBuffer,
     SigningError,
+    SigningKeyDecryptionError,
     decrypt_signing_key,
-    encrypt_signing_key,
+    encrypt_fast_data_key,
     master_key_fingerprint_bytes,
     require_master_key,
 )
@@ -173,7 +174,7 @@ def wrap_dek(dek: bytes, master_key: MasterKey) -> bytes:
     """
     if len(dek) != _DEK_SIZE:
         raise ValueError(f"DEK must be exactly {_DEK_SIZE} bytes; got {len(dek)}.")
-    wrapped = encrypt_signing_key(dek, master_key)
+    wrapped = encrypt_fast_data_key(dek, master_key)
     now = time.monotonic()
     fp = master_key_fingerprint_bytes(master_key)
     cache_key = (fp, hashlib.sha256(wrapped).digest())
@@ -322,8 +323,20 @@ def maybe_decrypt_raw_data(raw_data: object, wrapped_dek: bytes | None) -> str:
             return ""
         return raw_data if isinstance(raw_data, str) else str(raw_data)
 
+    wrapped_bytes = bytes(wrapped_dek)
     with require_master_key() as master_key:
-        dek = _unwrap_dek_cached(bytes(wrapped_dek), master_key)
+        try:
+            dek = _unwrap_dek_cached(wrapped_bytes, master_key)
+        except SigningKeyDecryptionError:
+            from nce.master_key_ring import previous_master_key
+
+            prev_mk = previous_master_key()
+            if prev_mk is None:
+                raise
+            try:
+                dek = _unwrap_dek_cached(wrapped_bytes, prev_mk)
+            finally:
+                prev_mk.zero()
     # decrypt_with_dek zeroes its working copy of the DEK via SecureKeyBuffer
     # (success or failure).  The immutable `dek` bytes cannot be zeroed
     # in-place — a buffer here would only wipe a fresh copy — so its scope

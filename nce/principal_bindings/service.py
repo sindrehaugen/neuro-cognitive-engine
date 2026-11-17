@@ -9,18 +9,47 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from collections import OrderedDict
 from typing import Any
 from uuid import UUID
 
 from starlette.requests import Request
 
+from nce.config import cfg
 from nce.db_utils import scoped_pg_session
 from nce.principal_bindings.models import PrincipalBinding, PrincipalContext
 
 log = logging.getLogger("nce.principal_bindings")
 
-# In-memory registry for unit testing and fast-path lookups without live Postgres
+# In-memory registry for unit testing without live Postgres
 _IN_MEMORY_BINDINGS: dict[tuple[UUID, str], PrincipalBinding] = {}
+
+# Bounded LRU/TTL cache for live Postgres-backed principal_bindings lookups
+_DB_BINDING_CACHE: OrderedDict[tuple[UUID, str], tuple[float, PrincipalBinding]] = OrderedDict()
+_DB_BINDING_CACHE_MAXSIZE: int = 1024
+_DB_BINDING_CACHE_TTL_S: float = 30.0
+
+
+def _get_cached_binding(key: tuple[UUID, str]) -> PrincipalBinding | None:
+    if key in _IN_MEMORY_BINDINGS:
+        return _IN_MEMORY_BINDINGS[key]
+    entry = _DB_BINDING_CACHE.get(key)
+    if entry is None:
+        return None
+    ts, binding = entry
+    if time.monotonic() - ts > _DB_BINDING_CACHE_TTL_S:
+        _DB_BINDING_CACHE.pop(key, None)
+        return None
+    _DB_BINDING_CACHE.move_to_end(key)
+    return binding
+
+
+def _set_db_cached_binding(key: tuple[UUID, str], binding: PrincipalBinding) -> None:
+    _DB_BINDING_CACHE[key] = (time.monotonic(), binding)
+    _DB_BINDING_CACHE.move_to_end(key)
+    while len(_DB_BINDING_CACHE) > _DB_BINDING_CACHE_MAXSIZE:
+        _DB_BINDING_CACHE.popitem(last=False)
 
 
 def register_test_binding(binding: PrincipalBinding) -> None:
@@ -29,8 +58,9 @@ def register_test_binding(binding: PrincipalBinding) -> None:
 
 
 def clear_test_bindings() -> None:
-    """Clear in-memory test bindings."""
+    """Clear in-memory test bindings and bounded DB cache."""
     _IN_MEMORY_BINDINGS.clear()
+    _DB_BINDING_CACHE.clear()
 
 
 async def get_principal_binding(
@@ -39,10 +69,10 @@ async def get_principal_binding(
     principal_id: str,
 ) -> PrincipalBinding | None:
     """Query the principal_bindings table for a specific tenant and principal_id."""
-    # Check in-memory fast-path first
     key = (namespace_id, principal_id)
-    if key in _IN_MEMORY_BINDINGS:
-        return _IN_MEMORY_BINDINGS[key]
+    cached = _get_cached_binding(key)
+    if cached is not None:
+        return cached
 
     if conn_or_pool is None:
         return None
@@ -81,7 +111,7 @@ async def get_principal_binding(
         else:
             meta_val = {}
 
-        return PrincipalBinding(
+        binding = PrincipalBinding(
             id=row["id"],
             namespace_id=row["namespace_id"],
             principal_id=row["principal_id"],
@@ -94,6 +124,8 @@ async def get_principal_binding(
             created_at=row["created_at"].isoformat() if row["created_at"] else None,
             updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
         )
+        _set_db_cached_binding(key, binding)
+        return binding
     except Exception as exc:
         log.warning("get_principal_binding query failed: %s", exc)
         return None
@@ -176,7 +208,7 @@ async def upsert_principal_binding(
                     created_at=row["created_at"].isoformat() if row["created_at"] else None,
                     updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
                 )
-                _IN_MEMORY_BINDINGS[(namespace_id, principal_id)] = binding
+                _set_db_cached_binding((namespace_id, principal_id), binding)
                 return binding
         except Exception as exc:
             log.warning("upsert_principal_binding DB query failed, falling back to memory: %s", exc)
@@ -208,6 +240,7 @@ async def delete_principal_binding(
 ) -> bool:
     """Delete a principal_binding row for a tenant."""
     _IN_MEMORY_BINDINGS.pop((namespace_id, principal_id), None)
+    _DB_BINDING_CACHE.pop((namespace_id, principal_id), None)
     if conn_or_pool is None:
         return True
 
@@ -254,7 +287,7 @@ def extract_principal_identity(
             except ValueError:
                 pass
 
-    if not principal_id:
+    if not principal_id and not (ns_ctx is None and getattr(cfg, "IS_PROD", False)):
         principal_id = (
             request.headers.get("X-NCE-Principal-ID")
             or request.headers.get("X-Principal-ID")
@@ -286,11 +319,10 @@ def resolve_principal_context_sync(request: Request) -> PrincipalContext:
         request.state.principal_ctx = ctx
         return ctx
 
-    # Check in-memory bindings
+    # Check in-memory / TTL cache
     if ns_id:
-        key = (ns_id, principal_id)
-        if key in _IN_MEMORY_BINDINGS:
-            b = _IN_MEMORY_BINDINGS[key]
+        b = _get_cached_binding((ns_id, principal_id))
+        if b is not None:
             ctx = PrincipalContext(
                 principal_id=b.principal_id,
                 tier=b.tier,
@@ -346,11 +378,10 @@ async def resolve_principal_context_async(
         request.state.principal_ctx = ctx
         return ctx
 
-    # Check in-memory fast-path
+    # Check in-memory fast-path / TTL cache
     if ns_id:
-        key = (ns_id, principal_id)
-        if key in _IN_MEMORY_BINDINGS:
-            b = _IN_MEMORY_BINDINGS[key]
+        b = _get_cached_binding((ns_id, principal_id))
+        if b is not None:
             ctx = PrincipalContext(
                 principal_id=b.principal_id,
                 tier=b.tier,

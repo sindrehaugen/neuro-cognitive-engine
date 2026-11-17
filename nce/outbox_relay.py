@@ -77,6 +77,7 @@ before the first pass.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import time
@@ -784,11 +785,25 @@ async def run_outbox_relay_once(
         # mark_published rows went with it and the events will be re-polled,
         # so firing their actions here would double-enqueue.
         if committed:
-            for action in post_commit_actions:
+            if len(post_commit_actions) == 1:
                 try:
-                    action()
+                    post_commit_actions[0]()
                 except Exception as exc:
                     log.warning("[outbox] post-commit action failed: %s", exc)
+            elif len(post_commit_actions) > 1:
+                # Bounded synchronous ThreadPoolExecutor: executes multiple
+                # HTTP/Redis post-commit actions in parallel without adding an
+                # ``await`` point (preserving M0.W20d cancellation safety).
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=min(8, len(post_commit_actions)),
+                    thread_name_prefix="outbox-post",
+                ) as pool_exec:
+                    futs = [pool_exec.submit(action) for action in post_commit_actions]
+                    for fut in futs:
+                        try:
+                            fut.result()
+                        except Exception as exc:
+                            log.warning("[outbox] post-commit action failed: %s", exc)
 
     log.debug(
         "[outbox] relay pass complete: delivered=%d drained_no_consumer=%d",

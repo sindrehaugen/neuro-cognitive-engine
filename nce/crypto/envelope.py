@@ -527,6 +527,12 @@ class EnvelopeCryptoManager:
                     return rec
 
             except Exception as exc:
+                if self.pg_pool is not None:
+                    log.error(
+                        "Database query in get_or_create_dek failed; refusing ephemeral RAM fallback: %s",
+                        exc,
+                    )
+                    raise
                 log.warning(
                     "Database query in get_or_create_dek failed; falling back to in-memory store: %s",
                     exc,
@@ -778,6 +784,9 @@ class EnvelopeCryptoManager:
             else:
                 return
 
+            from nce.envelope import clear_unwrapped_dek_cache
+
+            clear_unwrapped_dek_cache()
             dek_id = data.get("dek_id")
             if dek_id:
                 self.evict_local_cache(str(dek_id))

@@ -271,19 +271,23 @@ async def check_nli_relevance(
 
     from nce.contradictions import NLIUnavailableError, _executor, _load_nli_model
 
-    model = _load_nli_model()
-    if model is None:
-        raise NLIUnavailableError("NLI model not loaded")
-
-    import math
-
-    import torch
-
     loop = asyncio.get_running_loop()
 
     def _predict() -> float:
-        scores = model.predict([(premise, hypothesis)])
-        probs = torch.nn.functional.softmax(torch.from_numpy(scores), dim=1).numpy()[0]
+        import math
+
+        import numpy as np
+
+        model = _load_nli_model()
+        if model is None:
+            raise NLIUnavailableError("NLI model not loaded")
+        raw_scores = np.asarray(model.predict([(premise, hypothesis)]), dtype=np.float64)
+        if raw_scores.ndim == 1:
+            raw_scores = raw_scores.reshape(1, -1)
+        row = raw_scores[0]
+        shifted = row - np.max(row)
+        exp_scores = np.exp(shifted)
+        probs = exp_scores / np.sum(exp_scores)
         # DeBERTa NLI: 0=entail, 1=neutral, 2=contradiction
         entail_score = float(probs[0])
         if math.isnan(entail_score) or not (0.0 <= entail_score <= 1.0):
@@ -318,30 +322,32 @@ async def check_nli_relevance_batch(pairs: list[tuple[str, str]]) -> list[float]
 
     from nce.contradictions import NLIUnavailableError, _executor, _load_nli_model
 
-    model = _load_nli_model()
-    if model is None:
-        raise NLIUnavailableError("NLI model not loaded")
-
-    import math
-
-    import numpy as np
-    import torch
-
     loop = asyncio.get_running_loop()
 
     def _predict_batch() -> list[float]:
+        import math
+
+        import numpy as np
+
+        model = _load_nli_model()
+        if model is None:
+            raise NLIUnavailableError("NLI model not loaded")
         try:
             raw_scores = model.predict(pairs)
             if not isinstance(raw_scores, np.ndarray):
-                raw_scores = np.array(raw_scores, dtype=np.float32)
+                raw_scores = np.array(raw_scores, dtype=np.float64)
+            else:
+                raw_scores = raw_scores.astype(np.float64, copy=False)
             if len(raw_scores) != len(pairs):
-                raw_scores = np.array([model.predict([p])[0] for p in pairs], dtype=np.float32)
+                raw_scores = np.array([model.predict([p])[0] for p in pairs], dtype=np.float64)
         except Exception:
-            raw_scores = np.array([model.predict([p])[0] for p in pairs], dtype=np.float32)
+            raw_scores = np.array([model.predict([p])[0] for p in pairs], dtype=np.float64)
 
-        probs = torch.nn.functional.softmax(torch.from_numpy(raw_scores), dim=-1).numpy()
-        if probs.ndim == 1:
-            probs = probs.reshape(1, -1)
+        if raw_scores.ndim == 1:
+            raw_scores = raw_scores.reshape(1, -1)
+        shifted = raw_scores - np.max(raw_scores, axis=-1, keepdims=True)
+        exp_scores = np.exp(shifted)
+        probs = exp_scores / np.sum(exp_scores, axis=-1, keepdims=True)
         scores: list[float] = []
         for row in probs:
             entail_score = float(row[0])
@@ -371,6 +377,7 @@ async def semantic_search(
     rerank: bool = False,
     is_replay: bool = False,
     redis_client: Any = None,
+    pg_write_pool: asyncpg.Pool | None = None,
 ) -> list[dict]:
     """Semantic search with pgvector cosine + FTS hybrid ranking.
 
@@ -473,7 +480,7 @@ async def semantic_search(
 
         v_cand_query = Query.from_(m)
         if active_model_id:
-            distance_expr = RawExpression(f"me.embedding <=> {p_vector}::halfvec(768)")
+            distance_expr = RawExpression(f"me.embedding <=> {p_vector}::vector")
             v_cand_query = v_cand_query.join(me).on(
                 (m.id == me.memory_id) & (me.model_id == active_model_id)
             )
@@ -780,7 +787,7 @@ async def semantic_search(
 
     if as_of is None and not is_replay:
         coro = _fire_reinforcement(
-            pg_pool,
+            pg_write_pool or pg_pool,
             top_results,
             agent_id,
             namespace_id,
@@ -816,6 +823,7 @@ async def semantic_search(
     from nce.envelope import maybe_decrypt_raw_data
     from nce.temporal_decay import retention
 
+    now_dt = datetime.now(timezone.utc)
     results = []
     for res in top_results:
         ref = str(res.get("payload_ref") or "")
@@ -860,12 +868,11 @@ async def semantic_search(
         if not isinstance(meta_dict, dict):
             meta_dict = {}
 
-        raw_str = (raw if isinstance(raw, str) else json.dumps(raw or "", default=str)).lower()
-        meta_str = json.dumps(meta_dict, default=str).lower()
-
         # Exact identifier boost
         has_exact_match = False
         if exact_identifiers:
+            raw_str = (raw if isinstance(raw, str) else json.dumps(raw or "", default=str)).lower()
+            meta_str = json.dumps(meta_dict, default=str).lower()
             for ident in exact_identifiers:
                 ident_lower = ident.lower()
                 if ident_lower in raw_str or ident_lower in meta_str:
@@ -879,7 +886,6 @@ async def semantic_search(
         # Epistemic calculations
         epistemic_warnings: list[str] = []
         valid_to = meta_row.get("valid_to")
-        now_dt = datetime.now(timezone.utc)
         ref_time = as_of if as_of is not None else now_dt
         if hasattr(ref_time, "tzinfo") and ref_time.tzinfo is None:
             ref_time = ref_time.replace(tzinfo=timezone.utc)

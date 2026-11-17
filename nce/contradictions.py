@@ -298,7 +298,7 @@ async def _select_candidates(
     """
     return await conn.fetch(
         """
-        SELECT id, payload_ref, wrapped_dek, 1 - (embedding <=> $1::vector) AS similarity
+        SELECT id, payload_ref, wrapped_dek, 1 - (embedding <=> $1::halfvec(768)) AS similarity
         FROM memories
         WHERE namespace_id = $2::uuid
           AND memory_type = 'episodic'
@@ -306,7 +306,7 @@ async def _select_candidates(
           AND valid_to IS NULL
           AND id != $3::uuid
           AND embedding IS NOT NULL
-          AND 1 - (embedding <=> $1::vector) >= $4
+          AND 1 - (embedding <=> $1::halfvec(768)) >= $4
         ORDER BY similarity DESC
         LIMIT $5
         """,

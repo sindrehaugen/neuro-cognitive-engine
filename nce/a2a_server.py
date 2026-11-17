@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import asyncio
 import collections
-import json
 import logging
 import os
 import signal
@@ -43,20 +42,13 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
-
-try:
-    import psutil  # type: ignore[import-untyped]
-except ImportError:
-    psutil = None
-
-if TYPE_CHECKING:
-    from nce.orchestrator import NCEEngine
 from uuid import uuid4
 
+import orjson
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from nce.a2a import (
@@ -77,6 +69,14 @@ from nce.jwt_auth import JWTAuthMiddleware
 from nce.models import GraphSearchRequest
 from nce.providers import LLMCircuitOpenError
 from nce.tool_governance import GOVERNANCE, GovernanceUnavailable
+
+try:
+    import psutil  # type: ignore[import-untyped]
+except ImportError:
+    psutil = None
+
+if TYPE_CHECKING:
+    from nce.orchestrator import NCEEngine
 
 log = logging.getLogger("nce.a2a_server")
 
@@ -223,7 +223,7 @@ async def _store_task(task_id: str, task: dict[str, Any]) -> None:
     if _engine is not None and _engine.redis_client is not None:
         try:
             key = f"nce:a2a:tasks:{task_id}"
-            await _engine.redis_client.set(key, json.dumps(task), ex=3600)
+            await _engine.redis_client.set(key, orjson.dumps(task).decode("utf-8"), ex=3600)
         except Exception as exc:
             log.warning("Failed to store task in Redis: %s", exc)
 
@@ -234,7 +234,7 @@ async def _get_task(task_id: str) -> dict[str, Any] | None:
             key = f"nce:a2a:tasks:{task_id}"
             raw = await _engine.redis_client.get(key)
             if raw:
-                return json.loads(raw)
+                return orjson.loads(raw)
         except Exception as exc:
             log.warning("Failed to get task from Redis: %s", exc)
     return _tasks.get(task_id)
@@ -439,13 +439,24 @@ def _resolve_skill_namespace(
 # ---------------------------------------------------------------------------
 
 
-async def get_agent_card(request: Request) -> JSONResponse:
+_AGENT_CARD_JSON_CACHE: tuple[str, bytes] | None = None
+
+
+async def get_agent_card(request: Request) -> Response:
     """GET /.well-known/agent-card — public, unauthenticated."""
+    global _AGENT_CARD_JSON_CACHE
     rejected = await _reject_if_shutting_down(request)
     if rejected:
         return rejected
     async with _track_active_request():
-        return JSONResponse(_AGENT_CARD)
+        url_key = str(_AGENT_CARD.get("url") or "")
+        cached = _AGENT_CARD_JSON_CACHE
+        if cached is None or cached[0] != url_key:
+            payload_bytes = orjson.dumps(_AGENT_CARD)
+            _AGENT_CARD_JSON_CACHE = (url_key, payload_bytes)
+        else:
+            payload_bytes = cached[1]
+        return Response(content=payload_bytes, media_type="application/json")
 
 
 async def tasks_send(request: Request) -> JSONResponse:
@@ -583,7 +594,7 @@ async def tasks_send(request: Request) -> JSONResponse:
             task = _make_task(
                 task_id,
                 "completed",
-                artifacts=[{"type": "text", "text": json.dumps(result)}],
+                artifacts=[{"type": "text", "text": orjson.dumps(result).decode("utf-8")}],
             )
             await _store_task(task_id, task)
             return JSONResponse(task, status_code=200)

@@ -259,6 +259,15 @@ async def run_re_embedding_worker(pg_pool: asyncpg.Pool, mongo_client: Any):
                         del vectors
                         del texts_to_embed
                         _release_embedding_batch_memory()
+                    else:
+                        new_last_id = memories_batch[-1]["id"]
+                        async with conn.transaction():
+                            await conn.execute(
+                                "UPDATE embedding_migrations SET last_memory_id = $1 WHERE id = $2",
+                                new_last_id,
+                                migration_id,
+                            )
+                        await asyncio.sleep(0.05)
                     continue  # Loop immediately to process next batch
 
                 # If memories are done, process kg_nodes

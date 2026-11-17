@@ -23,6 +23,7 @@ _log = logging.getLogger(__name__)
 
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 _BLOCKED_HOSTNAMES = frozenset({"localhost", "localhost.localdomain"})
+_CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
 
 
 class UnsafeURLError(RuntimeError):
@@ -46,8 +47,15 @@ def _normalize_hostname(hostname: str) -> str:
 def _is_unsafe_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if hasattr(ip, "ipv4_mapped") and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_NET:
+        return True
     return bool(
-        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast
+        not ip.is_global
+        or ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
     )
 
 
@@ -155,11 +163,17 @@ class SafeAsyncClient(httpx.AsyncClient):
                 _block_request(hostname, "DNS resolution timed out")
 
             if not self._skip_ip_pinning:
+                ascii_host = original_hostname.encode("idna").decode("ascii")
                 pinned = parsed.copy_with(host=resolved_ip)
                 url = pinned
 
                 headers = dict(kwargs.get("headers") or {})
-                headers.setdefault("Host", original_hostname)
+                headers.setdefault("Host", ascii_host)
                 kwargs["headers"] = headers
+
+                if scheme == "https":
+                    extensions = dict(kwargs.get("extensions") or {})
+                    extensions.setdefault("sni_hostname", ascii_host)
+                    kwargs["extensions"] = extensions
 
         return await super().request(method, url, **kwargs)

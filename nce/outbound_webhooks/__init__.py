@@ -17,6 +17,7 @@ from nce.outbound_webhooks.service import (
     list_webhooks,
     matches_selector,
     prepare_webhook_payload,
+    send_webhook_http_async,
     send_webhook_http_sync,
     sign_outbound_webhook,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "list_webhooks",
     "matches_selector",
     "prepare_webhook_payload",
+    "send_webhook_http_async",
     "send_webhook_http_sync",
     "sign_outbound_webhook",
 ]

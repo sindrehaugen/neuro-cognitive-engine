@@ -93,18 +93,6 @@ async def filter_rejected_merges(
             match_node_ids,
             cand_str,
         )
-        if not rows:
-            rows = await conn.fetch(
-                """
-                SELECT target_node_id
-                FROM   entity_merge_queue
-                WHERE  namespace_id = $1
-                  AND  status       = 'rejected'
-                  AND  target_node_id = ANY($2::uuid[])
-                """,
-                ns_uuid,
-                match_node_ids,
-            )
     else:
         rows = await conn.fetch(
             """

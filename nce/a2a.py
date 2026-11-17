@@ -413,8 +413,8 @@ def parse_client_cert_from_headers(headers: dict[str, str]) -> dict[str, Any] | 
     if traefik_cert:
         parsed = _parse_pem_cert(traefik_cert)
         if parsed:
-            found_any = True
             cert_dict.update(parsed)
+            return cert_dict
 
     # X-Forwarded-Client-Cert (Caddy / Envoy style)
     fwd_cert = headers.get("x-forwarded-client-cert", "")
@@ -441,8 +441,9 @@ def parse_client_cert_from_headers(headers: dict[str, str]) -> dict[str, Any] | 
                 cert_dict["subject"] = value
             elif key == "cert":
                 cert_dict["pem"] = value
+        return cert_dict
 
-    # X-Client-Cert-SAN — simpler dedicated header
+    # X-Client-Cert-* (dedicated fallback headers only when higher-precedence headers are absent)
     san_header = headers.get("x-client-cert-san", "")
     if san_header:
         found_any = True

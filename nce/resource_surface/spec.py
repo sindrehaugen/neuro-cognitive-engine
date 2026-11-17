@@ -8,9 +8,18 @@ redaction are generated across all 17 vertical engines without hand-writing boil
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
+
+_SAFE_SQL_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_spec_sql_ident(name: str, label: str) -> None:
+    if not isinstance(name, str) or not _SAFE_SQL_IDENT_RE.match(name):
+        raise ValueError(f"Unsafe SQL identifier for {label}: {name!r}")
+
 
 # kg_nodes' own real columns (nce/schema.sql's CREATE TABLE plus every later
 # ALTER TABLE ADD COLUMN against it) -- the only columns a graph-primary
@@ -125,6 +134,10 @@ class SecondaryTable:
     fields: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        _validate_spec_sql_ident(self.table_name, "SecondaryTable.table_name")
+        _validate_spec_sql_ident(self.join_field, "SecondaryTable.join_field")
+        for f in self.fields:
+            _validate_spec_sql_ident(f, "SecondaryTable.fields")
         from nce.event_log import (
             EXPECTED_GLOBAL_TABLES,
             EXPECTED_SPECIAL_RLS_TABLES,
@@ -399,6 +412,25 @@ class ResourceSpec:
     tenant_scope: str = field(init=False)
 
     def __post_init__(self) -> None:
+        if self.table_name is not None:
+            _validate_spec_sql_ident(self.table_name, f"{self.engine}:{self.entity}.table_name")
+        _validate_spec_sql_ident(self.id_field, f"{self.engine}:{self.entity}.id_field")
+        if self.version_field is not None:
+            _validate_spec_sql_ident(
+                self.version_field, f"{self.engine}:{self.entity}.version_field"
+            )
+        if self.soft_delete_field is not None:
+            _validate_spec_sql_ident(
+                self.soft_delete_field, f"{self.engine}:{self.entity}.soft_delete_field"
+            )
+        for grp_name, grp in (
+            ("filterable_fields", self.filterable_fields),
+            ("searchable_fields", self.searchable_fields),
+            ("writable_fields", self.writable_fields),
+        ):
+            for col in grp:
+                _validate_spec_sql_ident(col, f"{self.engine}:{self.entity}.{grp_name}")
+
         if self.storage_kind == "mongo":
             scope = "tenant"
         elif self.storage_kind == "kg_nodes" or self.table_name is None:

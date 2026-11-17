@@ -19,6 +19,18 @@ log = logging.getLogger(__name__)
 
 _SALIENCE_BUFFER_SUBKEY = "salience_buffer"
 
+_SUBTRACT_FLUSHED_LUA: str = """
+for i = 1, #ARGV, 2 do
+    local field = ARGV[i]
+    local delta = tonumber(ARGV[i + 1])
+    local rem = tonumber(redis.call("HINCRBYFLOAT", KEYS[1], field, -delta))
+    if rem ~= nil and rem <= 1e-9 then
+        redis.call("HDEL", KEYS[1], field)
+    end
+end
+return 1
+"""
+
 
 def _get_salience_buffer_key(namespace_id: str | UUID) -> str:
     """Build the tenant-isolated Redis key for salience buffer."""
@@ -101,12 +113,19 @@ async def flush_salience_buffer(
         target_namespaces = [str(UUID(str(namespace_id)))]
     else:
         # Discover active namespaces from Redis keys matching nce:ns:*:salience_buffer
+        raw_keys: list[Any] = []
+        scan_fn = getattr(redis_client, "scan_iter", None)
         keys_fn = getattr(redis_client, "keys", None)
-        if keys_fn is None:
-            return 0
-        raw_keys = keys_fn("nce:ns:*:salience_buffer")
-        if hasattr(raw_keys, "__await__"):
-            raw_keys = await raw_keys
+        if callable(scan_fn) and "keys" not in getattr(redis_client, "__dict__", {}):
+            async for k in scan_fn(match="nce:ns:*:salience_buffer", count=100):
+                raw_keys.append(k)
+        else:
+            if keys_fn is None:
+                return 0
+            fetched_keys = keys_fn("nce:ns:*:salience_buffer")
+            if hasattr(fetched_keys, "__await__"):
+                fetched_keys = await fetched_keys
+            raw_keys = list(fetched_keys)
 
         target_namespaces = []
         for k in raw_keys:
@@ -169,12 +188,34 @@ async def flush_salience_buffer(
                         delta=delta,
                     )
 
-            # Successfully persisted, now remove from Redis
-            hdel_fn = getattr(redis_client, "hdel", None)
-            if hdel_fn is not None and fields_to_delete:
-                del_res = hdel_fn(redis_key, *fields_to_delete)
-                if hasattr(del_res, "__await__"):
-                    await del_res
+            # Successfully persisted — subtract the exact flushed deltas so
+            # concurrent HINCRBYFLOAT increments arriving during PG reinforce
+            # are preserved rather than deleted.
+            import redis.asyncio as _aioredis
+
+            use_lua_subtract = (
+                isinstance(redis_client, _aioredis.Redis)
+                and callable(getattr(redis_client, "eval", None))
+                and "hdel" not in getattr(redis_client, "__dict__", {})
+            )
+            if use_lua_subtract and items_to_process:
+                lua_args: list[Any] = []
+                for field_raw, (_mem_id, _agent, delta) in zip(fields_to_delete, items_to_process):
+                    f_key = (
+                        field_raw.decode("utf-8")
+                        if isinstance(field_raw, bytes)
+                        else str(field_raw)
+                    )
+                    lua_args.extend((f_key, str(delta)))
+                eval_res = redis_client.eval(_SUBTRACT_FLUSHED_LUA, 1, redis_key, *lua_args)
+                if hasattr(eval_res, "__await__"):
+                    await eval_res
+            else:
+                hdel_fn = getattr(redis_client, "hdel", None)
+                if hdel_fn is not None and fields_to_delete:
+                    del_res = hdel_fn(redis_key, *fields_to_delete)
+                    if hasattr(del_res, "__await__"):
+                        await del_res
 
             total_flushed += len(items_to_process)
         except Exception as exc:

@@ -143,8 +143,22 @@ def load_plugins(*, force_reload: bool = False) -> dict[str, NCEPlugin]:
     return plugins
 
 
+_DEFAULT_LOAD_PLUGINS = load_plugins
+
+
+def _plugins_disabled_by_env_fastpath() -> bool:
+    return (
+        load_plugins is _DEFAULT_LOAD_PLUGINS
+        and _DISCOVERED_PLUGINS is None
+        and os.environ.get("NCE_ENABLED_ENGINES", "").strip().lower()
+        in {"none", "0", "false", "off"}
+    )
+
+
 def register_all_plugin_tools(registry: Any) -> None:
     """Invoke register_tools on all discovered plugins."""
+    if _plugins_disabled_by_env_fastpath():
+        return
     for plugin_id, plugin in load_plugins().items():
         try:
             plugin.register_tools(registry)
@@ -155,6 +169,8 @@ def register_all_plugin_tools(registry: Any) -> None:
 
 def register_all_plugin_routes(app: Any) -> None:
     """Invoke register_routes on all discovered plugins."""
+    if _plugins_disabled_by_env_fastpath():
+        return
     for plugin_id, plugin in load_plugins().items():
         try:
             plugin.register_routes(app)
@@ -165,6 +181,8 @@ def register_all_plugin_routes(app: Any) -> None:
 
 def register_all_plugin_workers(worker_registry: Any) -> None:
     """Invoke register_workers on all discovered plugins."""
+    if _plugins_disabled_by_env_fastpath():
+        return
     for plugin_id, plugin in load_plugins().items():
         try:
             plugin.register_workers(worker_registry)
@@ -175,6 +193,8 @@ def register_all_plugin_workers(worker_registry: Any) -> None:
 
 def register_all_plugin_cognitive_hooks(cognitive_engine: Any) -> None:
     """Invoke register_cognitive_hooks on all discovered plugins."""
+    if _plugins_disabled_by_env_fastpath():
+        return
     for plugin_id, plugin in load_plugins().items():
         try:
             plugin.register_cognitive_hooks(cognitive_engine)

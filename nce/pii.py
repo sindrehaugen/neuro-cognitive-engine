@@ -17,7 +17,7 @@ from nce.models import NamespacePIIConfig, PIIEntity, PIIPolicy, PIIProcessResul
 from nce.signing import (
     MasterKeyMissingError,
     SecureKeyBuffer,
-    encrypt_signing_key,
+    encrypt_fast_data_key,
     require_master_key,
 )
 
@@ -434,8 +434,8 @@ async def process(text: str, config: NamespacePIIConfig) -> PIIProcessResult:
                 token = f"<{entity.entity_type}_{digest}>"
 
                 if config.reversible:
-                    # We reuse encrypt_signing_key as it provides AES-256-GCM encryption
-                    encrypted_val = encrypt_signing_key(
+                    # Use fast HKDF+AES-256-GCM wrapping for high-entropy master-key derived data wrapping
+                    encrypted_val = encrypt_fast_data_key(
                         entity.value.encode("utf-8"),
                         mk,  # type: ignore[arg-type]
                     )

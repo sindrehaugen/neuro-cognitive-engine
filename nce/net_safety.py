@@ -8,12 +8,14 @@ import socket
 from typing import Any
 from urllib.parse import urlparse
 
+from cachetools import TTLCache
+
 from nce.config import cfg, live_ssrf_allowlist_hosts
 
 log = logging.getLogger("nce.net_safety")
 
-# Global registry for DNS-rebinding prevention pinning
-_PINNED_HOSTS: dict[str, str] = {}
+# Global bounded TTL registry for DNS-rebinding prevention pinning
+_PINNED_HOSTS: TTLCache[str, str] = TTLCache(maxsize=2048, ttl=300.0)
 
 
 def _apply_transport_patch() -> None:
@@ -452,6 +454,7 @@ async def validate_webhook_payload_url(
     host = parsed.hostname
     if not host:
         raise BridgeURLValidationError(f"webhook {field_name}: URL missing hostname: {raw!r}")
+    ips: list[Any] = []
     try:
         ips = await _resolve_ips(host)
         # Webhook payload URLs come from external sources — always reject
@@ -461,7 +464,6 @@ async def validate_webhook_payload_url(
                 f"webhook {field_name}: host {host!r} resolves to a non-public "
                 f"address (private/link-local/reserved/multicast/loopback)"
             )
-        _PINNED_HOSTS[host.lower().strip()] = str(ips[0])
     except BridgeURLValidationError:
         raise
     except Exception as e:
@@ -472,12 +474,13 @@ async def validate_webhook_payload_url(
             type(e).__name__,
         )
 
-    # Also verify against allowed URL prefixes
+    # Verify against allowed URL prefixes before mutating _PINNED_HOSTS
     if not any(_url_matches_prefix(raw, p) for p in ALLOWED_WEBHOOK_URL_PREFIXES):
         raise BridgeURLValidationError(
             f"webhook {field_name}: URL not within allowed prefixes (got {raw[:120]!r}...)"
         )
-    _PINNED_HOSTS[host.lower().strip()] = str(ips[0])
+    if ips:
+        _PINNED_HOSTS[host.lower().strip()] = str(ips[0])
     return raw
 
 
@@ -636,7 +639,9 @@ def validate_outbound_url(
     try:
         infos = socket.getaddrinfo(host, None, 0, socket.SOCK_STREAM)
     except socket.gaierror as exc:
-        is_prod = str(getattr(cfg, "NCE_ENV", "")).lower() in ("prod", "production")
+        is_prod = bool(getattr(cfg, "IS_PROD", False)) or str(
+            getattr(cfg, "ENVIRONMENT", "")
+        ).lower() in ("prod", "production")
         if is_prod:
             raise BridgeURLValidationError(f"cannot resolve host {host!r}: {exc}") from exc
         log.warning("DNS resolution failed for %r in non-production environment: %s", host, exc)
@@ -697,14 +702,18 @@ async def validate_outbound_url_async(
     try:
         resolved_ips = await _resolve_ips(host)
     except socket.gaierror as exc:
-        is_prod = str(getattr(cfg, "NCE_ENV", "")).lower() in ("prod", "production")
+        is_prod = bool(getattr(cfg, "IS_PROD", False)) or str(
+            getattr(cfg, "ENVIRONMENT", "")
+        ).lower() in ("prod", "production")
         if is_prod:
             raise BridgeURLValidationError(f"cannot resolve host {host!r}: {exc}") from exc
         log.warning("DNS resolution failed for %r in non-production environment: %s", host, exc)
         return raw
     except BridgeURLValidationError as exc:
         if "cannot resolve host" in str(exc):
-            is_prod = str(getattr(cfg, "NCE_ENV", "")).lower() in ("prod", "production")
+            is_prod = bool(getattr(cfg, "IS_PROD", False)) or str(
+                getattr(cfg, "ENVIRONMENT", "")
+            ).lower() in ("prod", "production")
             if is_prod:
                 raise
             log.warning("DNS resolution failed for %r in non-production environment: %s", host, exc)

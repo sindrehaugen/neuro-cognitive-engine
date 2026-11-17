@@ -12,66 +12,37 @@ from defusedxml.ElementTree import fromstring as et_fromstring
 from docx import Document
 from docx.oxml.ns import qn
 
-from nce.extractors.common import is_zip_encrypted_ooxml
+from nce.extractors.common import (
+    check_ooxml_entity_expansion,
+    check_ooxml_zip_bomb,
+    is_zip_encrypted_ooxml,
+)
 from nce.extractors.core import ExtractionResult, Section, empty_skipped
 from nce.extractors.libreoffice import libreoffice_convert
 
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Decompression bomb guard
-# ---------------------------------------------------------------------------
-
+# Module-level limits retained here so existing tests monkeypatching
+# ``nce.extractors.office_word.MAX_*`` continue to override bounds dynamically.
 MAX_DECOMPRESSED_SIZE = 500 * 1024 * 1024  # 500 MB
 MAX_ENTRY_DECOMPRESSED_SIZE = 200 * 1024 * 1024  # 200 MB per entry
-
-# ---------------------------------------------------------------------------
-# XML entity expansion (Billion Laughs) guard
-# ---------------------------------------------------------------------------
-
 MAX_XML_ENTITY_DECLARATIONS = 20  # Reasonable docx XMLs have 0-5 entity decls
 
 
+def _check_zip_bomb(blob: bytes) -> str | None:
+    return check_ooxml_zip_bomb(
+        blob,
+        max_total_bytes=MAX_DECOMPRESSED_SIZE,
+        max_entry_bytes=MAX_ENTRY_DECOMPRESSED_SIZE,
+    )
+
+
 def _check_xml_entity_expansion(blob: bytes) -> str | None:
-    """Return an error message if *blob* contains a Billion Laughs payload.
-
-    Scans every ``.xml`` and ``.rels`` file inside the OOXML archive for
-    excessive ``<!ENTITY`` declarations.  A benign docx typically has 0-5
-    entity declarations across all XML files.  A Billion Laughs attack
-    defines dozens of nested entities to trigger exponential expansion
-    during parsing.
-
-    The scan is purely lexical — it reads the raw bytes and counts entity
-    declarations without invoking an XML parser.  This guarantees that even
-    if ``python-docx``, ``lxml``, or ``xml.etree.ElementTree`` is not
-    configured with entity-expansion limits, the attack is blocked before
-    any XML processing begins.
-
-    Returns ``None`` when safe, or an error string when the document is
-    detected as malicious.
-    """
-    import re
-
-    try:
-        with zipfile.ZipFile(io.BytesIO(blob)) as z:
-            for name in z.namelist():
-                if not (name.endswith(".xml") or name.endswith(".rels")):
-                    continue
-                try:
-                    content = z.read(name)
-                except Exception:
-                    continue
-                text = content.decode("utf-8", errors="replace")
-                entity_count = len(re.findall(r"<!ENTITY\s+\S+", text))
-                if entity_count > MAX_XML_ENTITY_DECLARATIONS:
-                    return (
-                        f"xml_entity_bomb: {name} contains {entity_count} entity "
-                        f"declarations (limit: {MAX_XML_ENTITY_DECLARATIONS}) — "
-                        f"possible Billion Laughs attack"
-                    )
-    except Exception as exc:
-        return f"xml_entity_scan_failed:{exc}"
-    return None
+    return check_ooxml_entity_expansion(
+        blob,
+        max_entity_declarations=MAX_XML_ENTITY_DECLARATIONS,
+        max_entry_bytes=MAX_ENTRY_DECOMPRESSED_SIZE,
+    )
 
 
 def _safe_parse_xml(data: bytes):
@@ -85,37 +56,6 @@ def _safe_parse_xml(data: bytes):
         return et_fromstring(data)
     except DefusedXmlException as e:
         raise ValueError(f"Malicious XML detected: {e}") from e
-
-
-def _check_zip_bomb(blob: bytes) -> str | None:
-    """Return an error message if *blob* exceeds the decompressed size limit.
-
-    Scans all ``ZipInfo`` entries and sums ``file_size`` (uncompressed size
-    as stored in the central directory).  Returns ``None`` if the total is
-    within bounds.  Also checks each entry individually against
-    ``MAX_ENTRY_DECOMPRESSED_SIZE`` to prevent OOM from a single
-    highly-compressed entry.
-    """
-    try:
-        with zipfile.ZipFile(io.BytesIO(blob)) as z:
-            total = 0
-            for info in z.infolist():
-                if info.file_size > MAX_ENTRY_DECOMPRESSED_SIZE:
-                    return (
-                        f"decompression_bomb: entry {info.filename!r} has "
-                        f"{info.file_size} bytes uncompressed, exceeds "
-                        f"MAX_ENTRY_DECOMPRESSED_SIZE ({MAX_ENTRY_DECOMPRESSED_SIZE})"
-                    )
-                total += info.file_size
-    except Exception as exc:
-        return f"zip_scan_failed:{exc}"
-
-    if total > MAX_DECOMPRESSED_SIZE:
-        return (
-            f"decompression_bomb: estimated {total} bytes uncompressed "
-            f"exceeds MAX_DECOMPRESSED_SIZE ({MAX_DECOMPRESSED_SIZE})"
-        )
-    return None
 
 
 def _extract_core_props_xml(blob: bytes) -> dict:

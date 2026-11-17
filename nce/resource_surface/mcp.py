@@ -25,7 +25,7 @@ from uuid import UUID
 
 from mcp.types import Tool
 
-from nce.auth import NamespaceContext, set_namespace_context
+from nce.auth import NamespaceContext, get_current_mcp_session, set_namespace_context
 from nce.db_utils import scoped_pg_session
 from nce.entity_resolution.ownership import assert_owner
 from nce.events.emit import emit_graph_write
@@ -55,22 +55,27 @@ def _validate_sql_ident(ident: str) -> str:
 
 
 def resolve_mcp_principal_tier(arguments: dict[str, Any]) -> str:
-    """Resolve the caller principal tier from MCP tool ``arguments``.
+    """Resolve the caller principal tier from verified MCP session or tool ``arguments``.
 
-    Checks ``_principal_tier`` or ``principal_kind`` when supplied (and not
-    ``None``). When neither key is present, defaults to ``"employee"`` so
-    internal/stdio MCP agent callers retain unfiltered access. When a tier is
-    explicitly supplied, only ``"employee"``, ``"contractor"``, and
-    ``"external-customer"`` are accepted; any unrecognized value resolves to
-    ``"unverified"`` (fail-closed, matching ``resolve_principal_tier`` in
-    ``nce.resource_surface.rest``).
+    When executing inside an authenticated ``/mcp`` HTTP gateway session
+    (:func:`get_current_mcp_session` is non-None), the session's verified
+    ``principal_kind`` takes precedence and caller-supplied arguments cannot
+    escalate it. Outside an HTTP session (e.g., stdio MCP agent callers),
+    checks ``_principal_tier`` or ``principal_kind`` when supplied, defaulting
+    to ``"employee"`` when omitted and ``"unverified"`` for unrecognized values.
     """
-    raw_tier = arguments.get("_principal_tier")
-    if raw_tier is None:
-        raw_tier = arguments.get("principal_kind")
-    if raw_tier is None:
-        return "employee"
-    tier = str(raw_tier)
+    mcp_session = get_current_mcp_session()
+    if mcp_session is not None:
+        raw_tier: Any = getattr(mcp_session, "principal_kind", "employee")
+    else:
+        raw_tier = arguments.get("_principal_tier")
+        if raw_tier is None:
+            raw_tier = arguments.get("principal_kind")
+        if raw_tier is None:
+            return "employee"
+    tier = str(raw_tier).strip().lower()
+    if tier == "external_customer":
+        tier = "external-customer"
     if tier in ("employee", "contractor", "external-customer"):
         return tier
     return "unverified"

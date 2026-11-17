@@ -2597,110 +2597,287 @@ async def get_event_provenance(
             visited: set[uuid.UUID] = set()
             frontier: collections.deque[uuid.UUID] = collections.deque([root["id"]])
 
-            while frontier and len(visited) < 200:
-                current_id = frontier.popleft()
-                if current_id in visited:
-                    continue
-                visited.add(current_id)
+            if isinstance(conn, asyncpg.Connection):
+                root_id = root["id"]
+                while frontier and len(visited) < 200:
+                    batch_ids: list[uuid.UUID] = []
+                    batch_seen: set[uuid.UUID] = set()
+                    while frontier and len(visited) + len(batch_ids) < 200:
+                        cid = frontier.popleft()
+                        if cid not in visited and cid not in batch_seen:
+                            batch_ids.append(cid)
+                            batch_seen.add(cid)
+                    if not batch_ids:
+                        break
+                    visited.update(batch_ids)
 
-                row = await conn.fetchrow(
-                    """
-                    SELECT id, namespace_id, agent_id, event_type, event_seq,
-                           occurred_at, params, result_summary, parent_event_id,
-                           signature, signature_key_id, signature_version, chain_hash
-                    FROM event_log WHERE id = $1
-                    """,
-                    current_id,
-                )
-                if row is None:
-                    for cand_ns in fallback_namespaces:
-                        if cand_ns == active_ns:
-                            continue
-                        await set_namespace_context(conn, cand_ns)
-                        active_ns = cand_ns
-                        row = await conn.fetchrow(
+                    rows_by_id: dict[uuid.UUID, Any] = {}
+                    fetch_ids = list(batch_ids)
+                    if root_id in fetch_ids:
+                        rows_by_id[root_id] = root
+                        fetch_ids = [fid for fid in fetch_ids if fid != root_id]
+
+                    if fetch_ids:
+                        fetched_rows = await conn.fetch(
                             """
                             SELECT id, namespace_id, agent_id, event_type, event_seq,
                                    occurred_at, params, result_summary, parent_event_id,
                                    signature, signature_key_id, signature_version, chain_hash
-                            FROM event_log WHERE id = $1
+                            FROM event_log WHERE id = ANY($1::uuid[])
                             """,
-                            current_id,
+                            fetch_ids,
                         )
-                        if row is not None:
-                            break
-                if row is None:
-                    continue
+                        for fr in fetched_rows:
+                            rows_by_id[fr["id"]] = fr
+                        missing_ids = [fid for fid in fetch_ids if fid not in rows_by_id]
+                        if missing_ids:
+                            for cand_ns in fallback_namespaces:
+                                if cand_ns == active_ns:
+                                    continue
+                                await set_namespace_context(conn, cand_ns)
+                                active_ns = cand_ns
+                                extra_rows = await conn.fetch(
+                                    """
+                                    SELECT id, namespace_id, agent_id, event_type, event_seq,
+                                           occurred_at, params, result_summary, parent_event_id,
+                                           signature, signature_key_id, signature_version, chain_hash
+                                    FROM event_log WHERE id = ANY($1::uuid[])
+                                    """,
+                                    missing_ids,
+                                )
+                                for er in extra_rows:
+                                    rows_by_id[er["id"]] = er
+                                missing_ids = [fid for fid in missing_ids if fid not in rows_by_id]
+                                if not missing_ids:
+                                    break
 
-                row_ns = row["namespace_id"]
-                if row_ns is not None and row_ns != active_ns:
-                    await set_namespace_context(conn, row_ns)
-                    active_ns = row_ns
-
-                verified = True
-                try:
-                    await verify_event_signature(conn, row)
-                except DataIntegrityError:
-                    verified = False
-                except Exception:
-                    verified = False
-
-                sig_val = row["signature"]
-                if isinstance(sig_val, memoryview):
-                    sig_val = bytes(sig_val)
-                sig_hex = sig_val.hex() if sig_val else ""
-
-                params_dict = _parse_jsonb_dict(row["params"])
-                res_val = row["result_summary"]
-                res_dict = _parse_jsonb_dict(res_val) if res_val is not None else None
-
-                src_ns_raw = params_dict.get("source_namespace_id")
-                if src_ns_raw:
-                    try:
-                        src_ns_uuid = uuid.UUID(str(src_ns_raw))
-                        if src_ns_uuid not in fallback_namespaces:
-                            fallback_namespaces.append(src_ns_uuid)
-                    except ValueError:
-                        pass
-
-                # Fetch multi-parent IDs from event_parents table.
-                ep_rows = await conn.fetch(
-                    "SELECT parent_event_id FROM event_parents WHERE event_id = $1",
-                    current_id,
-                )
-                multi_parent_ids: list[str] = [str(r["parent_event_id"]) for r in ep_rows]
-
-                # Fall back to scalar column for single-parent legacy events.
-                if not multi_parent_ids and row["parent_event_id"] is not None:
-                    multi_parent_ids = [str(row["parent_event_id"])]
-
-                chain.append(
-                    {
-                        "event_id": str(row["id"]),
-                        "namespace_id": str(row["namespace_id"]),
-                        "agent_id": row["agent_id"],
-                        "event_type": row["event_type"],
-                        "event_seq": row["event_seq"],
-                        "occurred_at": row["occurred_at"].isoformat(),
-                        "params": params_dict,
-                        "result_summary": res_dict,
-                        "parent_event_id": (
-                            str(row["parent_event_id"]) if row["parent_event_id"] else None
-                        ),
-                        "parent_event_ids": multi_parent_ids,
-                        "signature": sig_hex,
-                        "verified": verified,
-                    }
-                )
-
-                # Enqueue parents from event_parents for BFS traversal.
-                for pid_str in multi_parent_ids:
-                    try:
-                        pid = uuid.UUID(pid_str)
-                    except ValueError:
+                    ordered_rows = [rows_by_id[cid] for cid in batch_ids if cid in rows_by_id]
+                    if not ordered_rows:
                         continue
-                    if pid not in visited:
-                        frontier.append(pid)
+
+                    # Batch-fetch predecessor hashes and event_parents by namespace
+                    parents_by_event: dict[uuid.UUID, list[str]] = {}
+                    prev_hashes: dict[tuple[str, int], str] = {}
+                    rows_by_ns: dict[uuid.UUID | None, list[Any]] = collections.defaultdict(list)
+                    for r in ordered_rows:
+                        rows_by_ns[r["namespace_id"]].append(r)
+
+                    for ns_key, ns_rows in rows_by_ns.items():
+                        if ns_key is not None and ns_key != active_ns:
+                            await set_namespace_context(conn, ns_key)
+                            active_ns = ns_key
+                        ns_row_ids = [r["id"] for r in ns_rows]
+                        ep_batch = await conn.fetch(
+                            "SELECT event_id, parent_event_id FROM event_parents WHERE event_id = ANY($1::uuid[])",
+                            ns_row_ids,
+                        )
+                        for ep in ep_batch:
+                            parents_by_event.setdefault(ep["event_id"], []).append(
+                                str(ep["parent_event_id"])
+                            )
+                        if ns_key is not None:
+                            needed_seqs = sorted(
+                                {
+                                    int(r["event_seq"]) - 1
+                                    for r in ns_rows
+                                    if int(r["event_seq"]) > 1
+                                    and (
+                                        r["signature_version"] is None
+                                        or int(r["signature_version"]) == 2
+                                    )
+                                }
+                            )
+                            if needed_seqs:
+                                prev_rows = await conn.fetch(
+                                    """
+                                    SELECT event_seq, chain_hash
+                                    FROM event_log
+                                    WHERE namespace_id = $1 AND event_seq = ANY($2::bigint[])
+                                    """,
+                                    ns_key,
+                                    needed_seqs,
+                                )
+                                for pr in prev_rows:
+                                    ch = pr["chain_hash"]
+                                    if ch is not None:
+                                        if isinstance(ch, memoryview):
+                                            ch = bytes(ch)
+                                        prev_hashes[(str(ns_key), int(pr["event_seq"]))] = ch.hex()
+
+                    for row in ordered_rows:
+                        row_ns = row["namespace_id"]
+                        if row_ns is not None and row_ns != active_ns:
+                            await set_namespace_context(conn, row_ns)
+                            active_ns = row_ns
+
+                        row_for_verify: Any = row
+                        if row_ns is not None:
+                            p_hex = prev_hashes.get((str(row_ns), int(row["event_seq"]) - 1))
+                            if p_hex is not None:
+                                row_for_verify = dict(row)
+                                row_for_verify["_prev_chain_hash_hex"] = p_hex
+
+                        verified = True
+                        try:
+                            await verify_event_signature(conn, row_for_verify)
+                        except DataIntegrityError:
+                            verified = False
+                        except Exception:
+                            verified = False
+
+                        sig_val = row["signature"]
+                        if isinstance(sig_val, memoryview):
+                            sig_val = bytes(sig_val)
+                        sig_hex = sig_val.hex() if sig_val else ""
+
+                        params_dict = _parse_jsonb_dict(row["params"])
+                        res_val = row["result_summary"]
+                        res_dict = _parse_jsonb_dict(res_val) if res_val is not None else None
+
+                        src_ns_raw = params_dict.get("source_namespace_id")
+                        if src_ns_raw:
+                            try:
+                                src_ns_uuid = uuid.UUID(str(src_ns_raw))
+                                if src_ns_uuid not in fallback_namespaces:
+                                    fallback_namespaces.append(src_ns_uuid)
+                            except ValueError:
+                                pass
+
+                        multi_parent_ids = parents_by_event.get(row["id"], [])
+                        if not multi_parent_ids and row["parent_event_id"] is not None:
+                            multi_parent_ids = [str(row["parent_event_id"])]
+
+                        chain.append(
+                            {
+                                "event_id": str(row["id"]),
+                                "namespace_id": str(row["namespace_id"]),
+                                "agent_id": row["agent_id"],
+                                "event_type": row["event_type"],
+                                "event_seq": row["event_seq"],
+                                "occurred_at": row["occurred_at"].isoformat(),
+                                "params": params_dict,
+                                "result_summary": res_dict,
+                                "parent_event_id": (
+                                    str(row["parent_event_id"]) if row["parent_event_id"] else None
+                                ),
+                                "parent_event_ids": multi_parent_ids,
+                                "signature": sig_hex,
+                                "verified": verified,
+                            }
+                        )
+
+                        for pid_str in multi_parent_ids:
+                            try:
+                                pid = uuid.UUID(pid_str)
+                            except ValueError:
+                                continue
+                            if pid not in visited:
+                                frontier.append(pid)
+            else:
+                while frontier and len(visited) < 200:
+                    current_id = frontier.popleft()
+                    if current_id in visited:
+                        continue
+                    visited.add(current_id)
+
+                    row = await conn.fetchrow(
+                        """
+                        SELECT id, namespace_id, agent_id, event_type, event_seq,
+                               occurred_at, params, result_summary, parent_event_id,
+                               signature, signature_key_id, signature_version, chain_hash
+                        FROM event_log WHERE id = $1
+                        """,
+                        current_id,
+                    )
+                    if row is None:
+                        for cand_ns in fallback_namespaces:
+                            if cand_ns == active_ns:
+                                continue
+                            await set_namespace_context(conn, cand_ns)
+                            active_ns = cand_ns
+                            row = await conn.fetchrow(
+                                """
+                                SELECT id, namespace_id, agent_id, event_type, event_seq,
+                                       occurred_at, params, result_summary, parent_event_id,
+                                       signature, signature_key_id, signature_version, chain_hash
+                                FROM event_log WHERE id = $1
+                                """,
+                                current_id,
+                            )
+                            if row is not None:
+                                break
+                    if row is None:
+                        continue
+
+                    row_ns = row["namespace_id"]
+                    if row_ns is not None and row_ns != active_ns:
+                        await set_namespace_context(conn, row_ns)
+                        active_ns = row_ns
+
+                    verified = True
+                    try:
+                        await verify_event_signature(conn, row)
+                    except DataIntegrityError:
+                        verified = False
+                    except Exception:
+                        verified = False
+
+                    sig_val = row["signature"]
+                    if isinstance(sig_val, memoryview):
+                        sig_val = bytes(sig_val)
+                    sig_hex = sig_val.hex() if sig_val else ""
+
+                    params_dict = _parse_jsonb_dict(row["params"])
+                    res_val = row["result_summary"]
+                    res_dict = _parse_jsonb_dict(res_val) if res_val is not None else None
+
+                    src_ns_raw = params_dict.get("source_namespace_id")
+                    if src_ns_raw:
+                        try:
+                            src_ns_uuid = uuid.UUID(str(src_ns_raw))
+                            if src_ns_uuid not in fallback_namespaces:
+                                fallback_namespaces.append(src_ns_uuid)
+                        except ValueError:
+                            pass
+
+                    # Fetch multi-parent IDs from event_parents table.
+                    ep_rows = await conn.fetch(
+                        "SELECT parent_event_id FROM event_parents WHERE event_id = $1",
+                        current_id,
+                    )
+                    multi_parent_ids = [str(r["parent_event_id"]) for r in ep_rows]
+
+                    # Fall back to scalar column for single-parent legacy events.
+                    if not multi_parent_ids and row["parent_event_id"] is not None:
+                        multi_parent_ids = [str(row["parent_event_id"])]
+
+                    chain.append(
+                        {
+                            "event_id": str(row["id"]),
+                            "namespace_id": str(row["namespace_id"]),
+                            "agent_id": row["agent_id"],
+                            "event_type": row["event_type"],
+                            "event_seq": row["event_seq"],
+                            "occurred_at": row["occurred_at"].isoformat(),
+                            "params": params_dict,
+                            "result_summary": res_dict,
+                            "parent_event_id": (
+                                str(row["parent_event_id"]) if row["parent_event_id"] else None
+                            ),
+                            "parent_event_ids": multi_parent_ids,
+                            "signature": sig_hex,
+                            "verified": verified,
+                        }
+                    )
+
+                    # Enqueue parents from event_parents for BFS traversal.
+                    for pid_str in multi_parent_ids:
+                        try:
+                            pid = uuid.UUID(pid_str)
+                        except ValueError:
+                            continue
+                        if pid not in visited:
+                            frontier.append(pid)
 
     chain.reverse()  # root first
     return {"memory_id": str(memory_id), "chain": chain}

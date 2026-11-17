@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import uuid
+import weakref
 from contextlib import asynccontextmanager, nullcontext
 from datetime import datetime, timezone
 from typing import Any
@@ -21,6 +22,7 @@ from uuid import UUID
 import asyncpg
 import redis.asyncio as redis
 from bson import ObjectId
+from cachetools import TTLCache
 from minio import Minio
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -46,6 +48,19 @@ log = logging.getLogger("nce-orchestrator.memory")
 
 # Agent IDs that identify the admin/operator path (not an autonomous agent call).
 _OPERATOR_AGENT_IDS: frozenset[str] = frozenset({"system", "admin", "operator"})
+
+_NS_PII_CONFIG_CACHE: TTLCache[str, NamespacePIIConfig] = TTLCache(maxsize=256, ttl=30.0)
+_ACTIVE_MODELS_CACHE: TTLCache[str, list[Any]] = TTLCache(maxsize=4, ttl=30.0)
+_VERIFIED_MINIO_BUCKETS: set[tuple[int, str]] = set()
+_MINIO_FINALIZERS: set[int] = set()
+
+
+def _discard_minio_client_buckets(client_id: int) -> None:
+    """Prune verified-bucket cache entries when a MinIO client instance is GC'd."""
+    _MINIO_FINALIZERS.discard(client_id)
+    stale = [k for k in _VERIFIED_MINIO_BUCKETS if k[0] == client_id]
+    for k in stale:
+        _VERIFIED_MINIO_BUCKETS.discard(k)
 
 
 def _saga_change_origin(agent_id: str) -> str:
@@ -121,28 +136,40 @@ class MemoryOrchestrator(OrchestratorBase):
         Returns (pii_result, sanitized_summary, sanitized_heavy, entities, triplets).
         """
         pii_config = NamespacePIIConfig()
+        _ns_cache_key = str(payload.namespace_id)
+        _real_pool = isinstance(self.pg_pool, asyncpg.Pool)
 
         async def _fetch_ns_config(c):
             ns_row = await c.fetchrow(
                 "SELECT metadata FROM namespaces WHERE id = $1", payload.namespace_id
             )
-            if ns_row:
-                meta = json.loads(ns_row["metadata"])
-                if "pii" in meta:
+            if ns_row and ns_row["metadata"]:
+                raw_meta = ns_row["metadata"]
+                meta = json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
+                if isinstance(meta, dict) and "pii" in meta:
                     return NamespacePIIConfig(**meta["pii"])
             return NamespacePIIConfig()
 
         if conn is not None:
             pii_config = await _fetch_ns_config(conn)
+        elif _real_pool and _ns_cache_key in _NS_PII_CONFIG_CACHE:
+            pii_config = _NS_PII_CONFIG_CACHE[_ns_cache_key]
         else:
             async with scoped_pg_session(self.pg_pool, payload.namespace_id) as c:
                 pii_config = await _fetch_ns_config(c)
+            if _real_pool:
+                _NS_PII_CONFIG_CACHE[_ns_cache_key] = pii_config
 
         from nce.pii import process as pii_process
 
         pii_result = await pii_process(payload.summary, pii_config)
         sanitized_summary = pii_result.sanitized_text
-        sanitized_heavy = (await pii_process(payload.heavy_payload, pii_config)).sanitized_text
+        if payload.heavy_payload == payload.summary:
+            sanitized_heavy = sanitized_summary
+        elif not payload.heavy_payload:
+            sanitized_heavy = ""
+        else:
+            sanitized_heavy = (await pii_process(payload.heavy_payload, pii_config)).sanitized_text
 
         from nce.graph_extractor import extract_async as graph_extract_async
 
@@ -279,7 +306,7 @@ class MemoryOrchestrator(OrchestratorBase):
                 ON CONFLICT (label, namespace_id) DO UPDATE
                     SET entity_type  = EXCLUDED.entity_type,
                         embedding    = EXCLUDED.embedding,
-                        payload_ref = EXCLUDED.payload_ref,
+                        payload_ref = COALESCE(kg_nodes.payload_ref, EXCLUDED.payload_ref),
                         change_origin = CASE
                             WHEN kg_nodes.change_origin IN ('sync', 'webhook') THEN kg_nodes.change_origin
                             ELSE EXCLUDED.change_origin
@@ -348,7 +375,7 @@ class MemoryOrchestrator(OrchestratorBase):
                        unnest($4::float[]), $5, $6::uuid, $7, $8::uuid
                 ON CONFLICT (subject_label, predicate, object_label, namespace_id) DO UPDATE
                     SET confidence   = EXCLUDED.confidence,
-                        payload_ref = EXCLUDED.payload_ref,
+                        payload_ref = COALESCE(kg_edges.payload_ref, EXCLUDED.payload_ref),
                         change_origin = CASE
                             WHEN kg_edges.change_origin IN ('sync', 'webhook') THEN kg_edges.change_origin
                             ELSE EXCLUDED.change_origin
@@ -563,7 +590,7 @@ class MemoryOrchestrator(OrchestratorBase):
                         try:
                             async with conn.transaction():
                                 await conn.execute(
-                                    "DELETE FROM outbox_events WHERE aggregate_id = $1 AND status = 'pending'",
+                                    "DELETE FROM outbox_events WHERE aggregate_id::text = $1 AND published_at IS NULL",
                                     str(memory_id),
                                 )
                         except Exception as outbox_exc:
@@ -574,14 +601,40 @@ class MemoryOrchestrator(OrchestratorBase):
                             )
                         await conn.execute(
                             "DELETE FROM kg_node_embeddings "
-                            "WHERE node_id IN (SELECT id FROM kg_nodes WHERE payload_ref = $1)",
+                            "WHERE node_id IN ("
+                            "    SELECT id FROM kg_nodes k "
+                            "    WHERE k.payload_ref = $1 "
+                            "      AND NOT EXISTS ("
+                            "          SELECT 1 FROM memories m2 "
+                            "          WHERE m2.namespace_id = $2::uuid "
+                            "            AND m2.payload_ref = $1 "
+                            "            AND m2.valid_to IS NULL"
+                            "      )"
+                            ")",
                             inserted_mongo_id,
+                            payload.namespace_id,
                         )
                         await conn.execute(
-                            "DELETE FROM kg_edges WHERE payload_ref = $1", inserted_mongo_id
+                            "DELETE FROM kg_edges WHERE payload_ref = $1 "
+                            "AND NOT EXISTS ("
+                            "    SELECT 1 FROM memories m2 "
+                            "    WHERE m2.namespace_id = $2::uuid "
+                            "      AND m2.payload_ref = $1 "
+                            "      AND m2.valid_to IS NULL"
+                            ")",
+                            inserted_mongo_id,
+                            payload.namespace_id,
                         )
                         await conn.execute(
-                            "DELETE FROM kg_nodes WHERE payload_ref = $1", inserted_mongo_id
+                            "DELETE FROM kg_nodes WHERE payload_ref = $1 "
+                            "AND NOT EXISTS ("
+                            "    SELECT 1 FROM memories m2 "
+                            "    WHERE m2.namespace_id = $2::uuid "
+                            "      AND m2.payload_ref = $1 "
+                            "      AND m2.valid_to IS NULL"
+                            ")",
+                            inserted_mongo_id,
+                            payload.namespace_id,
                         )
                         from nce.event_log import append_event
 
@@ -616,10 +669,26 @@ class MemoryOrchestrator(OrchestratorBase):
                     async with conn.transaction():
                         await set_namespace_context(conn, payload.namespace_id)
                         await conn.execute(
-                            "DELETE FROM kg_edges WHERE payload_ref = $1", inserted_mongo_id
+                            "DELETE FROM kg_edges WHERE payload_ref = $1 "
+                            "AND NOT EXISTS ("
+                            "    SELECT 1 FROM memories m2 "
+                            "    WHERE m2.namespace_id = $2::uuid "
+                            "      AND m2.payload_ref = $1 "
+                            "      AND m2.valid_to IS NULL"
+                            ")",
+                            inserted_mongo_id,
+                            payload.namespace_id,
                         )
                         await conn.execute(
-                            "DELETE FROM kg_nodes WHERE payload_ref = $1", inserted_mongo_id
+                            "DELETE FROM kg_nodes WHERE payload_ref = $1 "
+                            "AND NOT EXISTS ("
+                            "    SELECT 1 FROM memories m2 "
+                            "    WHERE m2.namespace_id = $2::uuid "
+                            "      AND m2.payload_ref = $1 "
+                            "      AND m2.valid_to IS NULL"
+                            ")",
+                            inserted_mongo_id,
+                            payload.namespace_id,
                         )
                         await conn.execute(
                             "UPDATE memories SET valid_to = now() WHERE payload_ref = $1 AND valid_to IS NULL",
@@ -717,7 +786,13 @@ class MemoryOrchestrator(OrchestratorBase):
     # store_memory (Saga Pattern)
     # ------------------------------------------------------------------
 
-    async def _compute_salience_score(self, payload: StoreMemoryRequest) -> float:
+    async def _compute_salience_score(
+        self,
+        payload: StoreMemoryRequest,
+        *,
+        actor_trust: float | None = None,
+        _trust_out: list[float] | None = None,
+    ) -> float:
         """Computes the decayed salience score (R) from metadata or derived_from memory.
 
         Batch 113: applies an actor-trust multiplier to the raw confidence prior so
@@ -778,11 +853,14 @@ class MemoryOrchestrator(OrchestratorBase):
         # discounts low-trust actors by up to 50 %.  Trust resolution failures
         # degrade gracefully (get_actor_trust returns cfg.NCE_TRUST_DEFAULT).
         try:
-            from nce.active_learning import get_actor_trust
+            if actor_trust is None:
+                from nce.active_learning import get_actor_trust
 
-            actor_trust = await get_actor_trust(
-                self.pg_pool, payload.namespace_id, payload.agent_id
-            )
+                actor_trust = await get_actor_trust(
+                    self.pg_pool, payload.namespace_id, payload.agent_id
+                )
+            if _trust_out is not None:
+                _trust_out.append(actor_trust)
             # Normalise trust (default 0.65) so that default trust → multiplier = 1.0
             # and the adjustment is proportional to deviation from the default.
             trust_multiplier = max(0.5, min(1.0, actor_trust / cfg.NCE_TRUST_DEFAULT))
@@ -793,7 +871,12 @@ class MemoryOrchestrator(OrchestratorBase):
         return R
 
     async def _quarantine_if_needed(
-        self, payload: StoreMemoryRequest, R: float, bypass: bool
+        self,
+        payload: StoreMemoryRequest,
+        R: float,
+        bypass: bool,
+        *,
+        actor_trust: float | None = None,
     ) -> dict | None:
         """Quarantines the memory if R is below the trust-derived threshold.
 
@@ -809,7 +892,10 @@ class MemoryOrchestrator(OrchestratorBase):
 
         from nce.active_learning import get_actor_trust, quarantine_threshold
 
-        actor_trust = await get_actor_trust(self.pg_pool, payload.namespace_id, payload.agent_id)
+        if actor_trust is None:
+            actor_trust = await get_actor_trust(
+                self.pg_pool, payload.namespace_id, payload.agent_id
+            )
         threshold = quarantine_threshold(actor_trust)
 
         log.debug(
@@ -911,20 +997,31 @@ class MemoryOrchestrator(OrchestratorBase):
         session_id: str | None,
         wrapped_dek: bytes | None = None,
         dek_key_id: str | None = None,
+        _commit_flags: dict[str, bool] | None = None,
     ) -> UUID:
         """STEP 2 + 2b + 2c: Atomic Semantic + Graph Commit (single PG transaction)."""
         # Pre-generate the store_memory event UUID so it can be stored on the
         # memories row as origin_event_id (Batch C1 change-origin requirement).
         saga_event_id = uuid.uuid4()
+        _real_pool = isinstance(self.pg_pool, asyncpg.Pool)
+        cached_models = _ACTIVE_MODELS_CACHE.get("models") if _real_pool else None
 
         async with scoped_pg_session(self.pg_pool, payload.namespace_id) as conn:
-            # Fetch active and migrating models
-            models = await conn.fetch(
-                "SELECT id FROM embedding_models WHERE status IN ('active', 'migrating')"
-            )
-            target_model_ids = [m["id"] for m in models]
+            if cached_models is not None:
+                target_model_ids = list(cached_models)
+            else:
+                # Fetch active and migrating models
+                models = await conn.fetch(
+                    "SELECT id FROM embedding_models WHERE status IN ('active', 'migrating')"
+                )
+                target_model_ids = [m["id"] for m in models]
+                if _real_pool:
+                    _ACTIVE_MODELS_CACHE["models"] = list(target_model_ids)
 
-            async with conn.transaction():
+            tx_ctx = (
+                nullcontext() if (_real_pool and conn.is_in_transaction()) else conn.transaction()
+            )
+            async with tx_ctx:
                 memory_id = await self._embed_and_insert_vectors(
                     conn,
                     payload=payload,
@@ -995,6 +1092,21 @@ class MemoryOrchestrator(OrchestratorBase):
                     },
                     headers={"source": "store_memory"},
                 )
+                if _real_pool and "_saga_log_transition" not in self.__dict__ and saga_id:
+                    await conn.execute(
+                        """
+                        UPDATE saga_execution_log
+                        SET state = $1, updated_at = NOW(),
+                            payload = payload || $3::jsonb
+                        WHERE id = $2::uuid AND namespace_id = $4::uuid
+                        """,
+                        SagaState.PG_COMMITTED.value,
+                        saga_id,
+                        json.dumps({"memory_id": str(memory_id)}),
+                        str(payload.namespace_id),
+                    )
+                    if _commit_flags is not None:
+                        _commit_flags["pg_committed_inlined"] = True
         log.debug(
             "[PG] Atomic commit: vector + %d nodes + %d edges. mongo_ref=%s",
             len(entities),
@@ -1056,6 +1168,7 @@ class MemoryOrchestrator(OrchestratorBase):
             inserted_result = None
             memory_id: UUID | None = None
             pg_committed = False
+            commit_flags: dict[str, bool] = {}
             saga_id = await self._saga_log_start("store_memory", payload)
 
             try:
@@ -1070,26 +1183,41 @@ class MemoryOrchestrator(OrchestratorBase):
 
                 # STEP 1: Episodic Commit (MongoDB) — pre-bind ObjectId so rollback
                 # cleans up delayed/in-flight writes even on socket/selection timeouts.
+                # Run Mongo episodic insert concurrently with embedding computation
+                # outside the PG transaction.
                 user_id = payload.metadata.get("user_id") if payload.metadata else None
                 session_id = payload.metadata.get("session_id") if payload.metadata else None
                 pre_oid = ObjectId()
                 inserted_mongo_id = str(pre_oid)
 
+                all_texts = [sanitized_summary] + [e.label for e in entities]
+                mongo_res, embed_res = await asyncio.gather(
+                    self._store_episodic_mongodb(
+                        payload,
+                        sanitized_heavy,
+                        pii_result,
+                        episode_oid=pre_oid,
+                    ),
+                    _embeddings.embed_batch(all_texts),
+                    return_exceptions=True,
+                )
+                if isinstance(mongo_res, BaseException):
+                    raise mongo_res
+                if isinstance(embed_res, BaseException):
+                    (
+                        inserted_mongo_id,
+                        inserted_result,
+                        wrapped_dek,
+                        dek_key_id,
+                    ) = mongo_res
+                    raise embed_res
                 (
                     inserted_mongo_id,
                     inserted_result,
                     wrapped_dek,
                     dek_key_id,
-                ) = await self._store_episodic_mongodb(
-                    payload,
-                    sanitized_heavy,
-                    pii_result,
-                    episode_oid=pre_oid,
-                )
-
-                # Pre-compute all embeddings OUTSIDE the PG transaction
-                all_texts = [sanitized_summary] + [e.label for e in entities]
-                all_vectors = await _embeddings.embed_batch(all_texts)
+                ) = mongo_res
+                all_vectors = embed_res
                 vector = all_vectors[0]
                 node_vecs = all_vectors[1:]
 
@@ -1108,6 +1236,7 @@ class MemoryOrchestrator(OrchestratorBase):
                     session_id=session_id,
                     wrapped_dek=wrapped_dek,
                     dek_key_id=dek_key_id,
+                    _commit_flags=commit_flags,
                 )
 
                 # Mark committed once exited from PG session block successfully
@@ -1132,15 +1261,16 @@ class MemoryOrchestrator(OrchestratorBase):
                 raise
 
             # --- PG committed; all subsequent failures are advisory ---
-            try:
-                await self._saga_log_transition(
-                    saga_id,
-                    SagaState.PG_COMMITTED,
-                    payload_patch={"memory_id": str(memory_id)},
-                    namespace_id=payload.namespace_id,
-                )
-            except Exception:
-                log.warning("[SAGA] PG_COMMITTED transition failed.", exc_info=True)
+            if not commit_flags.get("pg_committed_inlined"):
+                try:
+                    await self._saga_log_transition(
+                        saga_id,
+                        SagaState.PG_COMMITTED,
+                        payload_patch={"memory_id": str(memory_id)},
+                        namespace_id=payload.namespace_id,
+                    )
+                except Exception:
+                    log.warning("[SAGA] PG_COMMITTED transition failed.", exc_info=True)
 
             # STEP 3: Working Memory (Redis)
             await self._cache_working_memory_redis(
@@ -1182,9 +1312,15 @@ class MemoryOrchestrator(OrchestratorBase):
                 if payload.metadata.get("bypass_quarantine"):
                     bypass = True
 
-            R = await self._compute_salience_score(payload)
+            trust_out: list[float] = []
+            R = await self._compute_salience_score(payload, _trust_out=trust_out)
 
-            quarantine_result = await self._quarantine_if_needed(payload, R, bypass)
+            quarantine_result = await self._quarantine_if_needed(
+                payload,
+                R,
+                bypass,
+                actor_trust=(trust_out[0] if trust_out else None),
+            )
             if quarantine_result is not None:
                 return quarantine_result
 
@@ -1197,7 +1333,7 @@ class MemoryOrchestrator(OrchestratorBase):
     # store_artifact (formerly store_media)
     # ------------------------------------------------------------------
 
-    async def store_artifact(self, payload: StoreArtifactRequest) -> str:
+    async def store_artifact(self, payload: StoreArtifactRequest) -> str | dict[str, Any]:
         """Upload artifact to MinIO, index summary into Tri-Stack."""
         tracer = get_tracer()
         with tracer.start_as_current_span("orchestrator.store_artifact") as span:
@@ -1243,13 +1379,29 @@ class MemoryOrchestrator(OrchestratorBase):
                 def _ensure_bucket_and_upload() -> None:
                     from minio.error import S3Error
 
+                    client_id = id(self.minio_client)
+                    cache_key = (client_id, bucket_name)
+                    if cache_key not in _VERIFIED_MINIO_BUCKETS:
+                        if client_id not in _MINIO_FINALIZERS:
+                            try:
+                                weakref.finalize(
+                                    self.minio_client, _discard_minio_client_buckets, client_id
+                                )
+                                _MINIO_FINALIZERS.add(client_id)
+                            except TypeError:
+                                pass
+                        try:
+                            if not self.minio_client.bucket_exists(bucket_name):
+                                self.minio_client.make_bucket(bucket_name)
+                        except S3Error as exc:
+                            if exc.code not in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                                raise
+                        _VERIFIED_MINIO_BUCKETS.add(cache_key)
                     try:
-                        if not self.minio_client.bucket_exists(bucket_name):
-                            self.minio_client.make_bucket(bucket_name)
-                    except S3Error as exc:
-                        if exc.code not in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
-                            raise
-                    self.minio_client.fput_object(bucket_name, object_name, safe_path)
+                        self.minio_client.fput_object(bucket_name, object_name, safe_path)
+                    except Exception:
+                        _VERIFIED_MINIO_BUCKETS.discard(cache_key)
+                        raise
 
                 await asyncio.to_thread(_ensure_bucket_and_upload)
                 log.info(
@@ -1305,6 +1457,8 @@ class MemoryOrchestrator(OrchestratorBase):
 
                         MINIO_ORPHAN_CLEANUP_FAILURES_TOTAL.inc()
                     raise
+                if isinstance(res, dict) and res.get("quarantined"):
+                    return res
                 return res["payload_ref"]
 
     async def store_media(self, payload: MediaPayload) -> str:
@@ -1620,15 +1774,33 @@ class MemoryOrchestrator(OrchestratorBase):
             stored_raw, bytes(wrapped_dek) if wrapped_dek is not None else None
         )
 
+        from nce.signing import SigningKeyDecryptionError
+
         with require_master_key() as mk:
-            for v_row in vault_list:
-                token = v_row["token"]
-                encrypted_val = v_row["encrypted_value"]
-                try:
-                    original_val = decrypt_signing_key(encrypted_val, mk).decode("utf-8")
-                    raw_data = raw_data.replace(token, original_val)
-                except Exception as e:
-                    log.warning("Failed to decrypt token %s: %s", token, e)
+            prev_mk = None
+            try:
+                for v_row in vault_list:
+                    token = v_row["token"]
+                    encrypted_val = v_row["encrypted_value"]
+                    try:
+                        try:
+                            original_val = decrypt_signing_key(encrypted_val, mk).decode("utf-8")
+                        except SigningKeyDecryptionError:
+                            if prev_mk is None:
+                                from nce.master_key_ring import previous_master_key
+
+                                prev_mk = previous_master_key()
+                            if prev_mk is None:
+                                raise
+                            original_val = decrypt_signing_key(encrypted_val, prev_mk).decode(
+                                "utf-8"
+                            )
+                        raw_data = raw_data.replace(token, original_val)
+                    except Exception as e:
+                        log.warning("Failed to decrypt token %s: %s", token, e)
+            finally:
+                if prev_mk is not None:
+                    prev_mk.zero()
 
         # Phase 3 — append audit event under RLS.
         async with scoped_pg_session(self.pg_pool, namespace_id) as conn:
@@ -1861,6 +2033,21 @@ class MemoryOrchestrator(OrchestratorBase):
                     redis_keys_purged += int(await self.redis_client.delete(key))
                 except Exception as exc:
                     warnings.append(f"redis_purge_failed:{key}:{exc}")
+            try:
+                pub_fn = getattr(self.redis_client, "publish", None)
+                if callable(pub_fn):
+                    evict_msg = json.dumps(
+                        {
+                            "event": "shred",
+                            "namespace_id": str(ns_uuid),
+                            "memory_id": str(mem_uuid),
+                        }
+                    )
+                    pub_res = pub_fn("nce:crypto:evict", evict_msg)
+                    if asyncio.iscoroutine(pub_res):
+                        await pub_res
+            except Exception:
+                pass
 
         # 7. remove_object the MinIO media object(s).
         minio_objects_removed = 0
@@ -2107,6 +2294,7 @@ class MemoryOrchestrator(OrchestratorBase):
 
         return await semantic_search(
             pg_pool=self._db_pool(read_only=True),
+            pg_write_pool=self.pg_pool,
             mongo_client=self.mongo_client,
             embedding_fn=_embeddings.embed,
             query=query,

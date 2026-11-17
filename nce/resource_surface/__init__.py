@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import pkgutil
 from typing import TYPE_CHECKING
 
@@ -64,18 +65,39 @@ def get_all_resource_specs() -> list[ResourceSpec]:
     return list(_REGISTRY.values())
 
 
+_LAST_LOADED_ENGINES_ENV: str | None = None
+
+
 def load_all_engine_resources() -> None:
     """Discover and import all resources.py modules in nce_verticals."""
+    global _LAST_LOADED_ENGINES_ENV
+    raw_enabled = os.environ.get("NCE_ENABLED_ENGINES", "").strip()
+    if raw_enabled.lower() in {"none", "0", "false", "off"}:
+        _LAST_LOADED_ENGINES_ENV = raw_enabled
+        return
+    if _LAST_LOADED_ENGINES_ENV == raw_enabled:
+        return
+
     try:
         import nce_verticals as vm_pkg
     except ModuleNotFoundError:
+        _LAST_LOADED_ENGINES_ENV = raw_enabled
         return
 
     if not hasattr(vm_pkg, "__path__"):
+        _LAST_LOADED_ENGINES_ENV = raw_enabled
         return
+
+    enabled_filter = (
+        {tok.strip().lower() for tok in raw_enabled.split(",") if tok.strip()}
+        if raw_enabled and raw_enabled.lower() not in {"all", "*"}
+        else None
+    )
 
     for _, module_name, is_pkg in pkgutil.iter_modules(vm_pkg.__path__):
         if is_pkg:
+            if enabled_filter is not None and module_name.lower() not in enabled_filter:
+                continue
             full_mod_name = f"nce_verticals.{module_name}.resources"
             try:
                 importlib.import_module(full_mod_name)
@@ -84,6 +106,7 @@ def load_all_engine_resources() -> None:
                 pass
             except Exception as exc:
                 log.warning("Failed importing resource module %s: %s", full_mod_name, exc)
+    _LAST_LOADED_ENGINES_ENV = raw_enabled
 
 
 def build_all_resource_routes() -> list[Route]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import os
 import sys
@@ -181,3 +182,26 @@ class BoundedBodyMiddleware:
                 await send(body_msg)
             else:
                 raise
+        except BaseException as exc:
+            base_eg = getattr(builtins, "BaseExceptionGroup", None)
+            if base_eg is not None and isinstance(exc, base_eg):
+                too_large = _find_body_too_large_error(exc)
+                if too_large is not None:
+                    if not response_started:
+                        start_msg, body_msg = _build_413_response(too_large.limit)
+                        await send(start_msg)
+                        await send(body_msg)
+                        return
+            raise
+
+
+def _find_body_too_large_error(exc: BaseException) -> _BodyTooLargeError | None:
+    if isinstance(exc, _BodyTooLargeError):
+        return exc
+    sub_excs = getattr(exc, "exceptions", None)
+    if sub_excs:
+        for sub in sub_excs:
+            found = _find_body_too_large_error(sub)
+            if found is not None:
+                return found
+    return None

@@ -66,7 +66,8 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import timezone
-from typing import Any
+from typing import Any, Final
+from uuid import UUID as _UUID  # noqa: F401
 
 import asyncpg
 
@@ -96,7 +97,9 @@ except ImportError:  # pragma: no cover – jcs is in requirements.txt; handle g
 
 
 from cachetools import TTLCache
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 log = logging.getLogger(__name__)
 
@@ -123,6 +126,9 @@ _ENCRYPTED_KEY_BLOB_V2: bytes = b"TC2\x01"
 _ENCRYPTED_KEY_BLOB_V3: bytes = b"TC3\x01"
 # Magic prefix for v4 blobs (PBKDF2 @ 600K, OWASP 2026).  v2/v3/legacy still decrypt.
 _ENCRYPTED_KEY_BLOB_V4: bytes = b"TC4\x01"
+# Magic prefix for fast HKDF-SHA256 data-key wrapping blobs (TCHK\x01 inside TC5\x01).
+_ENCRYPTED_KEY_BLOB_HKDF: Final[bytes] = b"TCHK\x01"
+_HKDF_DEK_WRAP_INFO: Final[bytes] = b"nce-fast-dek-wrap-v1"
 # Magic prefix for v5 blobs: a FINGERPRINT ENVELOPE around a v3/v4 blob.
 #
 #   TC5 || fp (8 bytes) || <complete v3 or v4 blob>
@@ -711,6 +717,31 @@ def _argon2id_derive_aes_key(master_key: MasterKey, salt: bytes) -> bytes:
     )
 
 
+def _hkdf_derive_aes_key(master_key: MasterKey, salt: bytes) -> bytes:
+    """Derive a 32-byte AES-256 key via HKDF-SHA256 for already-high-entropy data keys."""
+    if len(salt) < _PBKDF2_SALT_LEN:
+        raise SigningError(f"HKDF salt must be at least {_PBKDF2_SALT_LEN} bytes; got {len(salt)}.")
+    if master_key._zeroed:
+        raise ValueError("MasterKey has been zeroed and is no longer usable.")
+    return HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt[:_PBKDF2_SALT_LEN],
+        info=_HKDF_DEK_WRAP_INFO,
+    ).derive(bytes(master_key.key_bytes))
+
+
+def encrypt_fast_data_key(raw_key: bytes, master_key: MasterKey) -> bytes:
+    """Fast HKDF-SHA256 AES-256-GCM wrap for high-entropy CSPRNG DEKs and short-lived data keys."""
+    salt = os.urandom(_PBKDF2_SALT_LEN)
+    derived = _hkdf_derive_aes_key(master_key, salt)
+    nonce = os.urandom(_NONCE_SIZE)
+    with SecureKeyBuffer(derived) as aes_buf:
+        ciphertext_and_tag = AESGCM(bytes(aes_buf)).encrypt(nonce, raw_key, None)
+    inner = _ENCRYPTED_KEY_BLOB_HKDF + salt + nonce + ciphertext_and_tag
+    return _ENCRYPTED_KEY_BLOB_V5 + master_key_fingerprint_bytes(master_key) + inner
+
+
 def encrypt_signing_key(raw_key: bytes, master_key: MasterKey) -> bytes:
     """
     AES-256-GCM encrypt *raw_key* with the master key.
@@ -806,6 +837,18 @@ def decrypt_signing_key(encrypted_key: bytes, master_key: MasterKey) -> bytes:
         nonce = tail[_PBKDF2_SALT_LEN : _PBKDF2_SALT_LEN + _NONCE_SIZE]
         ct_and_tag = tail[_PBKDF2_SALT_LEN + _NONCE_SIZE :]
         derived = _pbkdf2_derive_aes_key_v4(master_key, salt)
+    elif encrypted_key.startswith(_ENCRYPTED_KEY_BLOB_HKDF):
+        tail = encrypted_key[len(_ENCRYPTED_KEY_BLOB_HKDF) :]
+        need = _PBKDF2_SALT_LEN + _NONCE_SIZE + 16
+        if len(tail) < need:
+            raise SigningKeyDecryptionError(
+                "encrypted_key HKDF blob is too short to be valid "
+                f"(got {len(encrypted_key)} bytes, need ≥{len(_ENCRYPTED_KEY_BLOB_HKDF) + need})."
+            )
+        salt = tail[:_PBKDF2_SALT_LEN]
+        nonce = tail[_PBKDF2_SALT_LEN : _PBKDF2_SALT_LEN + _NONCE_SIZE]
+        ct_and_tag = tail[_PBKDF2_SALT_LEN + _NONCE_SIZE :]
+        derived = _hkdf_derive_aes_key(master_key, salt)
     elif encrypted_key.startswith(_ENCRYPTED_KEY_BLOB_V3):
         tail = encrypted_key[len(_ENCRYPTED_KEY_BLOB_V3) :]
         need = _PBKDF2_SALT_LEN + _NONCE_SIZE + 16
@@ -984,7 +1027,18 @@ async def get_active_key(
                     "Run the key-rotation initialisation to create the first key."
                 )
 
-            raw_key = decrypt_signing_key(bytes(row["encrypted_key"]), master_key)
+            try:
+                raw_key = decrypt_signing_key(bytes(row["encrypted_key"]), master_key)
+            except SigningKeyDecryptionError:
+                from nce.master_key_ring import previous_master_key
+
+                prev_mk = previous_master_key()
+                if prev_mk is None:
+                    raise
+                try:
+                    raw_key = decrypt_signing_key(bytes(row["encrypted_key"]), prev_mk)
+                finally:
+                    prev_mk.zero()
 
         key_id: str = row["key_id"]
 
@@ -1066,7 +1120,18 @@ async def get_key_by_id(
                     f"Signing key '{key_id}' not found in signing_keys table."
                 )
 
-            raw_key = decrypt_signing_key(bytes(row["encrypted_key"]), master_key)
+            try:
+                raw_key = decrypt_signing_key(bytes(row["encrypted_key"]), master_key)
+            except SigningKeyDecryptionError:
+                from nce.master_key_ring import previous_master_key
+
+                prev_mk = previous_master_key()
+                if prev_mk is None:
+                    raise
+                try:
+                    raw_key = decrypt_signing_key(bytes(row["encrypted_key"]), prev_mk)
+                finally:
+                    prev_mk.zero()
 
         new_entry = _CachedKey(
             key_id=key_id,
@@ -1182,7 +1247,7 @@ async def admin_signing_keys_status(conn: asyncpg.Connection) -> dict[str, Any]:
     }
 
 
-async def rotate_key(conn: asyncpg.Connection) -> str:
+async def rotate_key(conn: asyncpg.Connection, *, redis_client: Any = None) -> str:
     """
     Generate and persist a new active signing key, retiring all current ones.
 
@@ -1238,6 +1303,16 @@ async def rotate_key(conn: asyncpg.Connection) -> str:
             except Exception:
                 pass
     _key_cache.clear()
+    if redis_client is not None:
+        try:
+            pub_res = redis_client.publish(
+                "nce:crypto:evict",
+                f'{{"event":"rotate_key","key_id":"{new_key_id}"}}',
+            )
+            if asyncio.iscoroutine(pub_res):
+                await pub_res
+        except Exception as exc:
+            log.warning("Failed to broadcast rotate_key cache eviction: %s", exc)
     log.info("Signing key rotated.  New key_id=%s.", new_key_id)
     return new_key_id
 

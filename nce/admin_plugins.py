@@ -13,6 +13,7 @@ import time
 import uuid
 from base64 import b64decode
 from binascii import Error as BinasciiError
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,8 @@ logger = logging.getLogger("nce-admin-plugins")
 REDIS_DISABLED_ENGINES_KEY = "nce:engines:disabled"
 _IN_MEMORY_DISABLED_ENGINES: set[str] = set()
 _PLUGINS_HTML_PATH = Path(__file__).resolve().parent.parent / "admin" / "plugins.html"
-MINTED_MCP_TOKENS: dict[str, dict[str, Any]] = {}
+MINTED_MCP_TOKENS: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_MAX_MINTED_MCP_TOKENS = 512
 
 
 async def get_disabled_engines(
@@ -757,6 +759,9 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
         "created_at": now_utc.isoformat(),
     }
     MINTED_MCP_TOKENS[token_sha256] = token_meta
+    MINTED_MCP_TOKENS.move_to_end(token_sha256)
+    while len(MINTED_MCP_TOKENS) > _MAX_MINTED_MCP_TOKENS:
+        MINTED_MCP_TOKENS.popitem(last=False)
 
     pg_pool = (
         getattr(request.app.state, "pg_pool", None)

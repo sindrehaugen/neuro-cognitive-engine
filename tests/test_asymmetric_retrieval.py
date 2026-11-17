@@ -165,7 +165,7 @@ async def test_graph_orchestrator_search_codebase_aspect() -> None:
     # Check that SQL joins and filters by aspect
     fused_sql = sql_calls[0][0]
     assert "JOIN embedding_aspects ea ON m.id = ea.memory_id AND ea.aspect =" in fused_sql
-    assert "ea.embedding <=> $1::vector" in fused_sql
+    assert "ea.embedding <=> $1::halfvec(768)" in fused_sql
 
 
 @pytest.mark.asyncio

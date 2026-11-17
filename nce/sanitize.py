@@ -55,13 +55,14 @@ def sanitize_llm_payload(text: str) -> str:
     #    (e.g. ＜ U+FF1C → <) so all downstream checks work on canonical forms.
     text = _unicodedata.normalize("NFKC", text)
 
-    # 2. Purge zero-width unicode, bidirectional markings, and non-printable controls
+    # 2. Decode HTML entities BEFORE invisible/control purge so entity-encoded
+    #    obfuscations (e.g. &#x200b;) are also exposed and stripped.
+    text = _html.unescape(text)
+
+    # 3. Purge zero-width unicode, bidirectional markings, and non-printable controls
     text = "".join(
         c for c in text if c not in _ZERO_WIDTH and (c.isprintable() or c in ("\n", "\r", "\t"))
     )
-
-    # 3. Decode HTML entities so &lt;script&gt; is treated the same as <script>
-    text = _html.unescape(text)
 
     # 4. Drop XML/HTML-like tags
     text = re.sub(r"<\/?[a-zA-Z][^>]*>", "", text)
@@ -78,6 +79,6 @@ def sanitize_llm_payload(text: str) -> str:
     # 5. Neutralize any remaining angle brackets
     text = text.replace("<", "[").replace(">", "]")
 
-    # 6. Escape curly braces for downstream template / f-string safety
-    text = text.replace("{", "{{").replace("}", "}}")
-    return text[:_MAX_PAYLOAD_LEN]
+    # 6. Bound payload length BEFORE escaping braces so '{{' / '}}' is never split.
+    text = text[:_MAX_PAYLOAD_LEN]
+    return text.replace("{", "{{").replace("}", "}}")

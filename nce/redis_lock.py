@@ -41,6 +41,14 @@ end
 return 0
 """
 
+# Lua compare-and-expire: only extend TTL if the stored value still matches our token.
+RENEW_LOCK_LUA: str = """
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+    return redis.call("EXPIRE", KEYS[1], tonumber(ARGV[2]))
+end
+return 0
+"""
+
 
 async def acquire_lock(
     client: Any,
@@ -103,4 +111,21 @@ async def release_lock(
         return bool(released)
     except Exception as exc:
         log.warning("Lock release failed for key=%s: %s", key, exc)
+        return False
+
+
+async def renew_lock(
+    client: Any,
+    key: str,
+    token: str,
+    ttl_seconds: int,
+) -> bool:
+    """Extend *key* TTL only if this process still owns it (Lua CAS)."""
+    if ttl_seconds < 1:
+        raise ValueError("ttl_seconds must be >= 1")
+    try:
+        renewed = await client.eval(RENEW_LOCK_LUA, 1, key, token, int(ttl_seconds))
+        return bool(renewed)
+    except Exception as exc:
+        log.warning("Lock renewal failed for key=%s: %s", key, exc)
         return False
