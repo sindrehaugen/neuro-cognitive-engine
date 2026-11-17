@@ -220,9 +220,10 @@ cp .env.example .env
 
 Generate real secrets in `.env` (never commit it):
 
-- `NCE_MASTER_KEY` — ≥32 random bytes; AES-256-GCM key for PII/credential encryption. `openssl rand -base64 32`
+- `NCE_MASTER_KEY` — ≥32 random bytes; AES-256-GCM key for PII/credential & envelope DEK encryption. `openssl rand -base64 32`
+- `NCE_ENVELOPE_ENCRYPTION_ENABLED=true` — enables per-memory AES-256-GCM (`TCDEK\x01`) envelope encryption & GDPR `crypto_shred`
 - `NCE_API_KEY` / `NCE_ADMIN_API_KEY` / `NCE_MCP_API_KEY` — long random tokens
-- `NCE_MCP_NAMESPACE_ID` — a UUID pinning the stdio connection to one tenant, e.g. `00000000-0000-4000-8000-000000000001`
+- `NCE_MCP_NAMESPACE_ID` — a UUID pinning the local `server.py` stdio connection to one tenant, e.g. `00000000-0000-4000-8000-000000000001` (whereas the Streamable HTTP `/mcp` gateway binds each session's `namespace_id` cryptographically from its scoped bearer token)
 
 ### 2. Bring up the full stack
 
@@ -246,7 +247,7 @@ python -m venv .venv
 .venv\Scripts\activate            # Windows ·  source .venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
 
-python mcp_gateway_server.py       # primary Streamable HTTP /mcp gateway (:8005 direct, :8443 via Caddy)
+python mcp_gateway_server.py       # primary Streamable HTTP /mcp gateway (:8005 host direct, :8000 container internal, :8443/mcp TLS via Caddy)
 python server.py                   # local dev MCP stdio server (stdin/stdout JSON-RPC)
 python start_worker.py             # background RQ worker  (separate shell)
 python -m nce.cron                 # schedulers            (separate shell)
@@ -396,7 +397,7 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 | How it talks | [usage_modes.md](docs/usage_modes.md) |
 | Architecture | [architecture-v1.md](docs/architecture-v1.md) · [database_architecture.md](docs/database_architecture.md) |
 | Configuration | [configuration_reference.md](docs/configuration_reference.md) · [it_admin_guide.md](docs/it_admin_guide.md) |
-| Security | [enterprise_security.md](docs/enterprise_security.md) · [signing.md](docs/signing.md) · [pii.md](docs/pii.md) |
+| Security | [enterprise_security.md](docs/enterprise_security.md) · [multi_tenancy.md](docs/multi_tenancy.md) · [signing.md](docs/signing.md) · [pii.md](docs/pii.md) |
 | Cognition | [cognitive_layer.md](docs/cognitive_layer.md) · [llm_providers.md](docs/llm_providers.md) |
 | Time & simulation | [time_travel.md](docs/time_travel.md) · [replay.md](docs/replay.md) · [migrations.md](docs/migrations.md) |
 | Integrations | [service_integrations.md](docs/service_integrations.md) · [bridge_setup_guide.md](docs/bridge_setup_guide.md) · [a2a.md](docs/a2a.md) |

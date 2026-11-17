@@ -30,8 +30,9 @@ NCE utilizes a high-performance, non-blocking connection pool via `asyncpg` conf
 self.pg_pool = await asyncpg.create_pool(
     cfg.PG_DSN,
     min_size=cfg.PG_MIN_POOL,    # Default: 1
-    max_size=cfg.PG_MAX_POOL,    # Default: 10
+    max_size=cfg.PG_MAX_POOL,    # Default: 20
     command_timeout=30,           # Hard statement timeout in seconds
+    statement_cache_size=256,     # Prepared statement LRU cache (v3.5.2)
 )
 ```
 
@@ -46,13 +47,16 @@ self.pg_pool = await asyncpg.create_pool(
 MongoDB access is coordinated by the `AsyncIOMotorClient` pool:
 
 ```python
+# nce/_client_factory.py — motor_timeout_kwargs() (v3.5.1+ sub-3s fail-fast)
 self.mongo_client = AsyncIOMotorClient(
     cfg.MONGO_URI,
-    serverSelectionTimeoutMS=5_000,
+    serverSelectionTimeoutMS=2_000,
+    connectTimeoutMS=2_000,
+    socketTimeoutMS=2_000,
 )
 ```
 
-Motor's default internal pool sizing applies; no explicit `maxPoolSize` override is set. The `serverSelectionTimeoutMS=5000` governs how long the driver will wait to find a suitable server before raising a timeout.
+Motor's default internal pool sizing applies, with `2000ms` socket/selection timeouts (`motor_timeout_kwargs()`) so a paused or unreachable MongoDB instance fails over to `state='recovery_needed'` within `< 3.0s`.
 
 * **Indexes**: At boot time, `NCEEngine._init_mongo_indexes()` ensures indexes exist on `user_id` (episodes), `filepath` (code_files), and `user_id` (code_files) to guarantee lookup performance of raw documents.
 
@@ -60,21 +64,21 @@ Motor's default internal pool sizing applies; no explicit `maxPoolSize` override
 Redis uses a dual-client model to accommodate asynchronous web request routing and synchronous worker queue orchestration:
 
 ```python
-# Async client for cache, rate-limits, and session management
+# Async client for cache, rate-limits, and session management (sub-2s fail-closed)
 self.redis_client = redis.from_url(
     cfg.REDIS_URL,
-    socket_connect_timeout=5,
-    socket_timeout=5,
-    max_connections=cfg.REDIS_MAX_CONNECTIONS,  # Default: 20
+    socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,  # Default: 1.5s
+    socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,           # Default: 1.5s
+    max_connections=cfg.REDIS_MAX_CONNECTIONS,           # Default: 20
     health_check_interval=30,
 )
 
 # Synchronous client for the RQ background worker queue thread pool
 self.redis_sync_client = redis_sync.from_url(
     cfg.REDIS_URL,
-    socket_connect_timeout=5,
-    socket_timeout=5,
-    max_connections=cfg.REDIS_MAX_CONNECTIONS,  # Default: 20
+    socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,  # Default: 1.5s
+    socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,           # Default: 1.5s
+    max_connections=cfg.REDIS_MAX_CONNECTIONS,           # Default: 20
     health_check_interval=30,
 )
 ```

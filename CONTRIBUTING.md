@@ -71,35 +71,55 @@ mypy nce/
 
 ### 3. Test Suites (Pytest)
 
-Run unit tests, Row-Level Security checks, and mock-backed orchestrator suites:
+Run unit tests, Row-Level Security checks, and mock-backed orchestrator suites (`unit`, `integration`, and `perf` markers are registered in `pyproject.toml`):
 
 ```bash
-# Run unit and mock tests
-pytest tests/
+# Run unit and mock tests (excludes live/integration/perf suites)
+pytest tests/ -m "not integration and not perf and not live"
 
 # Run integration tests against running local services
 pytest -m integration
+
+# Run 100k-row hot-path & multi-agent LLM-loop benchmarks
+python scripts/profile_100k_hotpaths.py --phase optimized --iterations 30
+python scripts/profile_llm_agent_loop.py --agents 10 --turns 4
 ```
 
 ---
 
-## Schema & Surface Generators
+## Plugin Extension Seam & Dual SQL Migration Ledgers (`nce.plugins`)
 
-NCE enforces schema drift detection and documentation synchronicity via mechanical code generators. If you modify database migrations, MCP tool definitions, or API route signatures, you must run the corresponding generator scripts:
+External domain packages (such as `nce-vertical-engines`) integrate via the `nce.plugins` entry-point group (see [`docs/plugin_development.md`](docs/plugin_development.md)):
+
+- **`NCEPlugin` & `PluginCapabilities`:** Plugins declare `tenant_rls_tables`, `global_tables`, and `unmanaged_pg_sites` via `get_capabilities()` and register per-tenant bootstrap rows in `on_namespace_created(conn, namespace_id)`.
+- **Dual SQL Migration Ledgers:** Core migrations (`nce/migrations/001_enable_rls.sql`–`038_v351_hotpath_rls_and_indexes.sql`) record bare filenames in `applied_migrations`, whereas plugin migrations record `{plugin_scope}:{filename}` (`nce_verticals:037_bom_line_priced.sql`), preventing cross-repo numbering collisions.
+
+---
+
+## Schema, Lockfile & Surface Generators
+
+NCE enforces schema drift detection, lockfile reproducibility, and documentation synchronicity via mechanical generators. If you modify database migrations, dependencies, MCP tool definitions, or API route signatures, run the corresponding scripts:
 
 ```bash
-# 1. Verify that database migrations match the declarative schema definitions
+# 1. Verify that database migrations match the declarative schema definitions (43 Core SQL tables)
 python scripts/check_schema_drift.py
 
-# 2. Regenerate OpenAPI specifications
-python scripts/gen_openapi.py
+# 2. Refresh transitive dependency lockfile (requirements.lock)
+make lockfile
 
-# 3. Regenerate surface documentation and markdown indexes
-python scripts/gen_api_docs.py
+# 3. Regenerate OpenAPI specifications (in a Pure-Core environment without plugins mounted)
+NCE_ENABLED_ENGINES=none python scripts/gen_openapi.py
 
-# 4. Verify relative markdown links and code fence balance in docs
+# 4. Regenerate surface documentation and markdown indexes
+NCE_ENABLED_ENGINES=none python scripts/gen_api_docs.py
+
+# 5. Verify relative markdown links, anchors, 100% NCE_* config parity, and brand-wall hygiene
+python scripts/check_docs_integrity.py
 python scripts/verify_docs_links_and_syntax.py
 ```
+
+> [!NOTE]
+> **Generated Files & `.gitattributes` §10.5b Bot Guard:** Never hand-edit `docs/_generated/*` or `openapi.json`. After merging a PR to `main`, if a post-merge `github-actions[bot]` surface-regeneration workflow runs, always `git pull --ff-only origin main` before tagging or branching.
 
 ---
 
