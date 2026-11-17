@@ -44,6 +44,7 @@ import hashlib
 import io
 import json
 import logging
+import threading
 import uuid
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from dataclasses import dataclass, replace
@@ -463,22 +464,34 @@ async def _fetch_event_log_snapshot(
 # ---------------------------------------------------------------------------
 
 
+_MINIO_CLIENT: Minio | None = None
+_MINIO_CLIENT_LOCK = threading.Lock()
+
+
 def _make_minio() -> Minio:
-    http_client = urllib3.PoolManager(
-        timeout=urllib3.Timeout(connect=2.0, read=5.0),
-        retries=urllib3.Retry(
-            total=2,
-            backoff_factor=0.2,
-            status_forcelist=[500, 502, 503, 504],
-        ),
-    )
-    return Minio(
-        cfg.MINIO_ENDPOINT,
-        access_key=cfg.MINIO_ACCESS_KEY,
-        secret_key=cfg.MINIO_SECRET_KEY,
-        secure=cfg.MINIO_SECURE,
-        http_client=http_client,
-    )
+    global _MINIO_CLIENT
+    if _MINIO_CLIENT is not None:
+        return _MINIO_CLIENT
+    with _MINIO_CLIENT_LOCK:
+        if _MINIO_CLIENT is not None:
+            return _MINIO_CLIENT
+        http_client = urllib3.PoolManager(
+            maxsize=16,
+            timeout=urllib3.Timeout(connect=2.0, read=5.0),
+            retries=urllib3.Retry(
+                total=2,
+                backoff_factor=0.2,
+                status_forcelist=[500, 502, 503, 504],
+            ),
+        )
+        _MINIO_CLIENT = Minio(
+            cfg.MINIO_ENDPOINT,
+            access_key=cfg.MINIO_ACCESS_KEY,
+            secret_key=cfg.MINIO_SECRET_KEY,
+            secure=cfg.MINIO_SECURE,
+            http_client=http_client,
+        )
+        return _MINIO_CLIENT
 
 
 async def _fetch_llm_payload(uri: str) -> dict[str, Any]:
@@ -1591,10 +1604,10 @@ async def _handle_edge_confidence_floored(
         SELECT id
         FROM event_log
         WHERE namespace_id = $1
-          AND params->>'memory_id' = ANY($2::text[])
+          AND (params->>'memory_id')::uuid = ANY($2::uuid[])
         """,
         ctx.target_namespace_id,
-        [str(v) for v in valid_ids],
+        valid_ids,
     )
     if not origin_event_rows:
         return {"skipped": True, "reason": "no_matching_origin_events_in_target_namespace"}
@@ -2106,7 +2119,7 @@ class ForkedReplay:
                         SELECT COALESCE(MAX(event_seq), 0)
                         FROM event_log
                         WHERE namespace_id = $1
-                          AND params->>'replay_run_id' = $2
+                          AND params @> jsonb_build_object('replay_run_id', $2::text)
                         """,
                         target_namespace_id,
                         str(run_id),
@@ -2336,7 +2349,7 @@ class ReconstructiveReplay:
                         SELECT COALESCE(MAX(event_seq), 0)
                         FROM event_log
                         WHERE namespace_id = $1
-                          AND params->>'replay_run_id' = $2
+                          AND params @> jsonb_build_object('replay_run_id', $2::text)
                         """,
                         target_namespace_id,
                         str(run_id),

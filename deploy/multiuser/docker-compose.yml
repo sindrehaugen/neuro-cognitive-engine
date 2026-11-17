@@ -1,6 +1,6 @@
-# NCE v1.0 — prefer repository-root docker-compose.yml (admin + cron + a2a + Caddy).
+# DEPRECATED: Use the repository-root docker-compose.yml instead (admin + cron + a2a + mcp-gateway + Caddy).
 #
-# This file remains for alternate port mappings. Shared env: ../compose.stack.env
+# This legacy file remains only for alternate port mappings. Shared env: ../compose.stack.env
 #   cd deploy/multiuser && docker compose up -d --build
 
 services:
@@ -51,7 +51,7 @@ services:
     image: redis:7.4-alpine
     container_name: nce-redis
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -69,7 +69,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mcp_password}
       POSTGRES_DB: memory_meta
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ../../nce/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
@@ -84,7 +84,7 @@ services:
     image: mongo:7.0
     container_name: nce-mongo
     ports:
-      - "${MONGO_PORT:-27017}:27017"
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_data:/data/db
     restart: unless-stopped
@@ -106,8 +106,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-mcp_admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-super_secure_minio_password}
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     restart: unless-stopped
@@ -125,7 +125,7 @@ services:
       - "${COGNITIVE_PORT:-11435}:11435"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11435/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:11435/health')"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -160,7 +160,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -323,7 +323,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

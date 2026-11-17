@@ -164,3 +164,34 @@ async def reinforce(
         namespace_id,
         delta,
     )
+
+
+_REAL_REINFORCE = reinforce
+
+
+async def reinforce_batch(
+    conn: asyncpg.Connection,
+    memory_ids: list[str],
+    agent_id: str,
+    namespace_id: str,
+    delta: float = 0.05,
+) -> None:
+    """Batch-reinforces salience scores on retrieval using a single UNNEST UPSERT."""
+    unique_ids = list(dict.fromkeys(str(mid) for mid in memory_ids if mid))
+    if not unique_ids:
+        return
+    await conn.execute(
+        """
+        INSERT INTO memory_salience (memory_id, agent_id, namespace_id, salience_score, updated_at, access_count)
+        SELECT m_id, $2, $3::uuid, LEAST(1.0, $4::real), NOW(), 1
+        FROM UNNEST($1::uuid[]) AS m_id
+        ON CONFLICT (memory_id, agent_id) DO UPDATE
+            SET salience_score = LEAST(1.0, memory_salience.salience_score + $4::real),
+                updated_at = NOW(),
+                access_count = memory_salience.access_count + 1
+        """,
+        unique_ids,
+        agent_id,
+        namespace_id,
+        delta,
+    )

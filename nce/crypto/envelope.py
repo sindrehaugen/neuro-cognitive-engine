@@ -20,6 +20,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import time
 import uuid
 from collections import OrderedDict
@@ -787,29 +788,66 @@ class EnvelopeCryptoManager:
 
     async def subscribe_key_invalidation(self, redis_client: Any) -> None:
         """
-        Background listener for REDIS_KEY_EVICT_CHANNEL.
+        Background listener for REDIS_KEY_EVICT_CHANNEL with reconnect backoff.
         """
         if redis_client is None:
             return
 
-        pubsub = redis_client.pubsub()
-        subscribe_fn = getattr(pubsub, "subscribe", None)
-        if subscribe_fn is not None:
-            res = subscribe_fn(REDIS_KEY_EVICT_CHANNEL)
-            if asyncio.iscoroutine(res):
-                await res
+        async def _subscribe_once() -> Any:
+            pubsub = redis_client.pubsub()
+            subscribe_fn = getattr(pubsub, "subscribe", None)
+            if subscribe_fn is not None:
+                res = subscribe_fn(REDIS_KEY_EVICT_CHANNEL)
+                if asyncio.iscoroutine(res):
+                    await res
+            return pubsub
 
-        async def _reader():
+        async def _close_pubsub(pubsub: Any) -> None:
+            if pubsub is None:
+                return
+            close_fn = getattr(pubsub, "aclose", None) or getattr(pubsub, "close", None)
+            if callable(close_fn):
+                try:
+                    res = close_fn()
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception:
+                    pass
+
+        initial_pubsub = await _subscribe_once()
+
+        async def _reader() -> None:
+            pubsub = initial_pubsub
+            attempt = 0
             try:
-                listen_fn = getattr(pubsub, "listen", None)
-                if listen_fn is not None:
-                    async for message in pubsub.listen():
-                        if message and message.get("type") == "message":
-                            self.handle_invalidation_message(message.get("data", ""))
+                while True:
+                    try:
+                        if pubsub is None:
+                            pubsub = await _subscribe_once()
+                        listen_fn = getattr(pubsub, "listen", None)
+                        if listen_fn is not None:
+                            async for message in pubsub.listen():
+                                attempt = 0
+                                if message and message.get("type") == "message":
+                                    self.handle_invalidation_message(message.get("data", ""))
+                        return
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        attempt += 1
+                        delay = min(60.0, float(2 ** min(attempt, 6))) + random.uniform(0.0, 1.0)
+                        log.warning(
+                            "Error in key invalidation pubsub reader (attempt %d, retrying in %.1fs): %s",
+                            attempt,
+                            delay,
+                            exc,
+                        )
+                        await _close_pubsub(pubsub)
+                        pubsub = None
+                        await asyncio.sleep(delay)
             except asyncio.CancelledError:
-                pass
-            except Exception as exc:
-                log.warning("Error in key invalidation pubsub reader: %s", exc)
+                await _close_pubsub(pubsub)
+                raise
 
         self._sub_task = asyncio.create_task(_reader())
 
@@ -882,9 +920,8 @@ async def crypto_shred_subject(
             )
             shredded_dek_ids = [str(r["dek_id"]) for r in rows]
         except Exception as exc:
-            log.warning(
-                "Database update in crypto_shred_subject failed; checking in-memory store: %s", exc
-            )
+            log.error("Database update in crypto_shred_subject failed: %s", exc)
+            raise
 
     # In-memory store fallback / synchronization
     mem_shredded = active_mgr.in_memory_store.shred(ns_str, subject_ref)
@@ -919,14 +956,12 @@ async def crypto_shred_subject(
     receipt_sha256 = hashlib.sha256(canonical_receipt).hexdigest()
     receipt["receipt_sha256"] = receipt_sha256
 
-    # Write to WORM event_log if conn is in a transaction
-    try:
+    # Write to WORM event_log if conn is in a transaction (fail closed on error)
+    can_append = is_live_conn and hasattr(conn, "is_in_transaction") and conn.is_in_transaction()
+    if can_append:
         from nce.event_log import append_event
 
-        can_append = (
-            is_live_conn and hasattr(conn, "is_in_transaction") and conn.is_in_transaction()
-        )
-        if can_append:
+        try:
             await append_event(
                 conn=conn,
                 namespace_id=ns_uuid,
@@ -942,7 +977,8 @@ async def crypto_shred_subject(
                     },
                 },
             )
-    except Exception as exc:
-        log.warning("WORM event_log append in crypto_shred_subject skipped/failed: %s", exc)
+        except Exception as exc:
+            log.error("WORM event_log append in crypto_shred_subject failed: %s", exc)
+            raise
 
     return receipt

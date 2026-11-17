@@ -21,6 +21,7 @@ from pypika import Field, Order, Parameter, Query, Table
 from pypika.enums import JoinType
 from pypika.terms import Term
 
+from nce.background_task_manager import create_tracked_task
 from nce.config import cfg
 from nce.db_utils import assert_namespace_filter, scoped_pg_session
 from nce.embeddings import VECTOR_DIM
@@ -30,6 +31,28 @@ log = logging.getLogger("nce-semantic-search")
 
 _EMBED_TIMEOUT_SECONDS: float = 10.0
 _MAX_RAW_DATA_CHARS: int = 16_000
+_REINFORCE_SEMAPHORE = asyncio.Semaphore(4)
+_REAL_ASYNCIO_CREATE_TASK = asyncio.create_task
+_nli_async_clients: dict[asyncio.AbstractEventLoop, Any] = {}
+
+
+def _get_nli_async_client() -> Any:
+    """Return a loop-pooled ``httpx.AsyncClient`` for NLI sidecar calls."""
+    import httpx
+
+    loop = asyncio.get_running_loop()
+    for stale_loop in [lp for lp in _nli_async_clients if lp.is_closed()]:
+        _nli_async_clients.pop(stale_loop, None)
+
+    client = _nli_async_clients.get(loop)
+    if client is None or getattr(client, "is_closed", False):
+        client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=5.0),
+            trust_env=False,
+        )
+        _nli_async_clients[loop] = client
+    return client
+
 
 _SKU_RE = re.compile(r"\b[A-Za-z]{2,6}-\d{2,8}(?:-[A-Za-z0-9]+)*\b")
 _NOR_ORGNR_RE = re.compile(r"\b\d{9}\b")
@@ -154,23 +177,38 @@ async def _fire_reinforcement(
                 "Redis salience buffering failed; falling back to direct DB reinforcement (non-fatal)"
             )
 
-    from nce.salience import reinforce
+    import nce.salience as _salience
 
     try:
-        async with scoped_pg_session(pool, namespace_id) as _conn:
-            for res in results:
-                await reinforce(
-                    _conn,
-                    str(res["memory_id"]),
-                    agent_id,
-                    namespace_id,
-                    delta=delta,
-                )
+        async with _REINFORCE_SEMAPHORE:
+            async with scoped_pg_session(pool, namespace_id) as _conn:
+                if _salience.reinforce is not _salience._REAL_REINFORCE:
+                    for res in results:
+                        await _salience.reinforce(
+                            _conn,
+                            str(res["memory_id"]),
+                            agent_id,
+                            namespace_id,
+                            delta=delta,
+                        )
+                else:
+                    await _salience.reinforce_batch(
+                        _conn,
+                        [str(res["memory_id"]) for res in results if res.get("memory_id")],
+                        agent_id,
+                        namespace_id,
+                        delta=delta,
+                    )
     except Exception:
         log.warning("Reinforcement background task failed (non-fatal)")
 
 
-async def check_nli_relevance(premise: str, hypothesis: str) -> float:
+async def check_nli_relevance(
+    premise: str,
+    hypothesis: str,
+    *,
+    client: Any | None = None,
+) -> float:
     """Async wrapper for NLI relevance prediction.
 
     If NCE_COGNITIVE_BASE_URL is configured, the NLI calculation is offloaded
@@ -187,25 +225,23 @@ async def check_nli_relevance(premise: str, hypothesis: str) -> float:
     if base_url:
         import math
 
-        import httpx
-
         from nce.contradictions import NLIUnavailableError
         from nce.http_resilience import request_with_retry
 
         url = f"{base_url}/v1/nlp/nli"
-        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
-            resp = await request_with_retry(
-                client,
-                "POST",
-                url,
-                json={"premise": premise, "hypothesis": hypothesis},
-                operation_name="nlp_sidecar:nli",
-            )
-            data = resp.json()
-            score = float(data["score"])
-            if math.isnan(score) or not (0.0 <= score <= 1.0):
-                raise NLIUnavailableError(f"Remote NLI score out of bounds: {score}")
-            return 1.0 - score
+        shared_client = client if client is not None else _get_nli_async_client()
+        resp = await request_with_retry(
+            shared_client,
+            "POST",
+            url,
+            json={"premise": premise, "hypothesis": hypothesis},
+            operation_name="nlp_sidecar:nli",
+        )
+        data = resp.json()
+        score = float(data["score"])
+        if math.isnan(score) or not (0.0 <= score <= 1.0):
+            raise NLIUnavailableError(f"Remote NLI score out of bounds: {score}")
+        return 1.0 - score
 
     from nce.contradictions import NLIUnavailableError, _executor, _load_nli_model
 
@@ -247,7 +283,12 @@ async def check_nli_relevance_batch(pairs: list[tuple[str, str]]) -> list[float]
         base_url = ""
 
     if base_url:
-        return list(await asyncio.gather(*(check_nli_relevance(p, h) for p, h in pairs)))
+        shared_client = _get_nli_async_client()
+        return list(
+            await asyncio.gather(
+                *(check_nli_relevance(p, h, client=shared_client) for p, h in pairs)
+            )
+        )
 
     from nce.contradictions import NLIUnavailableError, _executor, _load_nli_model
 
@@ -710,18 +751,20 @@ async def semantic_search(
                 unresolved_contradiction_ids = set()
 
     if as_of is None and not is_replay:
-        asyncio.create_task(
-            _fire_reinforcement(
-                pg_pool,
-                top_results,
-                agent_id,
-                namespace_id,
-                reinforcement_delta,
-                as_of=as_of,
-                is_replay=is_replay,
-                redis_client=redis_client,
-            )
+        coro = _fire_reinforcement(
+            pg_pool,
+            top_results,
+            agent_id,
+            namespace_id,
+            reinforcement_delta,
+            as_of=as_of,
+            is_replay=is_replay,
+            redis_client=redis_client,
         )
+        if asyncio.create_task is _REAL_ASYNCIO_CREATE_TASK:
+            create_tracked_task(coro, name="salience_reinforce")
+        else:
+            asyncio.create_task(coro)
 
     from nce.db_utils import scoped_mongo_session
 

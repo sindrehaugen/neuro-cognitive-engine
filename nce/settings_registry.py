@@ -606,7 +606,7 @@ REGISTRY: dict[str, SettingMetadata] = {
         type="str",
         reload_class="WARM",
         is_secret=False,
-        prod_locked=False,
+        prod_locked=True,
         validator=validate_str(allow_empty=True),
         description="URL mapping for the local OpenAI-compatible cognitive server.",
     ),

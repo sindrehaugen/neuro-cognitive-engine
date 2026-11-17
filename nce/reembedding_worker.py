@@ -508,9 +508,9 @@ class ReembeddingWorker:
         client = self._redis_client
         try:
             if owned:
-                from redis.asyncio import Redis as AsyncRedis
+                from nce._client_factory import make_async_redis
 
-                client = AsyncRedis.from_url(cfg.REDIS_URL)
+                client = make_async_redis(cfg.REDIS_URL)
 
             token = await _acquire_redis_lock(client, _EMBED_LOCK_KEY, _EMBED_LOCK_TTL)
             if token is None:
@@ -909,7 +909,9 @@ async def async_main() -> None:
     try:
         from motor.motor_asyncio import AsyncIOMotorClient
 
-        mongo_client = AsyncIOMotorClient(cfg.MONGO_URI, serverSelectionTimeoutMS=5_000)
+        from nce._client_factory import motor_timeout_kwargs
+
+        mongo_client = AsyncIOMotorClient(cfg.MONGO_URI, **motor_timeout_kwargs())
     except ImportError:
         log.warning("motor not available — re-embedding will use fallback text only.")
 

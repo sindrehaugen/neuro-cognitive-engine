@@ -23,9 +23,11 @@ merge the results, use ``deduplicate_graph()``.  It:
 import asyncio
 import logging
 import re
+import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+from typing import Any
 
 from nce.models import KGEdge, KGNode
 
@@ -276,22 +278,40 @@ def deduplicate_graph(
     return merged_nodes, merged_edges
 
 
+_spacy_http_client: Any = None
+_spacy_http_client_lock = threading.Lock()
+
+
+def _get_spacy_http_client() -> Any:
+    """Return a module-level pooled ``httpx.Client`` for sidecar spaCy calls."""
+    global _spacy_http_client
+    if _spacy_http_client is not None and not getattr(_spacy_http_client, "is_closed", False):
+        return _spacy_http_client
+    with _spacy_http_client_lock:
+        if _spacy_http_client is None or getattr(_spacy_http_client, "is_closed", False):
+            import httpx
+
+            _spacy_http_client = httpx.Client(
+                timeout=httpx.Timeout(30.0, connect=5.0),
+                trust_env=False,
+            )
+        return _spacy_http_client
+
+
 def _spacy_extract_remote(text: str, base_url: str) -> tuple[list[KGNode], list[KGEdge]]:
     """Send text to cognitive sidecar for spaCy entity and triplet extraction."""
-    import httpx
-
     from nce.http_resilience import request_with_retry_sync
 
     url = f"{base_url}/v1/nlp/spacy"
-    with httpx.Client(timeout=30.0) as client:
-        resp = request_with_retry_sync(
-            client,
-            "POST",
-            url,
-            json={"text": text},
-            operation_name="nlp_sidecar:spacy",
-        )
-        data = resp.json()
+    client = _get_spacy_http_client()
+    resp = request_with_retry_sync(
+        client,
+        "POST",
+        url,
+        json={"text": text},
+        operation_name="nlp_sidecar:spacy",
+    )
+    data = resp.json()
 
     nodes = []
     for n in data.get("nodes", []):

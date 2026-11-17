@@ -1465,7 +1465,15 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
             return None
 
         if not self._nonce_required:
-            # Legacy / opt-out path: only check if store present and nonce provided
+            # Legacy / opt-out path: check signature replay and optional nonce if store present
+            sig_key = f"sig:{ctx.signature}"
+            if not await self._nonce_store.check_and_store(sig_key):
+                log.warning("HMAC signature replay detected: sig=%s...", ctx.signature[:16])
+                return _jsonrpc_error(
+                    _CODE_REPLAY,
+                    "Request already processed (replay detected)",
+                    "replay_nonce_conflict",
+                )
             if nonce_value:
                 if not await self._nonce_store.check_and_store(nonce_value):
                     log.warning("HMAC nonce replay detected: nonce=%s...", nonce_value[:16])
@@ -1501,7 +1509,16 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
                 "nonce_missing",
             )
 
-        # Replay check: SET NX
+        # Replay check: SET NX on both signature and client nonce
+        sig_key = f"sig:{ctx.signature}"
+        if not await self._nonce_store.check_and_store(sig_key):
+            log.warning("HMAC signature replay detected: sig=%s...", ctx.signature[:16])
+            return _jsonrpc_error(
+                _CODE_REPLAY,
+                "Request already processed (replay detected)",
+                "replay_nonce_conflict",
+            )
+
         if not await self._nonce_store.check_and_store(nonce_value):
             log.warning("HMAC nonce replay detected: nonce=%s...", nonce_value[:16])
             return _jsonrpc_error(
@@ -1612,7 +1629,12 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if not path.startswith(self._protected_prefix):
             return await call_next(request)
-        if any(path.startswith(prefix) for prefix in self._excluded_prefixes):
+        if any(
+            path.startswith(prefix)
+            if prefix.endswith("/")
+            else (path == prefix or path.startswith(prefix + "/"))
+            for prefix in self._excluded_prefixes
+        ):
             return await call_next(request)
 
         if not self._username or not self._password:

@@ -72,7 +72,6 @@ KNOWN_UNWIRED: frozenset[str] = frozenset(
         "tests/test_garbage_collector.py",
         "tests/test_governed_decorator.py",
         "tests/test_me_app.py",
-        "tests/test_replay_handlers_integration.py",
         "tests/test_shred_memory_integration.py",
         "tests/test_snapshot_mcp_handlers.py",
         "tests/test_tamper_anchor.py",

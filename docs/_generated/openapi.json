@@ -482,6 +482,10 @@
           "bridge_id": {
             "type": "string"
           },
+          "namespace_id": {
+            "description": "Tenant namespace UUID",
+            "type": "string"
+          },
           "user_id": {
             "type": "string"
           }
@@ -771,6 +775,10 @@
           "bridge_id": {
             "type": "string"
           },
+          "namespace_id": {
+            "description": "Tenant namespace UUID",
+            "type": "string"
+          },
           "user_id": {
             "type": "string"
           }
@@ -899,6 +907,10 @@
       "Tool_force_resync_bridge_Input": {
         "properties": {
           "bridge_id": {
+            "type": "string"
+          },
+          "namespace_id": {
+            "description": "Tenant namespace UUID",
             "type": "string"
           },
           "user_id": {
@@ -1103,6 +1115,10 @@
             "default": false,
             "description": "Include DISCONNECTED rows",
             "type": "boolean"
+          },
+          "namespace_id": {
+            "description": "Tenant namespace UUID",
+            "type": "string"
           },
           "user_id": {
             "type": "string"

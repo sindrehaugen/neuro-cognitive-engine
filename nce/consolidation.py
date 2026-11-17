@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import io
 import json
@@ -23,6 +24,14 @@ from nce.sanitize import sanitize_llm_payload
 from nce.signing import canonical_json
 
 log = logging.getLogger(__name__)
+
+
+@functools.lru_cache(maxsize=4)
+def _get_cached_minio_client(endpoint: str, access_key: str, secret_key: str, secure: bool) -> Any:
+    """Return a cached MinIO client with bounded timeouts and connection pooling."""
+    from nce._client_factory import make_minio
+
+    return make_minio(endpoint, access_key, secret_key, secure=secure)
 
 
 def _is_valid_uuid(val: str) -> bool:
@@ -449,22 +458,16 @@ class ConsolidationWorker:
             and cfg.MINIO_SECRET_KEY
         ):
             try:
-                import urllib3
-                from minio import Minio
                 from minio.error import S3Error
 
                 bucket, key = candidate_uri.split("/", 1)
 
                 def _upload_configured() -> None:
-                    fast_client = Minio(
+                    fast_client = _get_cached_minio_client(
                         cfg.MINIO_ENDPOINT,
-                        access_key=cfg.MINIO_ACCESS_KEY,
-                        secret_key=cfg.MINIO_SECRET_KEY,
-                        secure=cfg.MINIO_SECURE,
-                        http_client=urllib3.PoolManager(
-                            timeout=urllib3.Timeout(connect=0.3, read=3.0),
-                            retries=urllib3.Retry(total=1, backoff_factor=0.05),
-                        ),
+                        cfg.MINIO_ACCESS_KEY,
+                        cfg.MINIO_SECRET_KEY,
+                        cfg.MINIO_SECURE,
                     )
                     try:
                         if not fast_client.bucket_exists(bucket):

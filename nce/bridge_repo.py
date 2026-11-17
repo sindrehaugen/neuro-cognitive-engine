@@ -105,7 +105,18 @@ async def fetch_expiring(
     )
 
 
-async def get_by_id(conn: asyncpg.Connection, bridge_id: uuid.UUID) -> asyncpg.Record | None:
+async def get_by_id(
+    conn: asyncpg.Connection,
+    bridge_id: uuid.UUID,
+    *,
+    namespace_id: uuid.UUID | None = None,
+) -> asyncpg.Record | None:
+    if namespace_id is not None:
+        return await conn.fetchrow(
+            "SELECT * FROM bridge_subscriptions WHERE id = $1 AND namespace_id = $2::uuid",
+            bridge_id,
+            namespace_id,
+        )
     return await conn.fetchrow(
         "SELECT * FROM bridge_subscriptions WHERE id = $1",
         bridge_id,
@@ -116,8 +127,29 @@ async def list_for_user(
     conn: asyncpg.Connection,
     user_id: str,
     *,
+    namespace_id: uuid.UUID | None = None,
     include_disconnected: bool = False,
 ) -> list[asyncpg.Record]:
+    if namespace_id is not None:
+        if include_disconnected:
+            return await conn.fetch(
+                """
+                SELECT * FROM bridge_subscriptions
+                WHERE user_id = $1 AND namespace_id = $2::uuid
+                ORDER BY updated_at DESC
+                """,
+                user_id,
+                namespace_id,
+            )
+        return await conn.fetch(
+            """
+            SELECT * FROM bridge_subscriptions
+            WHERE user_id = $1 AND namespace_id = $2::uuid AND status <> 'DISCONNECTED'
+            ORDER BY updated_at DESC
+            """,
+            user_id,
+            namespace_id,
+        )
     if include_disconnected:
         return await conn.fetch(
             """

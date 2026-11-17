@@ -99,8 +99,7 @@ class BridgeProvider(ABC):
 @functools.lru_cache(maxsize=1)
 def redis_client():
     """Shared sync Redis handle for cursors and dedupe (worker + bridges)."""
-    from redis import Redis
-
+    from nce._client_factory import make_sync_redis
     from nce.config import cfg
 
-    return Redis.from_url(cfg.REDIS_URL)
+    return make_sync_redis(cfg.REDIS_URL)

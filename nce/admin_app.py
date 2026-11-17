@@ -154,7 +154,7 @@ def build_admin_middleware() -> list[Middleware]:
         Middleware(AdminHTTPRateLimitMiddleware),
         Middleware(
             MTLSAuthMiddleware,
-            protected_prefix="/api/",
+            protected_prefixes=("/api/", "/admin/plugins/api"),
             enabled=cfg.NCE_ADMIN_MTLS_ENABLED,
             strict=cfg.NCE_ADMIN_MTLS_STRICT,
             trusted_proxy_hops=cfg.NCE_ADMIN_MTLS_TRUSTED_PROXY_HOP,

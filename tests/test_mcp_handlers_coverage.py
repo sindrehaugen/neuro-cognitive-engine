@@ -800,7 +800,7 @@ async def test_list_bridges_and_status() -> None:
         new_callable=AsyncMock,
         return_value=[row],
     ):
-        raw = await bridge_mcp_handlers.list_bridges(engine, {"user_id": "u1"})
+        raw = await bridge_mcp_handlers.list_bridges(engine, {"user_id": "u1", "namespace_id": NS})
         bridges = json.loads(raw)["bridges"]
         assert len(bridges) == 1
         assert bridges[0]["provider"] == "dropbox"
@@ -812,7 +812,7 @@ async def test_list_bridges_and_status() -> None:
         return_value=row,
     ):
         raw = await bridge_mcp_handlers.bridge_status(
-            engine, {"user_id": "u1", "bridge_id": str(rid)}
+            engine, {"user_id": "u1", "namespace_id": NS, "bridge_id": str(rid)}
         )
         out = json.loads(raw)
         assert out["id"] == str(rid)
@@ -948,7 +948,7 @@ async def test_disconnect_bridge_dropbox() -> None:
         ),
     ):
         raw = await bridge_mcp_handlers.disconnect_bridge(
-            engine, {"user_id": "u1", "bridge_id": str(bid)}
+            engine, {"user_id": "u1", "namespace_id": NS, "bridge_id": str(bid)}
         )
     assert json.loads(raw)["state"] == "DISCONNECTED"
 
@@ -986,7 +986,7 @@ async def test_force_resync_bridge_dropbox_enqueues(
         inst.enqueue.return_value = job
         get_q.return_value = inst
         raw = await bridge_mcp_handlers.force_resync_bridge(
-            engine, {"user_id": "u1", "bridge_id": str(bid)}
+            engine, {"user_id": "u1", "namespace_id": NS, "bridge_id": str(bid)}
         )
     assert json.loads(raw)["job_id"] == "jq-1"
 
@@ -1477,7 +1477,7 @@ async def test_disconnect_sharepoint_and_gdrive_http_paths(
         ),
     ):
         raw = await bridge_mcp_handlers.disconnect_bridge(
-            engine, {"user_id": "u1", "bridge_id": str(bid)}
+            engine, {"user_id": "u1", "namespace_id": NS, "bridge_id": str(bid)}
         )
     assert json.loads(raw)["state"] == "DISCONNECTED"
 
@@ -1502,7 +1502,7 @@ async def test_disconnect_sharepoint_and_gdrive_http_paths(
         ),
     ):
         raw = await bridge_mcp_handlers.disconnect_bridge(
-            engine, {"user_id": "u1", "bridge_id": str(bid)}
+            engine, {"user_id": "u1", "namespace_id": NS, "bridge_id": str(bid)}
         )
     assert json.loads(raw)["state"] == "DISCONNECTED"
 
@@ -1521,7 +1521,7 @@ async def test_disconnect_sharepoint_and_gdrive_http_paths(
         ),
     ):
         await bridge_mcp_handlers.disconnect_bridge(
-            engine, {"user_id": "u1", "bridge_id": str(bid)}
+            engine, {"user_id": "u1", "namespace_id": NS, "bridge_id": str(bid)}
         )
 
 
@@ -1561,7 +1561,7 @@ async def test_force_resync_sharepoint_and_gdrive(
         ):
             RedisM.from_url.return_value = MagicMock()
             raw = await bridge_mcp_handlers.force_resync_bridge(
-                engine, {"user_id": "u1", "bridge_id": str(bid)}
+                engine, {"user_id": "u1", "namespace_id": NS, "bridge_id": str(bid)}
             )
         assert json.loads(raw)["job_id"] == "jq-sp"
 
@@ -1588,7 +1588,7 @@ async def test_force_resync_sharepoint_bad_resource() -> None:
     ):
         with pytest.raises(McpError) as exc_info:
             await bridge_mcp_handlers.force_resync_bridge(
-                engine, {"user_id": "u1", "bridge_id": str(bid)}
+                engine, {"user_id": "u1", "namespace_id": NS, "bridge_id": str(bid)}
             )
         assert "force_resync" in exc_info.value.data["detail"]
 
@@ -1611,7 +1611,7 @@ async def test_bridge_status_not_found() -> None:
     ):
         with pytest.raises(McpError):
             await bridge_mcp_handlers.bridge_status(
-                engine, {"user_id": "u1", "bridge_id": str(uuid.uuid4())}
+                engine, {"user_id": "u1", "namespace_id": NS, "bridge_id": str(uuid.uuid4())}
             )
 
 
@@ -1625,7 +1625,7 @@ async def test_list_bridges_include_disconnected_flag() -> None:
         return_value=[],
     ) as lf:
         await bridge_mcp_handlers.list_bridges(
-            engine, {"user_id": "u1", "include_disconnected": True}
+            engine, {"user_id": "u1", "namespace_id": NS, "include_disconnected": True}
         )
     lf.assert_called_once()
     assert lf.call_args.kwargs.get("include_disconnected") is True

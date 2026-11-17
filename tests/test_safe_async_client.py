@@ -56,8 +56,8 @@ class TestSafeAsyncClient:
             assert not isinstance(excinfo.value, UnsafeURLError)
 
     @pytest.mark.asyncio
-    async def test_allows_unresolvable_host(self, monkeypatch: pytest.MonkeyPatch):
-        """Unresolvable hosts pass the guard and fail at connection time."""
+    async def test_blocks_unresolvable_host(self, monkeypatch: pytest.MonkeyPatch):
+        """Unresolvable hosts fail closed in the SSRF guard with UnsafeURLError."""
         import socket
 
         _real_getaddrinfo = socket.getaddrinfo
@@ -70,9 +70,8 @@ class TestSafeAsyncClient:
         monkeypatch.setattr("socket.getaddrinfo", _mock_getaddrinfo)
 
         async with SafeAsyncClient() as client:
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(UnsafeURLError, match="DNS resolution failed"):
                 await client.get("https://this-host-definitely-does-not-exist.invalid/")
-            assert not isinstance(excinfo.value, UnsafeURLError)
 
     @pytest.mark.asyncio
     async def test_blocks_ipv6_loopback(self, monkeypatch: pytest.MonkeyPatch):

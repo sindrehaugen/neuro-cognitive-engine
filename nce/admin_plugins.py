@@ -8,6 +8,8 @@ import json
 import logging
 import os
 import secrets
+import sys
+import time
 import uuid
 from base64 import b64decode
 from binascii import Error as BinasciiError
@@ -105,7 +107,7 @@ def _check_admin_auth(request: Request) -> JSONResponse | None:
     # 1. API key in custom headers
     headers = getattr(request, "headers", None)
     if headers is None:
-        return None
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
     api_key = (
         headers.get("x-admin-api-key")
         or headers.get("x-nce-admin-key")
@@ -160,6 +162,8 @@ def _check_admin_auth(request: Request) -> JSONResponse | None:
             if ts_raw:
                 try:
                     ts = int(ts_raw)
+                    if abs(int(time.time()) - ts) > 300:
+                        return JSONResponse({"error": "Unauthorized"}, status_code=401)
                     body_bytes = getattr(request, "_body", b"")
                     expected_hmac_keys = [k for k in (cfg.NCE_API_KEY, live_admin_api_key()) if k]
                     if any(
@@ -198,6 +202,75 @@ def _check_admin_auth(request: Request) -> JSONResponse | None:
 
     if override_disabled_in_env or not cfg.NCE_ADMIN_OVERRIDE or is_prod or has_admin_key_in_env:
         return JSONResponse({"error": "Authentication required"}, status_code=401)
+
+    return None
+
+
+def _get_admin_hmac_nonce_store() -> Any:
+    """Resolve the admin HMAC NonceStore from nce.admin_app or optional_hmac_nonce_store()."""
+    admin_app_mod = sys.modules.get("nce.admin_app")
+    if admin_app_mod is not None:
+        store = getattr(admin_app_mod, "_hmac_nonce_store", None)
+        if store is not None:
+            return store
+    from nce.auth import optional_hmac_nonce_store
+
+    return optional_hmac_nonce_store()
+
+
+async def _check_admin_auth_async(request: Request) -> JSONResponse | None:
+    """Async wrapper over _check_admin_auth adding distributed HMAC replay protection."""
+    err = _check_admin_auth(request)
+    if err is not None:
+        return err
+
+    headers = getattr(request, "headers", None)
+    if headers is None:
+        return None
+
+    auth = (headers.get("authorization") or "").strip()
+    if not auth.lower().startswith("hmac-sha256 "):
+        return None
+
+    state = getattr(request, "state", None)
+    if state is not None and (
+        getattr(state, "hmac_authenticated", False)
+        or getattr(state, "namespace_ctx", None) is not None
+    ):
+        return None
+
+    sig_val = auth.split(" ", 1)[1].strip()
+    sig_key = f"sig:{sig_val.lower()}"
+    nonce_val = (headers.get("x-nce-nonce") or "").strip()
+    nonce_store = _get_admin_hmac_nonce_store()
+    is_prod = bool(cfg.IS_PROD or os.environ.get("NCE_ENV", "").lower() in ("production", "prod"))
+
+    if nonce_store is None:
+        if is_prod:
+            logger.error("Admin plugin HMAC requires NonceStore in production (fail-closed)")
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return None
+
+    ping_fn = getattr(nonce_store, "ping", None)
+    redis_up = await ping_fn() if callable(ping_fn) else True
+    if not redis_up:
+        if is_prod:
+            logger.error("Admin plugin HMAC NonceStore unreachable in production (fail-closed)")
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        logger.warning("Admin plugin HMAC NonceStore unreachable — allowing in dev/test")
+        return None
+
+    if not await nonce_store.check_and_store(sig_key):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    if getattr(cfg, "NCE_HMAC_NONCE_REQUIRED", True):
+        if not nonce_val:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if not await nonce_store.check_and_store(nonce_val):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    elif nonce_val:
+        if not await nonce_store.check_and_store(nonce_val):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     return None
 
@@ -393,7 +466,7 @@ async def admin_plugins_console(request: Request, ctx: Any = None) -> Response:
 
     Serve admin/plugins.html console UI, or return catalog JSON if requested.
     """
-    auth_err = _check_admin_auth(request)
+    auth_err = await _check_admin_auth_async(request)
     if auth_err is not None:
         return auth_err
 
@@ -412,7 +485,7 @@ async def admin_plugins_api(request: Request, ctx: Any = None) -> JSONResponse:
 
     Dual-axis faceted catalog query API.
     """
-    auth_err = _check_admin_auth(request)
+    auth_err = await _check_admin_auth_async(request)
     if auth_err is not None:
         return auth_err
 
@@ -440,7 +513,7 @@ async def admin_plugins_toggle(request: Request, ctx: Any = None) -> JSONRespons
     Dynamically enable or disable an engine runtime state in Redis.
     """
     await request.body()
-    auth_err = _check_admin_auth(request)
+    auth_err = await _check_admin_auth_async(request)
     if auth_err is not None:
         return auth_err
 
@@ -551,7 +624,7 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
     zero-secret desktop/IDE mcp_config.json snippet.
     """
     await request.body()
-    auth_err = _check_admin_auth(request)
+    auth_err = await _check_admin_auth_async(request)
     if auth_err is not None:
         return auth_err
 
@@ -588,11 +661,14 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
                 scopes_list.append(scope_item)
 
     raw_ns = body.get("namespace_id")
-    if raw_ns:
+    if raw_ns is not None and raw_ns != "":
         try:
-            namespace_id = str(uuid.UUID(str(raw_ns)))
-        except (ValueError, TypeError):
-            namespace_id = str(raw_ns).strip()
+            namespace_id = str(uuid.UUID(str(raw_ns).strip()))
+        except (ValueError, TypeError, AttributeError):
+            return JSONResponse(
+                {"error": "Invalid 'namespace_id': must be a valid UUID"},
+                status_code=400,
+            )
     else:
         namespace_id = "00000000-0000-0000-0000-000000000001"
 
@@ -617,18 +693,48 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
     raw_mode = str(body.get("tool_exposure_mode", "compact")).strip().lower()
     tool_exposure_mode = raw_mode if raw_mode in ("compact", "full") else "compact"
 
-    try:
-        rate_limit_rpm = int(body.get("rate_limit_rpm", 120))
-        if rate_limit_rpm <= 0:
-            rate_limit_rpm = 120
-    except (ValueError, TypeError):
+    if "rate_limit_rpm" in body and body["rate_limit_rpm"] is not None:
+        raw_rpm = body["rate_limit_rpm"]
+        if isinstance(raw_rpm, bool):
+            return JSONResponse(
+                {"error": "'rate_limit_rpm' must be an integer between 1 and 10000"},
+                status_code=400,
+            )
+        try:
+            rate_limit_rpm = int(raw_rpm)
+        except (ValueError, TypeError):
+            return JSONResponse(
+                {"error": "'rate_limit_rpm' must be an integer between 1 and 10000"},
+                status_code=400,
+            )
+        if not (1 <= rate_limit_rpm <= 10000):
+            return JSONResponse(
+                {"error": "'rate_limit_rpm' must be between 1 and 10000"},
+                status_code=400,
+            )
+    else:
         rate_limit_rpm = 120
 
-    try:
-        expires_in_days = int(body.get("expires_in_days", 30))
-        if expires_in_days <= 0:
-            expires_in_days = 30
-    except (ValueError, TypeError):
+    if "expires_in_days" in body and body["expires_in_days"] is not None:
+        raw_exp = body["expires_in_days"]
+        if isinstance(raw_exp, bool):
+            return JSONResponse(
+                {"error": "'expires_in_days' must be an integer between 1 and 365"},
+                status_code=400,
+            )
+        try:
+            expires_in_days = int(raw_exp)
+        except (ValueError, TypeError):
+            return JSONResponse(
+                {"error": "'expires_in_days' must be an integer between 1 and 365"},
+                status_code=400,
+            )
+        if not (1 <= expires_in_days <= 365):
+            return JSONResponse(
+                {"error": "'expires_in_days' must be between 1 and 365"},
+                status_code=400,
+            )
+    else:
         expires_in_days = 30
 
     now_utc = datetime.now(timezone.utc)
@@ -689,8 +795,11 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
                     now_utc,
                 )
         except Exception as exc:
-            logger.warning(
-                "Could not persist mcp_client_token to DB (falling back to memory): %s", exc
+            MINTED_MCP_TOKENS.pop(token_sha256, None)
+            logger.error("Failed to persist mcp_client_token to DB: %s", exc)
+            return JSONResponse(
+                {"error": "Failed to persist minted token"},
+                status_code=500,
             )
 
     mcp_config = {

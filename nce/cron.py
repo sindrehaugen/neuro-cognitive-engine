@@ -223,9 +223,10 @@ def _decode_saga_payload(raw_payload: object) -> dict:
     return {}
 
 
-async def _saga_recovery_tick(pool: asyncpg.Pool) -> None:
+async def _saga_recovery_tick(pool: asyncpg.Pool, mongo_client: Any = None) -> None:
     """
-    Finalize sagas that committed to PG but never advanced to 'completed'.
+    Finalize sagas that committed to PG but never advanced to 'completed',
+    and sweep bounded 'recovery_needed' sagas for deferred Mongo cleanup.
 
     A saga in state 'pg_committed' older than 5 minutes means the application
     crashed between the PG commit and the downstream completion signal. Because
@@ -236,7 +237,10 @@ async def _saga_recovery_tick(pool: asyncpg.Pool) -> None:
       1. Verify the target memory row exists in memories.
       2. If it exists: mark saga 'completed' + append 'saga_recovered' event.
       3. If it is missing: the saga committed but the memory row was lost (rare) —
-         mark 'failed' for manual review rather than attempting blind rollback.
+         mark 'recovery_needed' and alert once for manual review rather than
+         attempting blind rollback.
+      4. For 'recovery_needed' sagas carrying ``inserted_mongo_id``: delete the
+         orphaned Mongo doc and mark 'rolled_back'.
 
     We do NOT soft-delete (valid_to=now()) pg_committed memories.
     'pg_committed' means PG says the memory is there — trust the DB.
@@ -289,24 +293,30 @@ async def _saga_recovery_tick(pool: asyncpg.Pool) -> None:
 
                     if memory_row is None:
                         # Memory row is missing despite pg_committed state.
-                        # Do NOT rollback blindly — mark failed for human review.
+                        # Do NOT rollback blindly — mark recovery_needed and alert once.
                         log.error(
                             "[SAGA-RECOVERY] saga=%s is pg_committed but memory=%s is "
-                            "MISSING from memories table. Marking 'failed' for manual review.",
+                            "MISSING from memories table. Marking 'recovery_needed' for manual review.",
                             saga_id,
                             memory_id,
                         )
                         async with unmanaged_pg_connection(
-                            pool, site="cron.saga_recovery.mark_failed"
+                            pool, site="cron.saga_recovery.mark_recovery_needed"
                         ) as conn:
                             await conn.execute(
                                 """
                                 UPDATE saga_execution_log
-                                SET state = 'failed', updated_at = NOW()
+                                SET state = 'recovery_needed', updated_at = NOW()
                                 WHERE id = $1::uuid AND state = 'pg_committed'
                                 """,
                                 saga_id,
                             )
+                        await _dispatch_throttled_alert(
+                            f"cron.saga_recovery.missing_memory.{saga_id}",
+                            f"Saga Recovery Needed: Saga {saga_id}",
+                            f"Saga {saga_id} is pg_committed but memory {memory_id} is missing; "
+                            "marked recovery_needed for manual review.",
+                        )
                         continue
 
                     # Step 2: memory exists — finalize saga + append recovery event.
@@ -359,6 +369,66 @@ async def _saga_recovery_tick(pool: asyncpg.Pool) -> None:
                     f"Saga Recovery Failed: Saga {saga_id}",
                     f"Saga recovery tick failed for saga {saga_id}: {type(exc).__name__}: {exc}",
                 )
+
+        if mongo_client is not None:
+            async with unmanaged_pg_connection(
+                pool, site="cron.saga_recovery.list_recovery_needed"
+            ) as conn:
+                rec_rows = await conn.fetch(
+                    """
+                    SELECT id, namespace_id, agent_id, payload
+                    FROM saga_execution_log
+                    WHERE state = 'recovery_needed'
+                    ORDER BY COALESCE(updated_at, created_at)
+                    LIMIT 100
+                    """
+                )
+
+            if rec_rows:
+                from bson import ObjectId
+
+                episodes_col = mongo_client.memory_archive.episodes
+                for row in rec_rows:
+                    saga_id = str(row["id"])
+                    ns_id = str(row["namespace_id"])
+                    payload = _decode_saga_payload(row["payload"])
+                    inserted_mongo_id = payload.get("inserted_mongo_id")
+                    if not inserted_mongo_id:
+                        continue
+                    try:
+                        oid = (
+                            ObjectId(str(inserted_mongo_id))
+                            if ObjectId.is_valid(str(inserted_mongo_id))
+                            else inserted_mongo_id
+                        )
+                        await asyncio.wait_for(
+                            episodes_col.delete_one({"_id": oid, "namespace_id": str(ns_id)}),
+                            timeout=5.0,
+                        )
+                        async with scoped_pg_session(pool, ns_id) as conn:
+                            await conn.execute(
+                                """
+                                UPDATE saga_execution_log
+                                SET state = 'rolled_back', updated_at = NOW()
+                                WHERE id = $1::uuid AND state = 'recovery_needed'
+                                """,
+                                saga_id,
+                            )
+                        log.info(
+                            "[SAGA-RECOVERY] Rolled back recovery_needed saga=%s mongo_id=%s",
+                            saga_id,
+                            inserted_mongo_id,
+                        )
+                    except _CRON_TICK_ERRORS as exc:
+                        log.exception(
+                            "[SAGA-RECOVERY] Failed recovery_needed cleanup for saga=%s",
+                            saga_id,
+                        )
+                        await _dispatch_throttled_alert(
+                            f"cron.saga_recovery.recovery_needed.{saga_id}",
+                            f"Saga Recovery Needed Failed: Saga {saga_id}",
+                            f"Recovery cleanup failed for saga {saga_id}: {type(exc).__name__}: {exc}",
+                        )
 
     except _CRON_TICK_ERRORS as exc:
         log.exception("saga recovery tick failed unexpectedly")
@@ -454,9 +524,9 @@ async def _d365_sync_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping d365_entity_sync — lock held by another instance")
         return
 
-    import redis.asyncio as aioredis
+    from nce._client_factory import make_async_redis
 
-    redis_client = aioredis.from_url(cfg.REDIS_URL)
+    redis_client = make_async_redis(cfg.REDIS_URL)
     try:
         from nce_verticals.dynamics365.auth import DataverseTokenManager
         from nce_verticals.dynamics365.client import DataverseClient
@@ -548,9 +618,9 @@ async def _d365_weekly_full_sync_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping d365_weekly_full_sync — lock held by another instance")
         return
 
-    import redis.asyncio as aioredis
+    from nce._client_factory import make_async_redis
 
-    redis_client = aioredis.from_url(cfg.REDIS_URL)
+    redis_client = make_async_redis(cfg.REDIS_URL)
     try:
         from nce_verticals.dynamics365.auth import DataverseTokenManager
         from nce_verticals.dynamics365.client import DataverseClient
@@ -636,9 +706,9 @@ async def _d365_netbox_bridge_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping d365_netbox_bridge — lock held by another instance")
         return
 
-    import redis.asyncio as aioredis
+    from nce._client_factory import make_async_redis
 
-    redis_client = aioredis.from_url(cfg.REDIS_URL)
+    redis_client = make_async_redis(cfg.REDIS_URL)
     try:
         from nce_verticals.dynamics365.auth import DataverseTokenManager
         from nce_verticals.dynamics365.client import DataverseClient
@@ -1589,9 +1659,7 @@ async def _actor_trust_tick(pool: asyncpg.Pool) -> None:
         log.debug("Skipping actor_trust_scores — lock held by another instance")
         return
     try:
-        import math
-
-        # Scan all namespaces — actor_trust is RLS-scoped.
+        # Scan namespaces — actor_trust is RLS-scoped.
         async with unmanaged_pg_connection(pool, site="cron.actor_trust.namespace_scan") as conn:
             ns_rows = await conn.fetch("SELECT id FROM namespaces")
 
@@ -1600,80 +1668,67 @@ async def _actor_trust_tick(pool: asyncpg.Pool) -> None:
             ns_id: UUID = ns_row["id"]
             try:
                 async with scoped_pg_session(pool, ns_id) as conn:
-                    # Aggregate confirm/reject WORM events per sourcing agent.
-                    event_rows = await conn.fetch(
+                    # Single set-based upsert per namespace: aggregate confirm/reject
+                    # WORM events, join existing contradictions_sourced, compute
+                    # Laplace-smoothed trust, and upsert actor_trust atomically.
+                    upserted = await conn.fetch(
                         """
+                        WITH event_agg AS (
+                            SELECT
+                                (params->>'agent_id') AS actor_id,
+                                COUNT(*) FILTER (WHERE event_type = 'quarantine_confirmed') AS confirms,
+                                COUNT(*) FILTER (WHERE event_type = 'quarantine_rejected')  AS rejections
+                            FROM event_log
+                            WHERE namespace_id = $1::uuid
+                              AND event_type IN ('quarantine_confirmed', 'quarantine_rejected')
+                              AND (params->>'agent_id') IS NOT NULL
+                              AND (params->>'agent_id') != ''
+                            GROUP BY params->>'agent_id'
+                        ),
+                        scored AS (
+                            SELECT
+                                ea.actor_id,
+                                ea.confirms,
+                                ea.rejections,
+                                COALESCE(at.contradictions_sourced, 0) AS contradictions_sourced,
+                                GREATEST(
+                                    0.1,
+                                    LEAST(
+                                        0.95,
+                                        (ea.confirms + 1)::double precision
+                                            / (ea.confirms + ea.rejections + 2)::double precision
+                                        - 0.05 * LN(1 + COALESCE(at.contradictions_sourced, 0))
+                                    )
+                                )::numeric AS trust
+                            FROM event_agg ea
+                            LEFT JOIN actor_trust at
+                              ON at.namespace_id = $1::uuid
+                             AND at.actor_id = ea.actor_id
+                             AND at.actor_kind = 'agent'
+                        )
+                        INSERT INTO actor_trust
+                            (namespace_id, actor_id, actor_kind,
+                             confirmations, rejections, contradictions_sourced,
+                             trust, updated_at)
                         SELECT
-                            (params->>'agent_id')  AS actor_id,
-                            COUNT(*) FILTER (WHERE event_type = 'quarantine_confirmed') AS confirms,
-                            COUNT(*) FILTER (WHERE event_type = 'quarantine_rejected')  AS rejections
-                        FROM event_log
-                        WHERE namespace_id = $1::uuid
-                          AND event_type IN ('quarantine_confirmed', 'quarantine_rejected')
-                          AND (params->>'agent_id') IS NOT NULL
-                          AND (params->>'agent_id') != ''
-                        GROUP BY params->>'agent_id'
+                            $1::uuid, actor_id, 'agent',
+                            confirms, rejections, contradictions_sourced,
+                            trust, NOW()
+                        FROM scored
+                        ON CONFLICT (namespace_id, actor_id, actor_kind) DO UPDATE
+                            SET confirmations          = EXCLUDED.confirmations,
+                                rejections             = EXCLUDED.rejections,
+                                trust                  = EXCLUDED.trust,
+                                updated_at             = NOW()
+                        RETURNING actor_id
                         """,
                         ns_id,
                     )
-
-                    if not event_rows:
-                        continue
-
-                    # Gather contradiction counts from actor_trust (already stored there
-                    # by contradiction detection; we only update the trust column here).
-                    for row in event_rows:
-                        actor_id: str = row["actor_id"]
-                        confirms: int = int(row["confirms"])
-                        rejections: int = int(row["rejections"])
-
-                        # Fetch contradictions_sourced from existing row (0 when absent).
-                        existing = await conn.fetchrow(
-                            """
-                            SELECT contradictions_sourced
-                            FROM actor_trust
-                            WHERE namespace_id = $1::uuid
-                              AND actor_id = $2
-                              AND actor_kind = 'agent'
-                            """,
-                            ns_id,
-                            actor_id,
-                        )
-                        contradictions_sourced: int = (
-                            int(existing["contradictions_sourced"]) if existing else 0
-                        )
-
-                        # Laplace-smoothed trust with contradiction penalty.
-                        raw_trust = (confirms + 1) / (
-                            confirms + rejections + 2
-                        ) - 0.05 * math.log1p(contradictions_sourced)
-                        trust = max(0.1, min(0.95, raw_trust))
-
-                        await conn.execute(
-                            """
-                            INSERT INTO actor_trust
-                                (namespace_id, actor_id, actor_kind,
-                                 confirmations, rejections, contradictions_sourced,
-                                 trust, updated_at)
-                            VALUES ($1::uuid, $2, 'agent', $3, $4, $5, $6::numeric, NOW())
-                            ON CONFLICT (namespace_id, actor_id, actor_kind) DO UPDATE
-                                SET confirmations          = EXCLUDED.confirmations,
-                                    rejections             = EXCLUDED.rejections,
-                                    trust                  = EXCLUDED.trust,
-                                    updated_at             = NOW()
-                            """,
-                            ns_id,
-                            actor_id,
-                            confirms,
-                            rejections,
-                            contradictions_sourced,
-                            trust,
-                        )
-                        updated_total += 1
+                    updated_total += len(upserted)
 
                 log.info(
                     "actor_trust_tick: updated %d actor rows for namespace %s",
-                    updated_total,
+                    len(upserted),
                     ns_id,
                 )
             except _CRON_TICK_ERRORS as exc:
@@ -1778,7 +1833,13 @@ async def _chain_verification_tick(pool: asyncpg.Pool) -> None:
                                 FROM   event_log
                                 WHERE  namespace_id = $1
                                   AND  event_type = 'chain_verification_failed'
-                                  AND  params ->> 'first_break' = $2
+                                  AND  (
+                                      params @> jsonb_build_object('first_break', $2::text)
+                                      OR CASE WHEN $2::text ~ '^[0-9]+$'
+                                              THEN params @> jsonb_build_object('first_break', $2::bigint)
+                                              ELSE FALSE
+                                         END
+                                  )
                             )
                             """,
                             ns_id,
@@ -1845,15 +1906,14 @@ async def _retention_tick(pool: asyncpg.Pool) -> None:
             log.warning("event_retention tick skipped: MINIO_ENDPOINT is not configured")
             return
 
-        from minio import Minio  # type: ignore[import-untyped]
-
+        from nce._client_factory import make_minio
         from nce.garbage_collector import run_retention_pass
 
         minio_client = await asyncio.to_thread(
-            Minio,
+            make_minio,
             cfg.MINIO_ENDPOINT,
-            access_key=cfg.MINIO_ACCESS_KEY,
-            secret_key=cfg.MINIO_SECRET_KEY,
+            cfg.MINIO_ACCESS_KEY,
+            cfg.MINIO_SECRET_KEY,
             secure=cfg.MINIO_SECURE,
         )
         stats = await run_retention_pass(pool, minio_client)
@@ -1908,15 +1968,16 @@ async def _anchor_tick(pool: asyncpg.Pool) -> None:
         import io
         from datetime import timedelta
 
-        from minio import Minio
         from minio.commonconfig import COMPLIANCE
         from minio.error import S3Error
         from minio.retention import Retention
 
-        minio_client = Minio(
+        from nce._client_factory import make_minio
+
+        minio_client = make_minio(
             cfg.MINIO_ENDPOINT,
-            access_key=cfg.MINIO_ACCESS_KEY,
-            secret_key=cfg.MINIO_SECRET_KEY,
+            cfg.MINIO_ACCESS_KEY,
+            cfg.MINIO_SECRET_KEY,
             secure=cfg.MINIO_SECURE,
         )
         bucket = cfg.NCE_ANCHOR_BUCKET
@@ -2609,7 +2670,7 @@ async def async_main() -> None:
     pool = await asyncpg.create_pool(
         cfg.PG_DSN,
         min_size=1,
-        max_size=4,  # +1 for the re-embedding worker
+        max_size=8,
         command_timeout=120,
     )
 
@@ -2618,7 +2679,9 @@ async def async_main() -> None:
     try:
         from motor.motor_asyncio import AsyncIOMotorClient
 
-        mongo_client = AsyncIOMotorClient(cfg.MONGO_URI, serverSelectionTimeoutMS=5_000)
+        from nce._client_factory import motor_timeout_kwargs
+
+        mongo_client = AsyncIOMotorClient(cfg.MONGO_URI, **motor_timeout_kwargs())
     except ImportError:
         log.warning("motor not available — re-embedding will use fallback text only.")
 
@@ -2671,7 +2734,7 @@ async def async_main() -> None:
     scheduler.add_job(
         _saga_recovery_tick,
         IntervalTrigger(minutes=5),
-        args=[pool],
+        args=[pool, mongo_client],
         id="saga_recovery",
         coalesce=True,
         max_instances=1,
@@ -2962,7 +3025,7 @@ async def async_main() -> None:
         _reembedding_tick(pool, mongo_client),
         _consolidation_tick(pool, mongo_client),
         _partition_maintenance_tick(pool),
-        _saga_recovery_tick(pool),
+        _saga_recovery_tick(pool, mongo_client),
         _outbox_relay_tick(pool),
         _decay_prune_tick(pool),
         _product_eol_watcher_tick(pool),

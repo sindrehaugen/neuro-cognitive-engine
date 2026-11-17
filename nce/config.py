@@ -692,7 +692,7 @@ class _Config:
 
     # --- PostgreSQL connection pool ---
     PG_MIN_POOL: int = int(os.getenv("PG_MIN_POOL", "1"))
-    PG_MAX_POOL: int = int(os.getenv("PG_MAX_POOL", "10"))
+    PG_MAX_POOL: int = int(os.getenv("PG_MAX_POOL", "20"))
     NCE_PARTITION_LOOKAHEAD_MONTHS: int = _int_env("NCE_PARTITION_LOOKAHEAD_MONTHS", 3, minimum=1)
 
     # --- Garbage collector ---
@@ -920,6 +920,10 @@ class _Config:
     NCE_JWT_PREFIX: str = os.getenv("NCE_JWT_PREFIX", "/api/v1/")
     NCE_JWT_KEY_DIR: str = os.getenv("NCE_JWT_KEY_DIR", str(Path.cwd()))
     NCE_JWT_LEEWAY_SECONDS: int = int(os.getenv("NCE_JWT_LEEWAY_SECONDS", "30"))
+    NCE_OIDC_ADMIN_SCOPES_ALLOWLIST: tuple[str, ...] = tuple(
+        s.strip() for s in os.getenv("NCE_OIDC_ADMIN_SCOPES_ALLOWLIST", "").split(",") if s.strip()
+    )
+    NCE_MCP_SESSION_TTL_S: int = int(os.getenv("NCE_MCP_SESSION_TTL_S", "3600"))
 
     # --- Phase 3.1: Per-service JWT audience overrides ---
     # Each service (A2A, admin, etc.) can require its own ``aud`` claim value
@@ -1550,6 +1554,8 @@ class _Config:
                 "MINIO_SECRET_KEY must be set via the MINIO_SECRET_KEY environment variable. "
                 "No default is permitted in production."
             )
+        if cls.IS_PROD and cls.MINIO_SECRET_KEY == "super_secure_minio_password":
+            raise ValueError("MINIO_SECRET_KEY uses insecure development default in production.")
 
     @classmethod
     def validate_datastore_config(cls) -> None:
@@ -1574,6 +1580,10 @@ class _Config:
                 raise RuntimeError(
                     f"CRITICAL CONFIGURATION FAILURE: {key} uses development default in production."
                 )
+        if ":mcp_password@" in (cls.PG_DSN or ""):
+            raise RuntimeError(
+                "CRITICAL CONFIGURATION FAILURE: PG_DSN contains development default password in production."
+            )
 
     @classmethod
     def validate_jwt_config(cls) -> None:
@@ -1616,6 +1626,18 @@ class _Config:
         # P0: MinIO Credentials (FIX-013) — skipped when NCE_MINIO_REQUIRED=false
         if cls.NCE_MINIO_REQUIRED:
             cls.validate_minio_credentials()
+        elif cls.IS_PROD and cls.MINIO_SECRET_KEY == "super_secure_minio_password":
+            raise ValueError("MINIO_SECRET_KEY uses insecure development default in production.")
+
+        if cls.IS_PROD:
+            if not (cls.NCE_ARTIFACT_STAGING_DIR or "").strip():
+                log.warning(
+                    "NCE_ARTIFACT_STAGING_DIR is unset in production; artifact staging will fail closed."
+                )
+            if cls.NCE_APP_PASSWORD == "nce_app_secret":
+                log.warning(
+                    "SECURITY WARNING: NCE_APP_PASSWORD is set to development default in production."
+                )
 
         # P0: Database connections present in all environments
         missing_conns = [k for k in ("MONGO_URI", "PG_DSN", "REDIS_URL") if not getattr(cls, k)]

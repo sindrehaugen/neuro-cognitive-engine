@@ -96,9 +96,11 @@ async def _connect_with_retry() -> tuple[AsyncIOMotorClient, asyncpg.Pool]:
     for attempt in range(1, MAX_CONNECT_ATTEMPTS + 1):
         mongo_client: AsyncIOMotorClient | None = None
         try:
+            from nce._client_factory import motor_timeout_kwargs
+
             mongo_client = AsyncIOMotorClient(
                 cfg.MONGO_URI,
-                serverSelectionTimeoutMS=5_000,
+                **motor_timeout_kwargs(),
             )
             # Force a real connection check
             await mongo_client.admin.command("ping")
@@ -1420,24 +1422,29 @@ async def run_gc_loop():
         cfg.GC_ORPHAN_AGE_SECONDS,
     )
 
-    try:
-        mongo_client, pg_pool = await _connect_with_retry()
-    except RuntimeError as exc:
-        log.critical(
-            "GC failed to connect — background task will exit: %s",
-            redact_secrets_in_text(str(exc)),
-        )
-        return
+    backoff = CONNECT_BASE_DELAY
+    while True:
+        try:
+            mongo_client, pg_pool = await _connect_with_retry()
+            break
+        except RuntimeError as exc:
+            log.error(
+                "GC failed to connect — retrying in %.0fs: %s",
+                backoff,
+                redact_secrets_in_text(str(exc)),
+            )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 60)
 
     minio_client: Any | None = None
     if cfg.MINIO_ENDPOINT:
         try:
-            from minio import Minio
+            from nce._client_factory import make_minio
 
-            minio_client = Minio(
+            minio_client = make_minio(
                 cfg.MINIO_ENDPOINT,
-                access_key=cfg.MINIO_ACCESS_KEY,
-                secret_key=cfg.MINIO_SECRET_KEY,
+                cfg.MINIO_ACCESS_KEY,
+                cfg.MINIO_SECRET_KEY,
                 secure=cfg.MINIO_SECURE,
             )
             log.info("GC connected to MinIO endpoint: %s", cfg.MINIO_ENDPOINT)
@@ -1448,9 +1455,9 @@ async def run_gc_loop():
     redis_client: Any | None = None
     if cfg.REDIS_URL:
         try:
-            from redis.asyncio import Redis as AsyncRedis
+            from nce._client_factory import make_async_redis
 
-            redis_client = AsyncRedis.from_url(cfg.REDIS_URL)
+            redis_client = make_async_redis(cfg.REDIS_URL)
         except Exception as exc:
             log.error("GC could not create Redis client — distributed lock disabled: %s", exc)
     else:

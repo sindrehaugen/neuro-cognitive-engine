@@ -377,16 +377,35 @@ async def resolve_canonical_identifier(
     identify something real", not "is it currently active".
     """
     if spec.tenant_scope == "graph":
-        existing = await conn.fetchrow(
-            """
-            SELECT label FROM kg_nodes
-            WHERE entity_type = $1 AND namespace_id = $2
-              AND (label = $3 OR id::text = $3)
-            """,
-            spec.node_type,
-            ns_uuid,
-            candidate_id,
-        )
+        parsed_uuid: UUID | None = None
+        try:
+            parsed_uuid = UUID(str(candidate_id))
+        except (ValueError, TypeError, AttributeError):
+            parsed_uuid = None
+
+        if parsed_uuid is not None:
+            existing = await conn.fetchrow(
+                """
+                SELECT label FROM kg_nodes
+                WHERE entity_type = $1 AND namespace_id = $2
+                  AND (label = $3 OR id = $4::uuid)
+                """,
+                spec.node_type,
+                ns_uuid,
+                candidate_id,
+                parsed_uuid,
+            )
+        else:
+            existing = await conn.fetchrow(
+                """
+                SELECT label FROM kg_nodes
+                WHERE entity_type = $1 AND namespace_id = $2
+                  AND label = $3
+                """,
+                spec.node_type,
+                ns_uuid,
+                candidate_id,
+            )
         if existing:
             return str(existing["label"])
         for sec in spec.secondary_tables:

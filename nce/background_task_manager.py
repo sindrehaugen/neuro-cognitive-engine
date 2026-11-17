@@ -166,6 +166,28 @@ class TaskRegistry:
             }
         return stats
 
+    async def drain(self, timeout: float = 5.0) -> None:
+        """Cancel all active tracked tasks and await their completion up to *timeout*."""
+        active = self.get_active_tasks()
+        if not active:
+            return
+        tasks = [t.task for t in active]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            pending = sum(1 for task in tasks if not task.done())
+            log.warning(
+                "TaskRegistry.drain timed out after %.1fs with %d task(s) still pending",
+                timeout,
+                pending,
+            )
+
 
 # Global registry instance
 _registry = TaskRegistry()

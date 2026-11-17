@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.5.0] - 2026-11-17
+
+### Security
+- **Hardening Wave (`S1`–`S7`):** Strengthened runtime, transport, and supply-chain security boundaries across ingress surfaces, credential handling, and container/CI posture (including least-privilege `contents: read` workflow permissions, commit-SHA pinned third-party GitHub Actions, `pip-audit` against `requirements.lock`, pinned `en_core_web_sm` `3.8.0` wheel, root-owned `/app` runtime code, `.dockerignore` secret exclusions, and loopback-bound datastore ports in legacy multiuser Compose).
+
+### Changed
+- **Resilience & Infrastructure (`R1`–`R2`, `I1`):** Added `stop_grace_period: 60s` for `worker` and `cron` Compose services, pinned `deploy/cognitive-stub/Dockerfile` to `python:3.12-slim-bookworm`, replaced `curl` healthchecks with stdlib `urllib.request` probes in `deploy/multiuser/docker-compose.yml` (now marked deprecated in favour of root `docker-compose.yml`), added Docker image build validation in CI, and wired `tests/test_replay_handlers_integration.py` into the CI integration job.
+- **Performance & Schema (`P1`–`P4`, Migration `037`):** Applied v3.5.0 performance optimizations alongside database migration `037`.
+
+---
+
 ## [3.4.4] - 2026-11-17
 
 ### Changed
