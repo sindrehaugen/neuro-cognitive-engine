@@ -905,7 +905,6 @@ async def _fetch_db_clock(conn: asyncpg.Connection) -> datetime:
 
 
 _DEFAULT_FETCH_PREV_CHAIN_HASH = _fetch_previous_chain_hash
-_DEFAULT_ACQUIRE_SEQ_LOCK = _acquire_seq_lock
 _DEFAULT_NEXT_EVENT_SEQ = _next_event_seq
 _DEFAULT_FETCH_DB_CLOCK = _fetch_db_clock
 
@@ -1190,12 +1189,12 @@ async def append_event(
     if event_id is None:
         event_id = uuid.uuid4()
 
-    # 5. Acquire per-namespace lock, allocate event_seq, fetch DB clock & prev hash.
-    #    Fetching clock AFTER acquiring the advisory lock keeps occurred_at
-    #    strictly monotonic with event_seq under lock contention.
+    # 5. Acquire per-namespace lock in its own statement BEFORE taking the
+    #    READ COMMITTED snapshot that reads event_log.chain_hash, then allocate
+    #    event_seq, fetch DB clock & prev_hash in one post-lock statement.
+    await _acquire_seq_lock(conn, namespace_id)
     _use_fused_cte = (
         isinstance(conn, asyncpg.Connection)
-        and _acquire_seq_lock is _DEFAULT_ACQUIRE_SEQ_LOCK
         and _next_event_seq is _DEFAULT_NEXT_EVENT_SEQ
         and _fetch_db_clock is _DEFAULT_FETCH_DB_CLOCK
         and _fetch_previous_chain_hash is _DEFAULT_FETCH_PREV_CHAIN_HASH
@@ -1204,32 +1203,23 @@ async def append_event(
         try:
             fused_row = await conn.fetchrow(
                 """
-                WITH lock_step AS MATERIALIZED (
-                    SELECT pg_advisory_xact_lock(
-                        hashtext('nce_worm_event_log'),
-                        hashtext(($1::uuid)::text)
-                    ) AS locked
-                ),
-                seq_step AS (
+                WITH seq_step AS (
                     INSERT INTO event_sequences (namespace_id, seq)
-                    SELECT $1::uuid, 1
-                    FROM lock_step
+                    VALUES ($1, 1)
                     ON CONFLICT (namespace_id)
                     DO UPDATE SET seq = event_sequences.seq + 1
                     RETURNING seq
-                ),
-                prev_step AS (
-                    SELECT el.chain_hash
-                    FROM event_log el
-                    CROSS JOIN lock_step
-                    WHERE el.namespace_id = $1::uuid
-                    ORDER BY el.event_seq DESC
-                    LIMIT 1
                 )
                 SELECT
                     seq_step.seq AS seq,
                     clock_timestamp() AS db_clock,
-                    (SELECT chain_hash FROM prev_step) AS prev_hash
+                    (
+                        SELECT el.chain_hash
+                        FROM event_log el
+                        WHERE el.namespace_id = $1
+                        ORDER BY el.event_seq DESC
+                        LIMIT 1
+                    ) AS prev_hash
                 FROM seq_step
                 """,
                 namespace_id,
@@ -1256,7 +1246,6 @@ async def append_event(
                 f"Unexpected error allocating event_seq for namespace {namespace_id}: {exc}"
             ) from exc
     else:
-        await _acquire_seq_lock(conn, namespace_id)
         try:
             event_seq = await _next_event_seq(conn, namespace_id)
         except EventLogSequenceError:

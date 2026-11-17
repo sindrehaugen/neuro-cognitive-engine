@@ -81,7 +81,7 @@ func checkPostgresTLSWithConfig(ctx context.Context, host, port string, baseCfg 
 	if cfg.MinVersion == 0 || cfg.MinVersion < tls.VersionTLS12 {
 		cfg.MinVersion = tls.VersionTLS12
 	}
-	if cfg.ServerName == "" && net.ParseIP(cleanHost) == nil {
+	if cfg.ServerName == "" {
 		cfg.ServerName = cleanHost
 	}
 

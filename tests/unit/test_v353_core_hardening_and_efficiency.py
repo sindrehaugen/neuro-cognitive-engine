@@ -514,8 +514,12 @@ async def test_event_log_single_build_signing_fields_and_merkle_end_seq_pushdown
         def is_in_transaction(self) -> bool:
             return True
 
+        async def execute(self, *_args, **_kwargs) -> str:
+            return "SELECT 1"
+
     mock_conn = MagicMock(spec=_FakePgConn)
     mock_conn.is_in_transaction.return_value = True
+    mock_conn.execute = AsyncMock(return_value="SELECT 1")
     monkeypatch.setattr(ev_mod.asyncpg, "Connection", _FakePgConn)
 
     ns_id = uuid.uuid4()
@@ -565,6 +569,7 @@ async def test_event_log_single_build_signing_fields_and_merkle_end_seq_pushdown
             },
         )
     assert build_calls == 1
+    mock_conn.execute.assert_awaited_once()
 
     # verify_merkle_chain pushes end_seq <= $3 into SQL when conn is asyncpg.Connection
     merkle_conn = MagicMock(spec=_FakePgConn)
