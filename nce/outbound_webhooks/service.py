@@ -143,22 +143,18 @@ def prepare_webhook_payload(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def send_webhook_http_sync(
+def _prepare_webhook_request(
     url: str,
     secret: str,
     payload_dict: dict[str, Any],
     timeout: float | httpx.Timeout | None = None,
-) -> bool:
-    """Synchronously deliver a webhook payload via HTTP POST.
-
-    Designed for invocation inside zero-arg PostCommitAction callables outside
-    the PostgreSQL transaction block.
-    """
+) -> tuple[str, dict[str, str], bytes, httpx.Timeout, dict[str, Any]] | None:
+    """Validate SSRF rules, pin resolved IP, sign payload, and build request kwargs."""
     try:
         url = validate_outbound_url(url)
     except Exception as exc:
         log.warning("[outbound_webhook] SSRF blocked delivery to %s: %s", url, exc)
-        return False
+        return None
 
     parsed = httpx.URL(url)
     original_hostname = parsed.host
@@ -171,9 +167,10 @@ def send_webhook_http_sync(
                 resolved_ip = _resolve_safe_ip(norm_host)
             except UnsafeURLError as exc:
                 log.warning("[outbound_webhook] SSRF blocked delivery to %s: %s", url, exc)
-                return False
+                return None
+            ascii_host = original_hostname.encode("idna").decode("ascii")
             target_url = str(parsed.copy_with(host=resolved_ip))
-            extra_headers["Host"] = original_hostname
+            extra_headers["Host"] = ascii_host
 
     body_bytes = json.dumps(payload_dict, default=str).encode("utf-8")
     headers = sign_outbound_webhook(secret, "POST", url, body_bytes)
@@ -187,12 +184,59 @@ def send_webhook_http_sync(
         effective_timeout = httpx.Timeout(t_val, connect=min(5.0, t_val), read=t_val)
     post_kwargs: dict[str, Any] = {"headers": headers, "content": body_bytes}
     if parsed.scheme == "https" and original_hostname and "Host" in extra_headers:
-        post_kwargs["extensions"] = {"sni_hostname": original_hostname}
+        post_kwargs["extensions"] = {"sni_hostname": extra_headers["Host"]}
+    return target_url, headers, body_bytes, effective_timeout, post_kwargs
+
+
+def send_webhook_http_sync(
+    url: str,
+    secret: str,
+    payload_dict: dict[str, Any],
+    timeout: float | httpx.Timeout | None = None,
+) -> bool:
+    """Synchronously deliver a webhook payload via HTTP POST.
+
+    Designed for invocation inside zero-arg PostCommitAction callables outside
+    the PostgreSQL transaction block.
+    """
+    prepared = _prepare_webhook_request(url, secret, payload_dict, timeout=timeout)
+    if prepared is None:
+        return False
+    target_url, _headers, _body_bytes, effective_timeout, post_kwargs = prepared
     try:
         with httpx.Client(
             timeout=effective_timeout, follow_redirects=False, trust_env=False
         ) as client:
             resp = client.post(target_url, **post_kwargs)
+            if resp.status_code >= 400:
+                log.warning(
+                    "[outbound_webhook] delivery to %s returned HTTP %d",
+                    url,
+                    resp.status_code,
+                )
+                return False
+            return True
+    except Exception as exc:
+        log.warning("[outbound_webhook] delivery to %s failed: %s", url, exc)
+        return False
+
+
+async def send_webhook_http_async(
+    url: str,
+    secret: str,
+    payload_dict: dict[str, Any],
+    timeout: float | httpx.Timeout | None = None,
+) -> bool:
+    """Asynchronously deliver a signed webhook payload via HTTP POST."""
+    prepared = _prepare_webhook_request(url, secret, payload_dict, timeout=timeout)
+    if prepared is None:
+        return False
+    target_url, _headers, _body_bytes, effective_timeout, post_kwargs = prepared
+    try:
+        async with httpx.AsyncClient(
+            timeout=effective_timeout, follow_redirects=False, trust_env=False
+        ) as client:
+            resp = await client.post(target_url, **post_kwargs)
             if resp.status_code >= 400:
                 log.warning(
                     "[outbound_webhook] delivery to %s returned HTTP %d",

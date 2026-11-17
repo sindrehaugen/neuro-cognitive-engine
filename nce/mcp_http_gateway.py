@@ -93,6 +93,31 @@ def invalidate_verified_token_cache(token_sha256: str | None = None) -> None:
         _VERIFIED_TOKEN_CACHE.pop(token_sha256, None)
 
 
+def _normalize_gateway_principal_kind(raw_kind: Any) -> str:
+    """Normalize principal_kind claim/record to allowed tier or 'unverified'."""
+    if raw_kind is None or not str(raw_kind).strip():
+        return "employee"
+    val = str(raw_kind).strip().lower()
+    if val == "external_customer":
+        val = "external-customer"
+    if val in ("employee", "contractor", "external-customer"):
+        return val
+    return "unverified"
+
+
+def _parse_external_scope_id(raw_scope: Any, principal_kind: str) -> str | None:
+    """Validate optional external_scope_id UUID for external tiers (nil UUID excluded)."""
+    if principal_kind not in ("contractor", "external-customer") or not raw_scope:
+        return None
+    try:
+        parsed = uuid.UUID(str(raw_scope).strip())
+        if parsed.int != 0:
+            return str(parsed)
+    except (ValueError, AttributeError):
+        pass
+    return None
+
+
 @dataclass
 class MCPGatewaySession:
     """Session state bound to an authenticated Mcp-Session-Id."""
@@ -115,6 +140,8 @@ class MCPGatewaySession:
     token_sha256: str = ""
     expires_at: float = 0.0
     is_oidc: bool = False
+    principal_kind: str = "employee"
+    external_scope_id: str | None = None
     last_redis_sync_mono: float = 0.0
 
 
@@ -188,7 +215,7 @@ async def _is_session_revoked_or_expired(session: MCPGatewaySession, pg_pool: An
         return False
 
     record = _IN_MEMORY_MCP_CLIENT_TOKENS.get(session.token_sha256)
-    if record is None:
+    if record is None and pg_pool is None:
         try:
             from nce.admin_plugins import MINTED_MCP_TOKENS
 
@@ -374,9 +401,9 @@ async def verify_mcp_token(token: str, pg_pool: Any = None) -> dict[str, Any]:
 
     token_sha256 = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
-    # 1. In-memory test registry & admin plugin token minter registry
+    # 1. In-memory test registry (always authoritative for in-process test fixtures)
     record = _IN_MEMORY_MCP_CLIENT_TOKENS.get(token_sha256)
-    if record is None:
+    if record is None and pg_pool is None:
         try:
             from nce.admin_plugins import MINTED_MCP_TOKENS
 
@@ -390,6 +417,7 @@ async def verify_mcp_token(token: str, pg_pool: Any = None) -> dict[str, Any]:
         exp_epoch = _parse_expires_at_epoch(record.get("expires_at"))
         if exp_epoch is not None and exp_epoch <= time.time():
             raise ValueError("MCP client token has been expired")
+        pk = _normalize_gateway_principal_kind(record.get("principal_kind"))
         return {
             "token_id": record.get("token_id"),
             "token_sha256": token_sha256,
@@ -401,16 +429,20 @@ async def verify_mcp_token(token: str, pg_pool: Any = None) -> dict[str, Any]:
             "rate_limit_rpm": int(record.get("rate_limit_rpm", 120)),
             "expires_at": exp_epoch,
             "is_oidc": False,
+            "principal_kind": pk,
+            "external_scope_id": _parse_external_scope_id(record.get("external_scope_id"), pk),
         }
 
     # 2. Database lookup via lookup_mcp_client_token(p_token_sha256)
     if pg_pool is not None:
+        db_lookup_completed = False
         try:
             async with pg_pool.acquire() as conn:
                 row = await conn.fetchrow(
                     "SELECT * FROM lookup_mcp_client_token($1)",
                     token_sha256,
                 )
+                db_lookup_completed = True
                 if row is not None:
                     scopes_val = row["scopes"]
                     if isinstance(scopes_val, str):
@@ -431,6 +463,16 @@ async def verify_mcp_token(token: str, pg_pool: Any = None) -> dict[str, Any]:
                     except (KeyError, IndexError, TypeError):
                         raw_exp = None
                     exp_epoch = _parse_expires_at_epoch(raw_exp)
+                    pk = _normalize_gateway_principal_kind(
+                        row["principal_kind"]
+                        if hasattr(row, "keys") and "principal_kind" in row.keys()
+                        else None
+                    )
+                    ext_scope = (
+                        row["external_scope_id"]
+                        if hasattr(row, "keys") and "external_scope_id" in row.keys()
+                        else None
+                    )
 
                     return {
                         "token_id": str(row["token_id"]),
@@ -443,9 +485,39 @@ async def verify_mcp_token(token: str, pg_pool: Any = None) -> dict[str, Any]:
                         "rate_limit_rpm": int(row["rate_limit_rpm"] or 120),
                         "expires_at": exp_epoch,
                         "is_oidc": False,
+                        "principal_kind": pk,
+                        "external_scope_id": _parse_external_scope_id(ext_scope, pk),
                     }
         except Exception as db_exc:
             logger.warning("Database lookup_mcp_client_token failed: %s", db_exc)
+
+        if not db_lookup_completed:
+            try:
+                from nce.admin_plugins import MINTED_MCP_TOKENS
+
+                minted = MINTED_MCP_TOKENS.get(token_sha256)
+                if minted is not None and minted.get("revoked_at") is None:
+                    exp_epoch = _parse_expires_at_epoch(minted.get("expires_at"))
+                    if exp_epoch is None or exp_epoch > time.time():
+                        pk = _normalize_gateway_principal_kind(minted.get("principal_kind"))
+                        return {
+                            "token_id": minted.get("token_id"),
+                            "token_sha256": token_sha256,
+                            "namespace_id": str(minted["namespace_id"]),
+                            "principal_id": minted["principal_id"],
+                            "scopes": list(minted.get("scopes", ["tools:read", "tools:call"])),
+                            "allowed_engines": list(minted.get("allowed_engines", ["*"])),
+                            "tool_exposure_mode": minted.get("tool_exposure_mode", "compact"),
+                            "rate_limit_rpm": int(minted.get("rate_limit_rpm", 120)),
+                            "expires_at": exp_epoch,
+                            "is_oidc": False,
+                            "principal_kind": pk,
+                            "external_scope_id": _parse_external_scope_id(
+                                minted.get("external_scope_id"), pk
+                            ),
+                        }
+            except Exception:
+                pass
 
     # 3. Issuer-pinned RS256/ES256 OIDC JWT verification
     if raw_token.count(".") == 2:
@@ -498,7 +570,12 @@ async def verify_mcp_token(token: str, pg_pool: Any = None) -> dict[str, Any]:
             public_key = _load_public_key(cfg.NCE_JWT_PUBLIC_KEY)
             decode_kwargs: dict[str, Any] = {
                 "algorithms": [alg],
-                "options": {"verify_signature": True, "verify_exp": True},
+                "options": {
+                    "verify_signature": True,
+                    "verify_exp": True,
+                    "verify_nbf": True,
+                    "require": ["exp"],
+                },
             }
             if cfg.NCE_JWT_AUDIENCE:
                 decode_kwargs["audience"] = cfg.NCE_JWT_AUDIENCE
@@ -510,6 +587,7 @@ async def verify_mcp_token(token: str, pg_pool: Any = None) -> dict[str, Any]:
             ns_id = claims.get("namespace_id") or claims.get("tid")
             if not ns_id:
                 raise ValueError("JWT token missing namespace_id or tid claim")
+            ns_uuid_str = str(uuid.UUID(str(ns_id).strip()))
 
             principal = (
                 claims.get("sub") or claims.get("oid") or claims.get("upn") or "oidc-principal"
@@ -533,13 +611,18 @@ async def verify_mcp_token(token: str, pg_pool: Any = None) -> dict[str, Any]:
                 allowed_engines = ["*"]
 
             exposure_mode = claims.get("tool_exposure_mode", "compact")
-            rate_limit = int(claims.get("rate_limit_rpm", 120))
+            default_rpm = max(1, int(getattr(cfg, "MCP_GATEWAY_DEFAULT_RPM", 120) or 120))
+            rate_limit = max(1, int(claims.get("rate_limit_rpm", default_rpm)))
+            if "admin" not in [str(s).strip().lower() for s in scopes]:
+                rate_limit = min(rate_limit, default_rpm)
             exp_epoch = _parse_expires_at_epoch(claims.get("exp"))
+            pk = _normalize_gateway_principal_kind(claims.get("principal_kind"))
+            ext_scope = _parse_external_scope_id(claims.get("external_scope_id"), pk)
 
             return {
                 "token_id": str(uuid.uuid4()),
                 "token_sha256": token_sha256,
-                "namespace_id": str(ns_id),
+                "namespace_id": ns_uuid_str,
                 "principal_id": str(principal),
                 "scopes": scopes,
                 "allowed_engines": allowed_engines,
@@ -547,6 +630,8 @@ async def verify_mcp_token(token: str, pg_pool: Any = None) -> dict[str, Any]:
                 "rate_limit_rpm": rate_limit,
                 "expires_at": exp_epoch,
                 "is_oidc": True,
+                "principal_kind": pk,
+                "external_scope_id": ext_scope,
             }
         except Exception as jwt_exc:
             raise ValueError(f"OIDC JWT verification failed: {jwt_exc}") from jwt_exc
@@ -713,6 +798,8 @@ async def _persist_session_redis(redis_client: Any, session: MCPGatewaySession) 
                 "token_sha256": session.token_sha256,
                 "expires_at": session.expires_at,
                 "is_oidc": session.is_oidc,
+                "principal_kind": session.principal_kind,
+                "external_scope_id": session.external_scope_id,
             }
         )
         await redis_client.hset(_REDIS_MCP_SESSIONS_KEY, session.session_id, payload)
@@ -991,6 +1078,49 @@ def _tool_accepts_namespace_id(tool_name: str) -> bool:
     return False
 
 
+def _tool_schema_forbids_extra(tool_name: str) -> tuple[bool, set[str]]:
+    """Return ``(forbids_extra, declared_properties)`` for *tool_name*'s MCP schema."""
+    for tool_dict in _all_gateway_tools():
+        if tool_dict["name"] == tool_name:
+            schema = tool_dict.get("inputSchema") or {}
+            props = schema.get("properties")
+            prop_keys = set(props.keys()) if isinstance(props, dict) else set()
+            forbids = schema.get("additionalProperties") is False
+            return forbids, prop_keys
+    return False, set()
+
+
+def _apply_principal_tier_and_external_scope(
+    tool_name: str,
+    arguments: dict[str, Any],
+    session: MCPGatewaySession,
+    is_admin: bool,
+    forbidden_fn: Any,
+) -> dict[str, Any] | None:
+    """Enforce verified principal tier and contractor/customer external scope binding."""
+    arguments.pop("principal_kind", None)
+    arguments.pop("_principal_tier", None)
+
+    is_strict_model = tool_name in _get_tool_request_models()
+    _forbids_extra, prop_keys = _tool_schema_forbids_extra(tool_name)
+
+    if "_principal_tier" in prop_keys:
+        arguments["_principal_tier"] = _normalize_gateway_principal_kind(session.principal_kind)
+
+    ext_scope = session.external_scope_id
+    pk = _normalize_gateway_principal_kind(session.principal_kind)
+    if ext_scope and pk in ("contractor", "external-customer"):
+        scope_key = "partner_scope_id" if pk == "contractor" else "customer_scope_id"
+        if scope_key in arguments and arguments[scope_key] not in (None, ""):
+            if not is_admin and _normalize_uuid_str(arguments[scope_key]) != _normalize_uuid_str(
+                ext_scope
+            ):
+                return forbidden_fn(f"Cross-scope {scope_key} forbidden for session token.")
+        if scope_key in prop_keys or (not is_strict_model and scope_key in arguments):
+            arguments[scope_key] = str(ext_scope)
+    return None
+
+
 def bind_session_tenant_arguments(
     tool_name: str,
     arguments: dict[str, Any],
@@ -1018,6 +1148,12 @@ def bind_session_tenant_arguments(
                 "data": {"detail": detail},
             },
         }
+
+    scope_err = _apply_principal_tier_and_external_scope(
+        tool_name, arguments, session, is_admin, _forbidden
+    )
+    if scope_err is not None:
+        return scope_err
 
     # 1. replay_fork & replay_reconstruct: extra="forbid", uses source_namespace_id.
     # Enforce source_namespace_id == session.namespace_id even when the tenant token
@@ -1149,6 +1285,10 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                                 token_sha256=str(s_data.get("token_sha256", "")),
                                 expires_at=float(s_data.get("expires_at", 0.0) or 0.0),
                                 is_oidc=bool(s_data.get("is_oidc", False)),
+                                principal_kind=_normalize_gateway_principal_kind(
+                                    s_data.get("principal_kind")
+                                ),
+                                external_scope_id=s_data.get("external_scope_id"),
                                 last_redis_sync_mono=now_mono,
                             )
                         )
@@ -1176,18 +1316,17 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                 )
             if auth_header.lower().startswith("bearer "):
                 token = auth_header[7:].strip()
+                try:
+                    await verify_mcp_token(token, pg_pool=pg_pool)
+                except Exception as exc:
+                    logger.warning("MCP session bearer verification failed: %s", exc)
+                    return None, JSONResponse({"error": "Unauthorized"}, status_code=401)
                 tok_sha = hashlib.sha256(token.encode("utf-8")).hexdigest()
-                if not session.token_sha256 or tok_sha != session.token_sha256:
-                    try:
-                        token_data = await verify_mcp_token(token, pg_pool=pg_pool)
-                    except Exception as exc:
-                        logger.warning("MCP session bearer verification failed: %s", exc)
-                        return None, JSONResponse({"error": "Unauthorized"}, status_code=401)
-                    if str(token_data.get("namespace_id")) != str(session.namespace_id):
-                        return None, JSONResponse(
-                            {"error": "Forbidden: session namespace mismatch"},
-                            status_code=403,
-                        )
+                if session.token_sha256 and tok_sha != session.token_sha256:
+                    return None, JSONResponse(
+                        {"error": "Forbidden: session token mismatch"},
+                        status_code=403,
+                    )
             if not _check_session_rate_limit(session):
                 return None, JSONResponse(
                     {
@@ -1240,6 +1379,8 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
             token_sha256=token_sha256,
             expires_at=session_expires_at,
             is_oidc=bool(token_data.get("is_oidc", False)),
+            principal_kind=_normalize_gateway_principal_kind(token_data.get("principal_kind")),
+            external_scope_id=token_data.get("external_scope_id"),
         )
         _store_gateway_session(session)
         await _persist_session_redis(redis_client, session)
@@ -1348,6 +1489,8 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                         ):
                             exposed_tools.append(tool_dict)
 
+                if len(_TOOLS_LIST_CACHE) >= 128:
+                    _TOOLS_LIST_CACHE.pop(next(iter(_TOOLS_LIST_CACHE)), None)
                 _TOOLS_LIST_CACHE[cache_key] = exposed_tools
 
             return {
@@ -1557,6 +1700,25 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                             },
                         }
 
+            if getattr(spec, "mutation", False) and session.scopes:
+                normalized_scopes = {str(s).strip().lower() for s in session.scopes if s}
+                allowed_mut_scopes = {
+                    "tools:call",
+                    "mcp:tools:call",
+                    "tools:write",
+                    "admin",
+                    "*",
+                }
+                if not (normalized_scopes & allowed_mut_scopes):
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "error": {
+                            "code": -32003,
+                            "message": "Forbidden: insufficient token scope",
+                        },
+                    }
+
             # Execute tool handler with active HTTP session bound in ContextVar
             try:
                 with bind_mcp_http_session(session):
@@ -1625,7 +1787,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     "error": {
                         "code": -32603,
                         "message": "Internal error",
-                        "data": str(handler_exc),
+                        "data": "Internal server error" if is_prod else str(handler_exc),
                     },
                 }
 
@@ -1665,12 +1827,55 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
         wants_sse = "text/event-stream" in accept_header
 
         if isinstance(body_json, list):
+            if not body_json or len(body_json) > 50:
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32600, "message": "Invalid Request: invalid batch size"},
+                    },
+                    status_code=400,
+                    headers={"Mcp-Session-Id": session.session_id},
+                )
+            for _ in range(len(body_json) - 1):
+                if not _check_session_rate_limit(session):
+                    return JSONResponse(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {
+                                "code": -32029,
+                                "message": "Rate limit exceeded",
+                                "data": {"retry_after_s": 60},
+                            },
+                        },
+                        status_code=429,
+                        headers={"Retry-After": "60"},
+                    )
             results = []
             for item in body_json:
+                if not isinstance(item, dict):
+                    results.append(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": None,
+                            "error": {"code": -32600, "message": "Invalid Request"},
+                        }
+                    )
+                    continue
                 res = await _handle_jsonrpc_request(session, item)
                 if res:
                     results.append(res)
             response_payload = results
+        elif not isinstance(body_json, dict):
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32600, "message": "Invalid Request"},
+                },
+                status_code=400,
+                headers={"Mcp-Session-Id": session.session_id},
+            )
         else:
             response_payload = await _handle_jsonrpc_request(session, body_json)
 
@@ -1752,22 +1957,76 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
             return JSONResponse({"error": "Forbidden: invalid origin"}, status_code=403)
 
         session_id = request.headers.get("mcp-session-id")
-        found = False
-        if session_id:
-            if session_id in _GATEWAY_SESSIONS:
-                del _GATEWAY_SESSIONS[session_id]
-                found = True
-            redis_c = getattr(engine, "redis_client", None) if engine else None
+        if not session_id:
+            return JSONResponse({"error": "Session not found"}, status_code=404)
+
+        redis_c = getattr(engine, "redis_client", None) if engine else None
+        pg_pool = getattr(engine, "pg_pool", None) if engine else None
+        session = _GATEWAY_SESSIONS.get(session_id)
+        if session is None and redis_c is not None:
+            try:
+                raw_redis_sess = await redis_c.hget(_REDIS_MCP_SESSIONS_KEY, session_id)
+                if raw_redis_sess is not None:
+                    s_data = orjson.loads(raw_redis_sess)
+                    session = MCPGatewaySession(
+                        session_id=session_id,
+                        namespace_id=str(s_data["namespace_id"]),
+                        principal_id=str(s_data["principal_id"]),
+                        scopes=list(s_data.get("scopes", ["tools:read", "tools:call"])),
+                        allowed_engines=list(s_data.get("allowed_engines", ["*"])),
+                        tool_exposure_mode=str(s_data.get("tool_exposure_mode", "compact")),
+                        expanded_tools=set(s_data.get("expanded_tools", [])),
+                        rate_limit_rpm=int(s_data.get("rate_limit_rpm", 120)),
+                        event_queue=asyncio.Queue(maxsize=256),
+                        last_event_id=0,
+                        token_sha256=str(s_data.get("token_sha256", "")),
+                        expires_at=float(s_data.get("expires_at", 0.0) or 0.0),
+                        is_oidc=bool(s_data.get("is_oidc", False)),
+                        principal_kind=_normalize_gateway_principal_kind(
+                            s_data.get("principal_kind")
+                        ),
+                        external_scope_id=s_data.get("external_scope_id"),
+                    )
+            except Exception:
+                session = None
+
+        if session is None:
+            return JSONResponse({"error": "Session not found"}, status_code=404)
+
+        if await _is_session_revoked_or_expired(session, pg_pool):
+            _GATEWAY_SESSIONS.pop(session_id, None)
             if redis_c is not None:
                 try:
-                    removed = await redis_c.hdel(_REDIS_MCP_SESSIONS_KEY, session_id)
-                    if removed:
-                        found = True
+                    await redis_c.hdel(_REDIS_MCP_SESSIONS_KEY, session_id)
                 except Exception:
                     pass
-        if found:
-            return Response(status_code=204)
-        return JSONResponse({"error": "Session not found"}, status_code=404)
+            return JSONResponse(
+                {"error": "Unauthorized"},
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+            try:
+                await verify_mcp_token(token, pg_pool=pg_pool)
+            except Exception:
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            tok_sha = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            if session.token_sha256 and tok_sha != session.token_sha256:
+                return JSONResponse(
+                    {"error": "Forbidden: session token mismatch"},
+                    status_code=403,
+                )
+
+        _GATEWAY_SESSIONS.pop(session_id, None)
+        if redis_c is not None:
+            try:
+                await redis_c.hdel(_REDIS_MCP_SESSIONS_KEY, session_id)
+            except Exception:
+                pass
+        return Response(status_code=204)
 
     routes = [
         Route("/healthz", healthz_endpoint, methods=["GET"]),

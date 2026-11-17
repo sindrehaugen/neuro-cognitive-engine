@@ -175,9 +175,9 @@ class NotificationDispatcher:
                 "(install optional dep or configure SMTP off)"
             )
             return
-        from nce.net_safety import validate_extractor_url
+        from nce.net_safety import validate_outbound_url_async
 
-        await validate_extractor_url(f"smtp://{self.smtp_host}", what="smtp_host")
+        await validate_outbound_url_async(f"https://{self.smtp_host}")
         try:
             smtp_config = _build_smtp_config()
             msg = EmailMessage()

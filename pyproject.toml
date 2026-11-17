@@ -57,7 +57,8 @@ full = [
 nce-mcp-proxy = "nce.mcp_client_proxy:main"
 
 [tool.setuptools.packages.find]
-include = ["nce*"]
+include = ["nce", "nce.*"]
+exclude = ["nce_verticals*", "tests*", "scripts*", "docs*", "sql*", "go*", "benchmarks*"]
 
 [tool.setuptools.package-data]
 nce = [

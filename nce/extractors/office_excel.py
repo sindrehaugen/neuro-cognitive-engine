@@ -16,6 +16,8 @@ from typing import Any
 import openpyxl
 
 from nce.extractors.common import (
+    check_ooxml_entity_expansion,
+    check_ooxml_zip_bomb,
     is_zip_encrypted_ooxml,
     rows_to_markdown,
     split_tables_by_blank_rows,
@@ -145,6 +147,12 @@ def _emit_sheet_sections(
 
 
 def extract_xlsx_sync(blob: bytes) -> ExtractionResult:
+    bomb_err = check_ooxml_zip_bomb(blob)
+    if bomb_err:
+        return empty_skipped("openpyxl", bomb_err)
+    entity_err = check_ooxml_entity_expansion(blob)
+    if entity_err:
+        return empty_skipped("openpyxl", entity_err)
     if is_zip_encrypted_ooxml(blob):
         return empty_skipped("openpyxl", "encrypted")
     warnings: list[str] = []

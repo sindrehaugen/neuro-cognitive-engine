@@ -157,7 +157,7 @@ class GraphOrchestrator(OrchestratorBase):
             # Explicit namespace_id filter added as defense-in-depth (Fix 2B).
             sql = f"""
                 WITH vector_candidates AS (
-                    SELECT m.id, {embedding_col} <=> $1::vector AS distance
+                    SELECT m.id, {embedding_col} <=> $1::halfvec(768) AS distance
                     FROM memories m
                     {aspect_join}
                     WHERE m.memory_type = 'code_chunk'

@@ -7,8 +7,10 @@ Rollback guarantee: any PG failure triggers Mongo cleanup to prevent orphaned do
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +57,9 @@ _MIGRATIONS_DIR = _HERE / "migrations"
 
 # Backward-compat alias — MemoryPayload was renamed to StoreMemoryRequest
 MemoryPayload = StoreMemoryRequest
+
+_HEALTH_DEK_VERIFY_CACHE: dict[tuple[bytes, str], float] = {}
+_HEALTH_DEK_VERIFY_TTL_S: float = 30.0
 
 log = logging.getLogger("nce-orchestrator")
 
@@ -189,6 +194,10 @@ class NCEEngine(OrchestratorBase):
             max_size=cfg.PG_MAX_POOL,
             command_timeout=30,
             statement_cache_size=256,
+            server_settings={
+                "lock_timeout": "10s",
+                "idle_in_transaction_session_timeout": "60s",
+            },
         )
         self.redis_client = make_async_redis(
             cfg.REDIS_URL,
@@ -206,6 +215,11 @@ class NCEEngine(OrchestratorBase):
                 min_size=cfg.PG_MIN_POOL,
                 max_size=cfg.PG_MAX_POOL,
                 command_timeout=30,
+                statement_cache_size=256,
+                server_settings={
+                    "default_transaction_read_only": "on",
+                    "idle_in_transaction_session_timeout": "60s",
+                },
             )
 
         if run_startup_checks:
@@ -859,7 +873,26 @@ class NCEEngine(OrchestratorBase):
                 if row is None:
                     raise NoActiveSigningKeyError("no active row in signing_keys")
                 key_id = row["key_id"]
-                decrypt_signing_key(bytes(row["encrypted_key"]), master_key)
+                blob = bytes(row["encrypted_key"])
+                try:
+                    decrypt_signing_key(blob, master_key)
+                except SigningKeyDecryptionError:
+                    from nce.master_key_ring import previous_master_key
+
+                    prev_mk = previous_master_key()
+                    if prev_mk is None:
+                        raise
+                    try:
+                        decrypt_signing_key(blob, prev_mk)
+                        log.warning(
+                            "[key] active signing key (key_id=%s) unwrapped under "
+                            "NCE_MASTER_KEY_PREVIOUS (primary fp=%s). Run "
+                            "scripts/rewrap_master_key.py --apply to finish rotation.",
+                            key_id,
+                            fingerprint,
+                        )
+                    finally:
+                        prev_mk.zero()
         except NoActiveSigningKeyError:
             log.warning(
                 "[key] no active signing key exists yet (master key fingerprint=%s). "
@@ -1251,10 +1284,15 @@ class NCEEngine(OrchestratorBase):
         health["security"]["bounded_signature_sample"] = "failed"
         health["databases"]["rls_read"] = "failed"
 
-        # (a) Decrypt the active signing key (bypassing TTLCache)
+        # (a) Decrypt the active signing key (with short TTL cache on real pools, off event loop)
         try:
             if self.pg_pool:
-                from nce.signing import decrypt_signing_key, require_master_key
+                from nce.signing import (
+                    SigningKeyDecryptionError,
+                    decrypt_signing_key,
+                    master_key_fingerprint,
+                    require_master_key,
+                )
 
                 async with self.pg_pool.acquire(timeout=10.0) as conn:
                     row = await conn.fetchrow("""
@@ -1268,8 +1306,38 @@ class NCEEngine(OrchestratorBase):
                         health["security"]["signing_key_decryption"] = "no_active_key"
                         _degrade(health, "signing_key_absent", blocking=True)
                     else:
-                        with require_master_key() as master_key:
-                            decrypt_signing_key(bytes(row["encrypted_key"]), master_key)
+                        blob = bytes(row["encrypted_key"])
+                        is_real_pool = isinstance(self.pg_pool, asyncpg.Pool)
+
+                        def _verify_health_key() -> None:
+                            with require_master_key() as master_key:
+                                cache_k: tuple[bytes, str] | None = None
+                                if is_real_pool:
+                                    fp = master_key_fingerprint(master_key)
+                                    cache_k = (hashlib.sha256(blob).digest(), fp)
+                                    exp = _HEALTH_DEK_VERIFY_CACHE.get(cache_k)
+                                    if exp is not None and time.monotonic() < exp:
+                                        return
+                                try:
+                                    decrypt_signing_key(blob, master_key)
+                                except SigningKeyDecryptionError:
+                                    from nce.master_key_ring import previous_master_key
+
+                                    prev_mk = previous_master_key()
+                                    if prev_mk is None:
+                                        raise
+                                    try:
+                                        decrypt_signing_key(blob, prev_mk)
+                                    finally:
+                                        prev_mk.zero()
+                                if cache_k is not None:
+                                    if len(_HEALTH_DEK_VERIFY_CACHE) >= 32:
+                                        _HEALTH_DEK_VERIFY_CACHE.clear()
+                                    _HEALTH_DEK_VERIFY_CACHE[cache_k] = (
+                                        time.monotonic() + _HEALTH_DEK_VERIFY_TTL_S
+                                    )
+
+                        await asyncio.to_thread(_verify_health_key)
                         health["security"]["signing_key_decryption"] = "valid"
             else:
                 _degrade(health, "no_postgres_pool", blocking=True)
@@ -1280,6 +1348,7 @@ class NCEEngine(OrchestratorBase):
 
         # (b) Verify bounded chain sample for active namespaces + set MERKLE_CHAIN_VALID
         try:
+            from nce.db_utils import scoped_pg_session
             from nce.event_log import verify_merkle_chain
             from nce.observability import MERKLE_CHAIN_VALID
 
@@ -1290,7 +1359,7 @@ class NCEEngine(OrchestratorBase):
                 chain_ok = True
                 for ns_row in ns_rows:
                     ns_id = ns_row["id"]
-                    async with self.pg_pool.acquire(timeout=10.0) as conn:
+                    async with scoped_pg_session(self.pg_pool, ns_id) as conn:
                         max_seq = await conn.fetchval(
                             "SELECT COALESCE(max(event_seq), 0) FROM event_log WHERE namespace_id = $1",
                             ns_id,

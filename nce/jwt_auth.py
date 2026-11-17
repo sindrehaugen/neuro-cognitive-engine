@@ -465,10 +465,18 @@ def decode_agent_token(
     # Both fields are sourced exclusively from the verified JWT payload —
     # never from a request header. Absent or invalid values fall to safe defaults.
     raw_kind = payload.get("principal_kind")
-    principal_kind = str(raw_kind or "employee").strip().lower()
-    if principal_kind not in {"employee", "contractor", "external-customer"}:
-        log.debug("JWT principal_kind %r not recognised — defaulting to employee", raw_kind)
+    if raw_kind is None or not str(raw_kind).strip():
         principal_kind = "employee"
+    else:
+        principal_kind = str(raw_kind).strip().lower()
+        if principal_kind == "external_customer":
+            principal_kind = "external-customer"
+        if principal_kind not in {"employee", "contractor", "external-customer"}:
+            log.debug(
+                "JWT principal_kind %r not recognised — demoting to unverified",
+                raw_kind,
+            )
+            principal_kind = "unverified"
 
     external_scope_id: UUID | None = None
     if principal_kind in {"contractor", "external-customer"}:

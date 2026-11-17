@@ -384,52 +384,70 @@ async def compile_working_memory(
         "token_count": 0,
     }
 
-    # Strict token budget enforcement (greedy trimming)
+    # Strict token budget enforcement (binary-search prefix trim + single estimator)
     # Order of priority to keep: guardrails & contradiction alerts, then top memories, then KG
-    result["token_count"] = estimate_tokens(result)
-    while (
-        result["token_count"] > token_budget
-        or (len(json.dumps(result, default=str)) // 4) > token_budget
-    ):
-        if result["knowledge_subgraph"]:
-            result["knowledge_subgraph"].pop()
-        elif len(result["top_memories"]) > 1:
-            popped = result["top_memories"].pop()
-            p_id = str(popped.get("memory_id") or "")
-            result["provenance_citations"] = [
-                c
-                for c in result["provenance_citations"]
-                if not (c["source_type"] == "semantic_search" and c["memory_id"] == p_id)
-            ]
-        elif (
-            result["top_memories"]
+    all_citations = list(provenance_citations)
+
+    def _sync_citations() -> None:
+        mem_ids = {str(m.get("memory_id") or "") for m in result["top_memories"]}
+        rule_ids = {str(r.get("id") or "") for r in result["procedural_guardrails"]}
+        result["provenance_citations"] = [
+            c
+            for c in all_citations
+            if (c["source_type"] == "semantic_search" and c["memory_id"] in mem_ids)
+            or (c["source_type"] == "procedural_heuristic" and c["memory_id"] in rule_ids)
+        ]
+
+    def _over_budget() -> bool:
+        tokens = estimate_tokens(result)
+        result["token_count"] = tokens
+        return tokens > token_budget
+
+    def _trim_list_field(field: str, min_len: int, *, sync_citations: bool = False) -> None:
+        items = result[field]
+        if len(items) <= min_len or not _over_budget():
+            return
+        result[field] = items[:min_len]
+        if sync_citations:
+            _sync_citations()
+        if _over_budget():
+            return
+        # Largest prefix in [min_len, len(items) - 1] that fits within token_budget
+        lo, hi = min_len, len(items) - 1
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            result[field] = items[:mid]
+            if sync_citations:
+                _sync_citations()
+            if _over_budget():
+                hi = mid - 1
+            else:
+                lo = mid
+        result[field] = items[:lo]
+        if sync_citations:
+            _sync_citations()
+
+    if _over_budget():
+        _trim_list_field("knowledge_subgraph", 0)
+        _trim_list_field("top_memories", 1, sync_citations=True)
+        while (
+            _over_budget()
+            and result["top_memories"]
             and isinstance(result["top_memories"][0].get("raw_data"), str)
             and len(result["top_memories"][0]["raw_data"]) > 64
         ):
             current_raw = result["top_memories"][0]["raw_data"]
             result["top_memories"][0]["raw_data"] = current_raw[: max(32, len(current_raw) // 2)]
-        elif len(result["procedural_guardrails"]) > 1:
-            popped_rule = result["procedural_guardrails"].pop()
-            r_id = str(popped_rule.get("id") or "")
-            result["provenance_citations"] = [
-                c
-                for c in result["provenance_citations"]
-                if not (c["source_type"] == "procedural_heuristic" and c["memory_id"] == r_id)
-            ]
-        elif len(result["contradiction_alerts"]) > 1:
-            result["contradiction_alerts"].pop()
-        elif result["top_memories"]:
-            result["top_memories"].pop()
-            result["provenance_citations"] = [
-                c for c in result["provenance_citations"] if c["source_type"] != "semantic_search"
-            ]
-        elif result["contradiction_alerts"]:
-            result["contradiction_alerts"].pop()
-        elif result["procedural_guardrails"]:
-            result["procedural_guardrails"].pop()
+        _trim_list_field("procedural_guardrails", 1, sync_citations=True)
+        _trim_list_field("contradiction_alerts", 1)
+        if _over_budget() and result["top_memories"]:
+            result["top_memories"] = []
+            _sync_citations()
+        if _over_budget() and result["contradiction_alerts"]:
+            result["contradiction_alerts"] = []
+        if _over_budget() and result["procedural_guardrails"]:
+            result["procedural_guardrails"] = []
             result["provenance_citations"] = []
-        else:
-            break
-        result["token_count"] = estimate_tokens(result)
+    result["token_count"] = estimate_tokens(result)
 
     return result

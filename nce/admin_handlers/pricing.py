@@ -7,11 +7,22 @@ Exports api_pricing_resolve for wiring into build_admin_routes.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
+from uuid import UUID
 
 from nce.admin_handlers._shared import JSONResponse, admin_error_response, admin_state
-from nce.auth import validate_agent_id
 from nce.db_utils import scoped_pg_session
 from nce.pricing.resolver import resolve_price
+
+
+def _coerce_as_of_fields(mapping: dict[str, object], *keys: str) -> None:
+    for key in keys:
+        val = mapping.get(key)
+        if isinstance(val, str) and val.strip():
+            dt = datetime.fromisoformat(val.strip().replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            mapping[key] = dt
 
 
 async def api_pricing_resolve(request) -> JSONResponse:
@@ -47,7 +58,7 @@ async def api_pricing_resolve(request) -> JSONResponse:
         )
 
     try:
-        validate_agent_id(namespace_id)
+        namespace_uuid = UUID(str(namespace_id).strip())
     except ValueError as e:
         return JSONResponse(
             {"error": f"Invalid namespace_id: {str(e)}"},
@@ -56,12 +67,20 @@ async def api_pricing_resolve(request) -> JSONResponse:
 
     product = dict(body.get("product") or {})
     customer = dict(body.get("customer") or {})
+    try:
+        _coerce_as_of_fields(product, "base_as_of", "supplier_list_as_of")
+        _coerce_as_of_fields(customer, "bid_as_of")
+    except ValueError as e:
+        return JSONResponse(
+            {"error": f"Invalid pricing timestamp: {str(e)}"},
+            status_code=422,
+        )
 
     try:
-        async with scoped_pg_session(admin_state.engine.pg_pool, namespace_id) as conn:
+        async with scoped_pg_session(admin_state.engine.pg_pool, namespace_uuid) as conn:
             result = await resolve_price(
                 conn,
-                namespace_id=namespace_id,
+                namespace_id=str(namespace_uuid),
                 product=product,
                 customer=customer,
             )

@@ -17,50 +17,73 @@ once at import time from the registry — no duplicated inline sets elsewhere.
 
 from __future__ import annotations
 
+import importlib
 import types
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from nce import (
-    a2a_mcp_handlers,
-    admin_mcp_handlers,
-    bridge_mcp_handlers,
-    catalog_mcp_handlers,
-    code_mcp_handlers,
-    contradiction_mcp_handlers,
-    decision_feedback,
-    graph_mcp_handlers,
-    memory_mcp_handlers,
-    migration_mcp_handlers,
-    replay_mcp_handlers,
-    snapshot_mcp_handlers,
-    trust_dial,
-)
-from nce.admin_handlers import settings as settings_mcp_handlers
-from nce.entity_resolution import mcp_handlers as entity_resolution_mcp_handlers
-from nce.pricing import mcp_handlers as pricing_mcp_handlers
 from nce.resource_surface import get_all_resource_specs
 from nce.resource_surface.mcp import build_mcp_tool_specs
 
+_LAZY_MODULE_ALIASES: dict[str, str] = {
+    "a2a_mcp_handlers": "nce.a2a_mcp_handlers",
+    "admin_mcp_handlers": "nce.admin_mcp_handlers",
+    "bridge_mcp_handlers": "nce.bridge_mcp_handlers",
+    "catalog_mcp_handlers": "nce.catalog_mcp_handlers",
+    "code_mcp_handlers": "nce.code_mcp_handlers",
+    "contradiction_mcp_handlers": "nce.contradiction_mcp_handlers",
+    "decision_feedback": "nce.decision_feedback",
+    "graph_mcp_handlers": "nce.graph_mcp_handlers",
+    "memory_mcp_handlers": "nce.memory_mcp_handlers",
+    "migration_mcp_handlers": "nce.migration_mcp_handlers",
+    "replay_mcp_handlers": "nce.replay_mcp_handlers",
+    "snapshot_mcp_handlers": "nce.snapshot_mcp_handlers",
+    "trust_dial": "nce.trust_dial",
+    "settings_mcp_handlers": "nce.admin_handlers.settings",
+    "entity_resolution_mcp_handlers": "nce.entity_resolution.mcp_handlers",
+    "pricing_mcp_handlers": "nce.pricing.mcp_handlers",
+}
 
-def _h(module: types.ModuleType, attr: str) -> Callable[..., Any]:
-    """Return an async wrapper that resolves ``module.attr`` at **call time**.
+
+def __getattr__(name: str) -> Any:
+    """Lazily resolve historical handler module aliases on attribute access."""
+    mod_path = _LAZY_MODULE_ALIASES.get(name)
+    if mod_path is not None:
+        mod = importlib.import_module(mod_path)
+        globals()[name] = mod
+        return mod
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _h(module: types.ModuleType | str, attr: str) -> Callable[..., Any]:
+    """Return an async wrapper that resolves ``module.attr`` lazily at **call time**.
 
     Late-binding preserves ``unittest.mock.patch("pkg.module.handler", ...)``
-    compatibility: patching the module attribute after import still affects
-    the function actually invoked by the dispatch loop.  Direct references
-    stored in a frozen dataclass at registry construction time would silently
-    ignore any later patches.
+    compatibility while avoiding importing heavy handler modules when loading
+    ``nce.tool_registry`` (e.g. stdio/lightweight CLI startup).
     """
+    if isinstance(module, str):
+        mod_path = module
+        cached_mod: types.ModuleType | None = None
 
-    async def _call(engine: Any, arguments: Any) -> Any:
+        async def _call(engine: Any, arguments: Any) -> Any:
+            nonlocal cached_mod
+            mod = cached_mod if cached_mod is not None else importlib.import_module(mod_path)
+            cached_mod = mod
+            return await getattr(mod, attr)(engine, arguments)
+
+        _call.__name__ = attr
+        _call.__qualname__ = f"{mod_path}.{attr}"
+        return _call
+
+    async def _call_mod(engine: Any, arguments: Any) -> Any:
         return await getattr(module, attr)(engine, arguments)
 
     # Preserve legible names in tracebacks and for iscoroutinefunction checks.
-    _call.__name__ = attr
-    _call.__qualname__ = f"{module.__name__}.{attr}"
-    return _call
+    _call_mod.__name__ = attr
+    _call_mod.__qualname__ = f"{module.__name__}.{attr}"
+    return _call_mod
 
 
 @dataclass(frozen=True)
@@ -96,280 +119,280 @@ class ToolSpec:
 # ---------------------------------------------------------------------------
 TOOL_REGISTRY: dict[str, ToolSpec] = {
     "store_memory": ToolSpec(
-        _h(memory_mcp_handlers, "handle_store_memory"),
+        _h("nce.memory_mcp_handlers", "handle_store_memory"),
         mutation=True,
     ),
     "store_artifact": ToolSpec(
-        _h(memory_mcp_handlers, "handle_store_artifact"),
+        _h("nce.memory_mcp_handlers", "handle_store_artifact"),
         mutation=True,
     ),
     "store_media": ToolSpec(
-        _h(memory_mcp_handlers, "handle_store_media"),
+        _h("nce.memory_mcp_handlers", "handle_store_media"),
         mutation=True,
     ),
     "semantic_search": ToolSpec(
-        _h(memory_mcp_handlers, "handle_semantic_search"),
+        _h("nce.memory_mcp_handlers", "handle_semantic_search"),
         cacheable=True,
     ),
     "get_recent_context": ToolSpec(
-        _h(memory_mcp_handlers, "handle_get_recent_context"),
+        _h("nce.memory_mcp_handlers", "handle_get_recent_context"),
     ),
     "compile_working_memory": ToolSpec(
-        _h(memory_mcp_handlers, "handle_compile_working_memory"),
+        _h("nce.memory_mcp_handlers", "handle_compile_working_memory"),
     ),
     "boost_memory": ToolSpec(
-        _h(memory_mcp_handlers, "handle_boost_memory"),
+        _h("nce.memory_mcp_handlers", "handle_boost_memory"),
         mutation=True,
     ),
     "forget_memory": ToolSpec(
-        _h(memory_mcp_handlers, "handle_forget_memory"),
+        _h("nce.memory_mcp_handlers", "handle_forget_memory"),
         mutation=True,
     ),
     "unredact_memory": ToolSpec(
-        _h(memory_mcp_handlers, "handle_unredact_memory"),
+        _h("nce.memory_mcp_handlers", "handle_unredact_memory"),
         admin_only=True,
         mutation=True,
     ),
     "shred_memory": ToolSpec(
-        _h(memory_mcp_handlers, "handle_shred_memory"),
+        _h("nce.memory_mcp_handlers", "handle_shred_memory"),
         admin_only=True,
         mutation=True,
     ),
     "index_code_file": ToolSpec(
-        _h(code_mcp_handlers, "handle_index_code_file"),
+        _h("nce.code_mcp_handlers", "handle_index_code_file"),
         mutation=True,
     ),
     "check_indexing_status": ToolSpec(
-        _h(code_mcp_handlers, "handle_check_indexing_status"),
+        _h("nce.code_mcp_handlers", "handle_check_indexing_status"),
     ),
     "search_codebase": ToolSpec(
-        _h(code_mcp_handlers, "handle_search_codebase"),
+        _h("nce.code_mcp_handlers", "handle_search_codebase"),
         cacheable=True,
     ),
     "graph_search": ToolSpec(
-        _h(graph_mcp_handlers, "handle_graph_search"),
+        _h("nce.graph_mcp_handlers", "handle_graph_search"),
         cacheable=True,
     ),
     "neuromorphic_search": ToolSpec(
-        _h(graph_mcp_handlers, "handle_neuromorphic_search"),
+        _h("nce.graph_mcp_handlers", "handle_neuromorphic_search"),
         cacheable=True,
     ),
     "connect_bridge": ToolSpec(
-        _h(bridge_mcp_handlers, "connect_bridge"),
+        _h("nce.bridge_mcp_handlers", "connect_bridge"),
         mutation=True,
     ),
     "complete_bridge_auth": ToolSpec(
-        _h(bridge_mcp_handlers, "complete_bridge_auth"),
+        _h("nce.bridge_mcp_handlers", "complete_bridge_auth"),
         mutation=True,
     ),
     "list_bridges": ToolSpec(
-        _h(bridge_mcp_handlers, "list_bridges"),
+        _h("nce.bridge_mcp_handlers", "list_bridges"),
     ),
     "disconnect_bridge": ToolSpec(
-        _h(bridge_mcp_handlers, "disconnect_bridge"),
+        _h("nce.bridge_mcp_handlers", "disconnect_bridge"),
         mutation=True,
     ),
     "force_resync_bridge": ToolSpec(
-        _h(bridge_mcp_handlers, "force_resync_bridge"),
+        _h("nce.bridge_mcp_handlers", "force_resync_bridge"),
         mutation=True,
     ),
     "bridge_status": ToolSpec(
-        _h(bridge_mcp_handlers, "bridge_status"),
+        _h("nce.bridge_mcp_handlers", "bridge_status"),
     ),
     "list_contradictions": ToolSpec(
-        _h(contradiction_mcp_handlers, "handle_list_contradictions"),
+        _h("nce.contradiction_mcp_handlers", "handle_list_contradictions"),
     ),
     "resolve_contradiction": ToolSpec(
-        _h(contradiction_mcp_handlers, "handle_resolve_contradiction"),
+        _h("nce.contradiction_mcp_handlers", "handle_resolve_contradiction"),
         mutation=True,
     ),
     "start_migration": ToolSpec(
-        _h(migration_mcp_handlers, "handle_start_migration"),
+        _h("nce.migration_mcp_handlers", "handle_start_migration"),
         mutation=True,
         migration=True,
     ),
     "migration_status": ToolSpec(
-        _h(migration_mcp_handlers, "handle_migration_status"),
+        _h("nce.migration_mcp_handlers", "handle_migration_status"),
         migration=True,
     ),
     "validate_migration": ToolSpec(
-        _h(migration_mcp_handlers, "handle_validate_migration"),
+        _h("nce.migration_mcp_handlers", "handle_validate_migration"),
         migration=True,
     ),
     "commit_migration": ToolSpec(
-        _h(migration_mcp_handlers, "handle_commit_migration"),
+        _h("nce.migration_mcp_handlers", "handle_commit_migration"),
         mutation=True,
         migration=True,
     ),
     "abort_migration": ToolSpec(
-        _h(migration_mcp_handlers, "handle_abort_migration"),
+        _h("nce.migration_mcp_handlers", "handle_abort_migration"),
         mutation=True,
         migration=True,
     ),
     "replay_observe": ToolSpec(
-        _h(replay_mcp_handlers, "handle_replay_observe"),
+        _h("nce.replay_mcp_handlers", "handle_replay_observe"),
         admin_only=True,
     ),
     "replay_reconstruct": ToolSpec(
-        _h(replay_mcp_handlers, "handle_replay_reconstruct"),
+        _h("nce.replay_mcp_handlers", "handle_replay_reconstruct"),
         admin_only=True,
         mutation=True,
     ),
     "replay_fork": ToolSpec(
-        _h(replay_mcp_handlers, "handle_replay_fork"),
+        _h("nce.replay_mcp_handlers", "handle_replay_fork"),
         admin_only=True,
     ),
     "replay_status": ToolSpec(
-        _h(replay_mcp_handlers, "handle_replay_status"),
+        _h("nce.replay_mcp_handlers", "handle_replay_status"),
         admin_only=True,
     ),
     "get_event_provenance": ToolSpec(
-        _h(replay_mcp_handlers, "handle_get_event_provenance"),
+        _h("nce.replay_mcp_handlers", "handle_get_event_provenance"),
     ),
     "explain_memory": ToolSpec(
-        _h(replay_mcp_handlers, "handle_explain_memory"),
+        _h("nce.replay_mcp_handlers", "handle_explain_memory"),
     ),
     "explain_past_decision": ToolSpec(
-        _h(replay_mcp_handlers, "handle_explain_past_decision"),
+        _h("nce.replay_mcp_handlers", "handle_explain_past_decision"),
         admin_only=True,
         mutation=True,
     ),
     "explain_config_change": ToolSpec(
-        _h(settings_mcp_handlers, "handle_explain_config_change"),
+        _h("nce.admin_handlers.settings", "handle_explain_config_change"),
         admin_only=True,
     ),
     "detect_causal_cycles": ToolSpec(
-        _h(replay_mcp_handlers, "handle_detect_causal_cycles"),
+        _h("nce.replay_mcp_handlers", "handle_detect_causal_cycles"),
         admin_only=True,
     ),
     "a2a_create_grant": ToolSpec(
-        _h(a2a_mcp_handlers, "handle_a2a_create_grant"),
+        _h("nce.a2a_mcp_handlers", "handle_a2a_create_grant"),
         mutation=True,
     ),
     "a2a_revoke_grant": ToolSpec(
-        _h(a2a_mcp_handlers, "handle_a2a_revoke_grant"),
+        _h("nce.a2a_mcp_handlers", "handle_a2a_revoke_grant"),
         mutation=True,
     ),
     "a2a_list_grants": ToolSpec(
-        _h(a2a_mcp_handlers, "handle_a2a_list_grants"),
+        _h("nce.a2a_mcp_handlers", "handle_a2a_list_grants"),
     ),
     "a2a_query_shared": ToolSpec(
-        _h(a2a_mcp_handlers, "handle_a2a_query_shared"),
+        _h("nce.a2a_mcp_handlers", "handle_a2a_query_shared"),
     ),
     "a2a_verify_grant_status": ToolSpec(
-        _h(a2a_mcp_handlers, "handle_a2a_verify_grant_status"),
+        _h("nce.a2a_mcp_handlers", "handle_a2a_verify_grant_status"),
     ),
     "a2a_update_grant_scopes": ToolSpec(
-        _h(a2a_mcp_handlers, "handle_a2a_update_grant_scopes"),
+        _h("nce.a2a_mcp_handlers", "handle_a2a_update_grant_scopes"),
         mutation=True,
     ),
     "a2a_inspect_grant": ToolSpec(
-        _h(a2a_mcp_handlers, "handle_a2a_inspect_grant"),
+        _h("nce.a2a_mcp_handlers", "handle_a2a_inspect_grant"),
     ),
     "pricing_resolve": ToolSpec(
-        _h(pricing_mcp_handlers, "handle_pricing_resolve"),
+        _h("nce.pricing.mcp_handlers", "handle_pricing_resolve"),
         cacheable=True,
     ),
     "pricing_get_fx_rates": ToolSpec(
-        _h(pricing_mcp_handlers, "handle_pricing_get_fx_rates"),
+        _h("nce.pricing.mcp_handlers", "handle_pricing_get_fx_rates"),
         cacheable=True,
         admin_only=False,
         mutation=False,
     ),
     "resolve": ToolSpec(
-        _h(entity_resolution_mcp_handlers, "handle_resolve"),
+        _h("nce.entity_resolution.mcp_handlers", "handle_resolve"),
         cacheable=True,
     ),
     "merge_queue_list": ToolSpec(
-        _h(entity_resolution_mcp_handlers, "handle_merge_queue_list"),
+        _h("nce.entity_resolution.mcp_handlers", "handle_merge_queue_list"),
         cacheable=True,
     ),
     "merge_queue_confirm": ToolSpec(
-        _h(entity_resolution_mcp_handlers, "handle_merge_queue_confirm"),
+        _h("nce.entity_resolution.mcp_handlers", "handle_merge_queue_confirm"),
         mutation=True,
         admin_only=True,
     ),
     "merge_queue_reject": ToolSpec(
-        _h(entity_resolution_mcp_handlers, "handle_merge_queue_reject"),
+        _h("nce.entity_resolution.mcp_handlers", "handle_merge_queue_reject"),
         mutation=True,
         admin_only=True,
     ),
     "manage_namespace": ToolSpec(
-        _h(admin_mcp_handlers, "handle_manage_namespace"),
+        _h("nce.admin_mcp_handlers", "handle_manage_namespace"),
         mutation=True,
     ),
     "verify_memory": ToolSpec(
-        _h(admin_mcp_handlers, "handle_verify_memory"),
+        _h("nce.admin_mcp_handlers", "handle_verify_memory"),
     ),
     "trigger_consolidation": ToolSpec(
-        _h(admin_mcp_handlers, "handle_trigger_consolidation"),
+        _h("nce.admin_mcp_handlers", "handle_trigger_consolidation"),
         mutation=True,
     ),
     "consolidation_status": ToolSpec(
-        _h(admin_mcp_handlers, "handle_consolidation_status"),
+        _h("nce.admin_mcp_handlers", "handle_consolidation_status"),
     ),
     "manage_quotas": ToolSpec(
-        _h(admin_mcp_handlers, "handle_manage_quotas"),
+        _h("nce.admin_mcp_handlers", "handle_manage_quotas"),
         mutation=True,
     ),
     "rotate_signing_key": ToolSpec(
-        _h(admin_mcp_handlers, "handle_rotate_signing_key"),
+        _h("nce.admin_mcp_handlers", "handle_rotate_signing_key"),
         mutation=True,
     ),
     "get_health": ToolSpec(
-        _h(admin_mcp_handlers, "handle_get_health"),
+        _h("nce.admin_mcp_handlers", "handle_get_health"),
     ),
     "list_dlq": ToolSpec(
-        _h(admin_mcp_handlers, "handle_list_dlq"),
+        _h("nce.admin_mcp_handlers", "handle_list_dlq"),
     ),
     "replay_dlq": ToolSpec(
-        _h(admin_mcp_handlers, "handle_replay_dlq"),
+        _h("nce.admin_mcp_handlers", "handle_replay_dlq"),
         mutation=True,  # writes to dead_letter_queue (marks entry as replayed)
     ),
     "purge_dlq": ToolSpec(
-        _h(admin_mcp_handlers, "handle_purge_dlq"),
+        _h("nce.admin_mcp_handlers", "handle_purge_dlq"),
         mutation=True,  # deletes from dead_letter_queue
     ),
     "create_snapshot": ToolSpec(
-        _h(snapshot_mcp_handlers, "handle_create_snapshot"),
+        _h("nce.snapshot_mcp_handlers", "handle_create_snapshot"),
         mutation=True,
     ),
     "list_snapshots": ToolSpec(
-        _h(snapshot_mcp_handlers, "handle_list_snapshots"),
+        _h("nce.snapshot_mcp_handlers", "handle_list_snapshots"),
     ),
     "delete_snapshot": ToolSpec(
-        _h(snapshot_mcp_handlers, "handle_delete_snapshot"),
+        _h("nce.snapshot_mcp_handlers", "handle_delete_snapshot"),
         mutation=True,
     ),
     "compare_states": ToolSpec(
-        _h(snapshot_mcp_handlers, "handle_compare_states"),
+        _h("nce.snapshot_mcp_handlers", "handle_compare_states"),
     ),
     "import_snapshot": ToolSpec(
-        _h(snapshot_mcp_handlers, "handle_import_snapshot"),
+        _h("nce.snapshot_mcp_handlers", "handle_import_snapshot"),
         mutation=True,
     ),
     "suggest_queries": ToolSpec(
-        _h(catalog_mcp_handlers, "handle_suggest_queries"),
+        _h("nce.catalog_mcp_handlers", "handle_suggest_queries"),
     ),
     "execute_query_template": ToolSpec(
-        _h(catalog_mcp_handlers, "handle_execute_query_template"),
+        _h("nce.catalog_mcp_handlers", "handle_execute_query_template"),
     ),
     "describe_schema": ToolSpec(
-        _h(catalog_mcp_handlers, "handle_describe_schema"),
+        _h("nce.catalog_mcp_handlers", "handle_describe_schema"),
     ),
     "decision_feedback_record": ToolSpec(
-        _h(decision_feedback, "handle_record_decision_feedback"),
+        _h("nce.decision_feedback", "handle_record_decision_feedback"),
         admin_only=True,
         mutation=True,
     ),
     "trust_dial_get_status": ToolSpec(
-        _h(trust_dial, "handle_trust_dial_get_status"),
+        _h("nce.trust_dial", "handle_trust_dial_get_status"),
         cacheable=True,
         admin_only=False,
         mutation=False,
     ),
     "trust_dial_set_tier": ToolSpec(
-        _h(trust_dial, "handle_trust_dial_set_tier"),
+        _h("nce.trust_dial", "handle_trust_dial_set_tier"),
         cacheable=False,
         admin_only=True,
         mutation=True,

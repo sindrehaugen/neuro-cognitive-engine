@@ -23,6 +23,7 @@ from nce.atms import evaluate_atms_intervention, persist_atms_invalidation
 from nce.auth import NamespaceContext
 from nce.db_utils import scoped_pg_session
 from nce.event_log import append_event
+from nce.http_body_limit import BoundedBodyMiddleware
 from nce.jwt_auth import JWTAuthMiddleware
 from nce.orchestrator import NCEEngine
 from nce.principal_bindings import PrincipalContext, current_principal, upsert_principal_binding
@@ -1177,11 +1178,67 @@ async def put_me_context(request: Request) -> JSONResponse:
         )
 
     tier = getattr(ns_ctx, "principal_kind", "employee")
-    employee_id = body.get("employee_id")
-    customer_id = body.get("customer_id")
-    contractor_id = body.get("contractor_id")
-    roles = body.get("roles", [])
-    metadata = body.get("metadata", {})
+    employee_id = body.get("employee_id") if isinstance(body, dict) else None
+    customer_id = body.get("customer_id") if isinstance(body, dict) else None
+    contractor_id = body.get("contractor_id") if isinstance(body, dict) else None
+    roles = body.get("roles", []) if isinstance(body, dict) else []
+    metadata = body.get("metadata", {}) if isinstance(body, dict) else {}
+
+    def _me_err(code: int, message: str, reason: str, status_code: int) -> JSONResponse:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": code,
+                    "message": message,
+                    "data": {"reason": reason},
+                },
+                "id": None,
+            },
+            status_code=status_code,
+        )
+
+    if not isinstance(body, dict):
+        return _me_err(-32602, "Invalid params", "invalid_body", 400)
+    if (
+        not isinstance(roles, list)
+        or len(roles) > 32
+        or any(not isinstance(r, str) or not (1 <= len(r.strip()) <= 64) for r in roles)
+    ):
+        return _me_err(-32602, "Invalid params", "invalid_roles", 400)
+    if not isinstance(metadata, dict):
+        return _me_err(-32602, "Invalid params", "invalid_metadata", 400)
+
+    roles = [r.strip() for r in roles]
+
+    if tier == "unverified":
+        return _me_err(-32005, "Forbidden", "unverified_principal_tier", 403)
+
+    if tier in ("contractor", "external-customer", "external_customer", "customer"):
+        if employee_id:
+            return _me_err(-32005, "Forbidden", "employee_id_forbidden_for_external_tier", 403)
+
+        privileged_roles = {"admin", "superadmin", "owner", "system"}
+        is_admin = bool(getattr(ns_ctx, "is_admin", False))
+        if not is_admin and any(r.lower() in privileged_roles for r in roles):
+            return _me_err(-32005, "Forbidden", "privileged_role_escalation", 403)
+
+        ext_scope = getattr(ns_ctx, "external_scope_id", None)
+        ext_scope_str = str(ext_scope) if ext_scope is not None else None
+        if tier == "contractor":
+            if customer_id:
+                return _me_err(-32005, "Forbidden", "customer_id_forbidden_for_contractor", 403)
+            if ext_scope_str is not None:
+                if contractor_id is not None and str(contractor_id) != ext_scope_str:
+                    return _me_err(-32005, "Forbidden", "contractor_scope_mismatch", 403)
+                contractor_id = ext_scope_str
+        else:
+            if contractor_id:
+                return _me_err(-32005, "Forbidden", "contractor_id_forbidden_for_customer", 403)
+            if ext_scope_str is not None:
+                if customer_id is not None and str(customer_id) != ext_scope_str:
+                    return _me_err(-32005, "Forbidden", "customer_scope_mismatch", 403)
+                customer_id = ext_scope_str
 
     engine = getattr(request.app.state, "engine", None)
     pool = getattr(engine, "pg_pool", None) if engine else None
@@ -1227,6 +1284,7 @@ app = Starlette(
     debug=False,
     lifespan=me_lifespan,
     middleware=[
+        Middleware(BoundedBodyMiddleware),
         Middleware(
             JWTAuthMiddleware,
             protected_prefix="/api/me",

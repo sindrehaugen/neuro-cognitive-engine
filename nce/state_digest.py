@@ -26,6 +26,7 @@ async def compute_namespace_state_digest(
     ns: uuid.UUID,
     *,
     as_of: datetime | None = None,
+    mongo_client: AsyncIOMotorClient | None = None,
 ) -> str:
     """
     Compute SHA-256 over a canonical sorted projection of durable, deterministic state
@@ -35,7 +36,7 @@ async def compute_namespace_state_digest(
     clause, as_of_params = as_of_query("", as_of, start_index=2)
     sql_memories = f"""
         SELECT id, agent_id, created_at, memory_type, assertion_type,
-               valid_from, valid_to, derived_from, metadata, payload_ref
+               valid_from, valid_to, derived_from, metadata, payload_ref, wrapped_dek
         FROM memories
         WHERE namespace_id = $1 {clause}
     """
@@ -62,8 +63,8 @@ async def compute_namespace_state_digest(
             id_map[m_id_str] = m_id_str
 
     # 3. Bulk-fetch payload contents from MongoDB
-    episode_contents: dict[str, str] = {}
-    code_contents: dict[str, str] = {}
+    episode_contents: dict[str, Any] = {}
+    code_contents: dict[str, Any] = {}
 
     episode_oids: list[ObjectId] = []
     code_oids: list[ObjectId] = []
@@ -80,12 +81,15 @@ async def compute_namespace_state_digest(
         except Exception:
             pass
 
-    mongo_client: AsyncIOMotorClient | None = None
+    owns_mongo = mongo_client is None
+    active_mongo: AsyncIOMotorClient | None = mongo_client
     try:
+        from nce._client_factory import motor_timeout_kwargs
         from nce.db_utils import scoped_mongo_session
 
-        mongo_client = AsyncIOMotorClient(cfg.MONGO_URI, serverSelectionTimeoutMS=2000)
-        async with scoped_mongo_session(mongo_client, ns) as s_db:
+        if active_mongo is None:
+            active_mongo = AsyncIOMotorClient(cfg.MONGO_URI, **motor_timeout_kwargs())
+        async with scoped_mongo_session(active_mongo, ns) as s_db:
             if episode_oids:
                 cursor = s_db.episodes.find(
                     {"_id": {"$in": episode_oids}}, projection={"raw_data": 1}
@@ -101,8 +105,10 @@ async def compute_namespace_state_digest(
     except Exception as exc:
         log.warning("Failed to connect to MongoDB or fetch payloads for digest: %s", exc)
     finally:
-        if mongo_client:
-            mongo_client.close()
+        if owns_mongo and active_mongo is not None:
+            active_mongo.close()
+
+    from nce.envelope import maybe_decrypt_raw_data
 
     # 4. Canonicalize memories
     canonical_memories: list[dict[str, Any]] = []
@@ -149,14 +155,28 @@ async def compute_namespace_state_digest(
         }
         sanitized_meta = {k: v for k, v in meta_dict.items() if k not in exclude_keys}
 
-        # Resolve payload hash
+        # Resolve payload hash (decrypting TCDEK-wrapped Mongo payloads when applicable)
         ref = m["payload_ref"]
         content_str = ""
         if ref:
             if m["memory_type"] == "code_chunk":
-                content_str = code_contents.get(str(ref), "")
+                raw_val = code_contents.get(str(ref), "")
+                content_str = (
+                    raw_val.decode("utf-8", errors="replace")
+                    if isinstance(raw_val, (bytes, bytearray))
+                    else str(raw_val)
+                )
             else:
-                content_str = episode_contents.get(str(ref), "")
+                raw_val = episode_contents.get(str(ref), "")
+                wrapped = (
+                    m["wrapped_dek"]
+                    if hasattr(m, "keys") and "wrapped_dek" in m.keys()
+                    else (m.get("wrapped_dek") if isinstance(m, dict) else None)
+                )
+                if raw_val not in ("", None):
+                    content_str = maybe_decrypt_raw_data(
+                        raw_val, bytes(wrapped) if wrapped is not None else None
+                    )
         # Normalise line endings to ensure OS-independent hashes
         content_str = content_str.replace("\r\n", "\n")
         payload_hash = hashlib.sha256(content_str.encode("utf-8")).hexdigest()

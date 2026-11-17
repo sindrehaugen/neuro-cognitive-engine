@@ -11,9 +11,11 @@ breaking the infinite-retry CPU spin-loop.
 """
 
 import asyncio
+import atexit
 import hashlib
 import json
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -37,12 +39,45 @@ from nce.orchestrator import NCEEngine
 log = logging.getLogger("nce-tasks")
 
 
+_thread_local = threading.local()
+_worker_thread_loops: list[asyncio.AbstractEventLoop] = []
+_worker_loops_lock = threading.Lock()
+
+
+def _close_worker_thread_loops() -> None:
+    """Close any persistent per-thread loops created by ``run_async`` on shutdown."""
+    with _worker_loops_lock:
+        loops = list(_worker_thread_loops)
+        _worker_thread_loops.clear()
+    for lp in loops:
+        if not lp.is_closed():
+            try:
+                lp.close()
+            except Exception:
+                pass
+
+
+atexit.register(_close_worker_thread_loops)
+
+
+def _get_or_create_thread_loop() -> asyncio.AbstractEventLoop:
+    lp: asyncio.AbstractEventLoop | None = getattr(_thread_local, "loop", None)
+    if lp is None or lp.is_closed():
+        lp = asyncio.new_event_loop()
+        _thread_local.loop = lp
+        with _worker_loops_lock:
+            _worker_thread_loops.append(lp)
+    return lp
+
+
 def run_async(coro):
     """Helper to run async code in sync RQ worker context.
 
     If an event loop is already running (e.g., during pytest execution),
     attempting to run loop.run_until_complete() on the same thread will clash.
     In that case, we execute the coroutine in a separate thread with its own loop.
+    When running on a sync worker thread with an unpatched ``NCEEngine``,
+    reuses a persistent per-thread event loop so connection pools survive across tasks.
     """
     try:
         loop = asyncio.get_running_loop()
@@ -50,6 +85,17 @@ def run_async(coro):
         loop = None
 
     if loop is None:
+        can_reuse_loop = (
+            NCEEngine is _REAL_ENGINE_CLS
+            and getattr(NCEEngine.connect, "__func__", NCEEngine.connect) is _REAL_ENGINE_CONNECT
+            and getattr(NCEEngine.disconnect, "__func__", NCEEngine.disconnect)
+            is _REAL_ENGINE_DISCONNECT
+        )
+        if can_reuse_loop:
+            worker_loop = _get_or_create_thread_loop()
+            asyncio.set_event_loop(worker_loop)
+            return worker_loop.run_until_complete(coro)
+
         new_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(new_loop)
         try:
@@ -57,8 +103,6 @@ def run_async(coro):
         finally:
             new_loop.close()
     else:
-        import threading
-
         res = []
         err = []
 

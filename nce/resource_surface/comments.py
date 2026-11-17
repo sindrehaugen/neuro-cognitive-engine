@@ -85,9 +85,10 @@ async def fetch_entity_comments(
         WHERE namespace_id = $1
           AND tlx_scores->>'kind' = 'resource_comment'
           AND tlx_scores->>'entity_id' = $2
+          AND (tlx_scores->>'entity_type' = $3 OR tlx_scores->>'entity_type' IS NULL)
         ORDER BY created_at ASC
     """
-    rows = await conn.fetch(query, ns_uuid, str(entity_id))
+    rows = await conn.fetch(query, ns_uuid, str(entity_id), spec.node_type)
 
     comments: list[dict[str, Any]] = []
     for r in rows:
@@ -218,9 +219,10 @@ async def fetch_entity_tags(
         WHERE namespace_id = $1
           AND tlx_scores->>'kind' = 'resource_tag_event'
           AND tlx_scores->>'entity_id' = $2
+          AND (tlx_scores->>'entity_type' = $3 OR tlx_scores->>'entity_type' IS NULL)
         ORDER BY created_at ASC
     """
-    rows = await conn.fetch(query, ns_uuid, str(entity_id))
+    rows = await conn.fetch(query, ns_uuid, str(entity_id), spec.node_type)
 
     active_tags: set[str] = set()
     for r in rows:

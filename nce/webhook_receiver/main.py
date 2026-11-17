@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -156,21 +157,68 @@ async def _fetch_bridge_subscription(provider: str, subscription_id: str) -> asy
         )
 
 
+_INTERNAL_PROXY_NETS_V4: tuple[ipaddress.IPv4Network, ...] = (
+    ipaddress.IPv4Network("10.0.0.0/8"),
+    ipaddress.IPv4Network("172.16.0.0/12"),
+    ipaddress.IPv4Network("192.168.0.0/16"),
+    ipaddress.IPv4Network("100.64.0.0/10"),
+    ipaddress.IPv4Network("127.0.0.0/8"),
+    ipaddress.IPv4Network("169.254.0.0/16"),
+)
+_INTERNAL_PROXY_NETS_V6: tuple[ipaddress.IPv6Network, ...] = (
+    ipaddress.IPv6Network("::1/128"),
+    ipaddress.IPv6Network("fc00::/7"),
+    ipaddress.IPv6Network("fe80::/10"),
+)
+# Explicit proxy CIDRs (not ip.is_private, which treats RFC 5737 test/doc ranges as private).
+_INTERNAL_PROXY_NETS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
+    *_INTERNAL_PROXY_NETS_V4,
+    *_INTERNAL_PROXY_NETS_V6,
+)
+
+
+def _is_internal_proxy_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True when ip falls inside known loopback/RFC1918/CGNAT/link-local/ULA proxy nets."""
+    if isinstance(ip, ipaddress.IPv4Address):
+        return any(ip in net for net in _INTERNAL_PROXY_NETS_V4)
+    if ip.ipv4_mapped is not None:
+        return any(ip.ipv4_mapped in net for net in _INTERNAL_PROXY_NETS_V4)
+    return any(ip in net for net in _INTERNAL_PROXY_NETS_V6)
+
+
 def _client_ip(request: Request) -> str:
-    """Client IP for rate limiting; honor X-Forwarded-For only behind a trusted proxy."""
+    """Client IP for rate limiting; select rightmost non-internal X-Forwarded-For hop."""
     if cfg.NCE_WEBHOOK_TRUST_PROXY:
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
-            return forwarded.split(",")[0].strip() or "unknown"
+            valid_ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+            for raw_hop in forwarded.split(","):
+                candidate = raw_hop.strip()
+                if not candidate:
+                    continue
+                try:
+                    valid_ips.append(ipaddress.ip_address(candidate))
+                except ValueError:
+                    continue
+            for ip in reversed(valid_ips):
+                if not _is_internal_proxy_ip(ip):
+                    return str(ip)
+            if valid_ips:
+                return str(valid_ips[-1])
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
+
+
+_MAX_IP_WINDOWS = 10_000
 
 
 def _allow_webhook_request_memory(client_ip: str, path: str) -> bool:
     """In-memory sliding window keyed by IP + path (single-instance fallback)."""
     now = time.time()
     key = f"{client_ip}:{path}"
+    if key not in _ip_windows and len(_ip_windows) >= _MAX_IP_WINDOWS:
+        _ip_windows.pop(next(iter(_ip_windows)), None)
     window = _ip_windows.setdefault(key, [])
     window[:] = [t for t in window if t > now - _RATE_PERIOD_S]
     if len(window) >= _RATE_LIMIT:
@@ -220,9 +268,14 @@ def _dedup_key(provider: str, payload: dict[str, Any]) -> str | None:
         accounts = (payload.get("list_folder") or {}).get("accounts") or []
         if not accounts:
             return None
-        digest = hashlib.sha256(
-            json.dumps(sorted(accounts), sort_keys=True).encode("utf-8")
-        ).hexdigest()[:32]
+        sig = str(payload.get("_dropbox_signature") or "")
+        body_hash = str(payload.get("_body_sha256") or "")
+        if not body_hash:
+            body_hash = hashlib.sha256(
+                json.dumps(sorted(accounts), sort_keys=True).encode("utf-8")
+            ).hexdigest()[:16]
+        raw = f"{json.dumps(sorted(accounts), sort_keys=True)}|{sig}|{body_hash}"
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
         return f"nce:webhook:dedup:dropbox:{digest}"
     if provider == "sharepoint":
         notifications = payload.get("notifications") or []
@@ -259,10 +312,11 @@ def _dedup_key(provider: str, payload: dict[str, Any]) -> str | None:
     return None
 
 
-def _claim_dedup(key: str) -> bool:
+def _claim_dedup(key: str, *, ttl_s: int | None = None) -> bool:
     """Return True when this delivery should be enqueued (first-seen within TTL)."""
+    effective_ttl = ttl_s if ttl_s is not None else _DEDUP_TTL_S
     try:
-        return bool(_redis_client().set(key, "1", nx=True, ex=_DEDUP_TTL_S))
+        return bool(_redis_client().set(key, "1", nx=True, ex=effective_ttl))
     except Exception as exc:
         log.warning("Webhook dedup Redis unavailable: %s", exc)
         if _DEDUP_FAIL_OPEN:
@@ -350,15 +404,20 @@ def enqueue_process_bridge_event(provider: str, payload: dict[str, Any]) -> str:
     Isolated for tests via monkeypatch.
     """
     dedup = _dedup_key(provider, payload)
-    if dedup and not _claim_dedup(dedup):
-        log.info("Webhook dedup skip provider=%s key=%s", provider, dedup)
-        return "dedup-skipped"
+    if dedup:
+        claim_ok = _claim_dedup(dedup, ttl_s=15) if provider == "dropbox" else _claim_dedup(dedup)
+        if not claim_ok:
+            log.info("Webhook dedup skip provider=%s key=%s", provider, dedup)
+            return "dedup-skipped"
 
+    clean_payload = {
+        k: v for k, v in payload.items() if k not in ("_dropbox_signature", "_body_sha256")
+    }
     q = get_priority_queue(0, _redis_client())
     job = enqueue_traced(
         q,
         process_bridge_event,
-        kwargs={"provider": provider, "payload": payload},
+        kwargs={"provider": provider, "payload": clean_payload},
         job_timeout="30m",
     )
     return job.id
@@ -391,7 +450,11 @@ async def dropbox_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Invalid JSON body")
 
     list_folder = parsed.get("list_folder") if isinstance(parsed, dict) else None
-    payload: dict[str, Any] = {"list_folder": list_folder or {}}
+    payload: dict[str, Any] = {
+        "list_folder": list_folder or {},
+        "_dropbox_signature": signature,
+        "_body_sha256": hashlib.sha256(body).hexdigest()[:16],
+    }
     job_id = enqueue_process_bridge_event("dropbox", payload)
     return {"status": "queued", "job_id": job_id}
 
@@ -564,7 +627,32 @@ async def signing_webhook(
             detail=f"Unsupported signing provider '{provider}'. Must be one of {valid_providers}",
         )
 
-    payload = await _read_json_bounded(request)
+    body_bytes = await _read_body_bounded(request)
+    signing_secret = (
+        os.getenv("NCE_SIGNING_WEBHOOK_SECRET", "")
+        or getattr(cfg, "NCE_SIGNING_WEBHOOK_SECRET", "")
+    ).strip()
+    if signing_secret or cfg.IS_PROD:
+        if not signing_secret:
+            raise HTTPException(
+                status_code=503,
+                detail="Signing webhook secret not configured",
+            )
+        provided_secret = request.headers.get("X-NCE-Signing-Secret", "")
+        provided_sig = request.headers.get("X-NCE-Signature", "")
+        expected_sig = hmac.new(
+            signing_secret.encode("utf-8"), body_bytes, hashlib.sha256
+        ).hexdigest()
+        secret_ok = bool(provided_secret) and hmac.compare_digest(provided_secret, signing_secret)
+        sig_ok = bool(provided_sig) and hmac.compare_digest(provided_sig, expected_sig)
+        if not (secret_ok or sig_ok):
+            raise HTTPException(status_code=403, detail="Invalid signing webhook signature")
+
+    try:
+        payload = json.loads(body_bytes)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from None
+
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Expected a JSON object")
 

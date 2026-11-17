@@ -10,6 +10,11 @@ from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.shapes.group import GroupShape
 
+from nce.extractors.common import (
+    check_ooxml_entity_expansion,
+    check_ooxml_zip_bomb,
+    is_zip_encrypted_ooxml,
+)
 from nce.extractors.core import ExtractionResult, Section, empty_skipped
 from nce.extractors.libreoffice import libreoffice_convert
 from nce.extractors.ocr import ocr_image_bytes
@@ -72,6 +77,14 @@ async def _shape_parts(shape, warnings: list[str]) -> list[str]:
 
 
 async def extract_pptx(blob: bytes) -> ExtractionResult:
+    bomb_err = check_ooxml_zip_bomb(blob)
+    if bomb_err:
+        return empty_skipped("python-pptx", bomb_err)
+    entity_err = check_ooxml_entity_expansion(blob)
+    if entity_err:
+        return empty_skipped("python-pptx", entity_err)
+    if is_zip_encrypted_ooxml(blob):
+        return empty_skipped("python-pptx", "encrypted")
     warnings: list[str] = []
 
     def _load():

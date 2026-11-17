@@ -28,6 +28,7 @@ jobs:
           python -m pip install --upgrade pip build wheel
           python -m build --wheel --outdir dist/
           ls -la dist/
+          python -c "import glob, sys, zipfile; forbidden=('nce_verticals/', 'tests/', 'scripts/', 'go/'); bad=[f'{w}:{n}' for w in glob.glob('dist/*.whl') for n in zipfile.ZipFile(w).namelist() if n.startswith(forbidden)]; print('FORBIDDEN WHEEL ENTRIES:', bad); sys.exit(1 if bad else 0)"
 
       - name: Setup Go
         uses: actions/setup-go@v7

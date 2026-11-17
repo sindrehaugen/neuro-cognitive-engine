@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+import orjson
 from pydantic import BaseModel, ConfigDict, Field
 
 from nce.config import cfg
@@ -24,6 +25,9 @@ from nce.sanitize import sanitize_llm_payload
 from nce.signing import canonical_json
 
 log = logging.getLogger(__name__)
+
+# Process-local per-namespace guard preventing overlapping sleep-consolidation passes.
+_ACTIVE_CONSOLIDATION_NAMESPACES: set[UUID] = set()
 
 
 @functools.lru_cache(maxsize=4)
@@ -145,29 +149,38 @@ class ConsolidationWorker:
         embeddings = []
         expected_dim = None
         for m in memories:
-            if m.get("embedding"):
+            raw_emb = m.get("embedding")
+            if raw_emb:
                 try:
-                    emb_list = json.loads(m["embedding"])
+                    emb_list = (
+                        orjson.loads(raw_emb)
+                        if isinstance(raw_emb, (str, bytes, bytearray))
+                        else raw_emb
+                    )
                     if not isinstance(emb_list, list) or len(emb_list) == 0:
                         log.warning(
                             "Memory %s has empty or non-list embedding format",
                             m.get("id"),
                         )
                         continue
+                    arr = np.asarray(emb_list, dtype=np.float32)
+                    if arr.ndim != 1 or arr.size == 0:
+                        log.warning("Memory %s has non-1D embedding shape", m.get("id"))
+                        continue
                     if expected_dim is None:
-                        expected_dim = len(emb_list)
-                    elif len(emb_list) != expected_dim:
+                        expected_dim = int(arr.size)
+                    elif int(arr.size) != expected_dim:
                         log.warning(
                             "Memory %s has mismatched embedding dimension: expected %d, got %d",
                             m.get("id"),
                             expected_dim,
-                            len(emb_list),
+                            int(arr.size),
                         )
                         continue
-                    if not all(isinstance(x, (int, float)) and math.isfinite(x) for x in emb_list):
+                    if not bool(np.all(np.isfinite(arr))):
                         log.warning("Memory %s has non-finite values in embedding", m.get("id"))
                         continue
-                    embeddings.append([float(x) for x in emb_list])
+                    embeddings.append(arr)
                     valid_memories.append(m)
                 except Exception as e:
                     log.warning("Failed to parse embedding for memory %s: %s", m.get("id"), e)
@@ -176,7 +189,7 @@ class ConsolidationWorker:
         if len(embeddings) < 2:
             return [], {}
 
-        X = np.array(embeddings)
+        X = np.vstack(embeddings)
         clusterer = HDBSCAN(min_cluster_size=2)
         labels = await asyncio.to_thread(clusterer.fit_predict, X)
 
@@ -783,6 +796,23 @@ class ConsolidationWorker:
         )
 
     async def run_consolidation(self, namespace_id: UUID, since_timestamp: datetime | None = None):
+        if namespace_id in _ACTIVE_CONSOLIDATION_NAMESPACES:
+            log.info(
+                "Skipping overlapping consolidation pass for namespace %s",
+                namespace_id,
+            )
+            return
+        _ACTIVE_CONSOLIDATION_NAMESPACES.add(namespace_id)
+        try:
+            return await self._run_consolidation_inner(
+                namespace_id, since_timestamp=since_timestamp
+            )
+        finally:
+            _ACTIVE_CONSOLIDATION_NAMESPACES.discard(namespace_id)
+
+    async def _run_consolidation_inner(
+        self, namespace_id: UUID, since_timestamp: datetime | None = None
+    ):
         log.info(
             "Running consolidation for namespace %s (since=%s)",
             namespace_id,
@@ -870,13 +900,12 @@ class ConsolidationWorker:
                     continue
 
                 try:
-                    # Store abstraction text in Mongo FIRST to get a valid ObjectId
-                    # for payload_ref. This must happen outside the PG transaction
-                    # because Motor is async and the PG transaction should be short.
-                    payload_ref = await self._store_abstraction_in_mongo(
-                        namespace_id, abstraction.abstraction
+                    # Store abstraction text in Mongo and compute its embedding
+                    # concurrently outside the short PG commit transaction.
+                    payload_ref, embedding_vec = await asyncio.gather(
+                        self._store_abstraction_in_mongo(namespace_id, abstraction.abstraction),
+                        self._embed_abstraction(abstraction.abstraction),
                     )
-                    embedding_vec = await self._embed_abstraction(abstraction.abstraction)
 
                     # PG transaction: memory row + WORM event log via append_event().
                     cluster_event_id = _uuid_mod.uuid4()

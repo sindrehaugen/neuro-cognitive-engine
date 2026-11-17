@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from nce.db_utils import scoped_pg_session
@@ -17,6 +18,17 @@ from nce.mcp_errors import mcp_handler
 from nce.orchestrator import NCEEngine
 from nce.pricing.fx import do_get_fx_rates
 from nce.pricing.resolver import resolve_price
+
+
+def _coerce_as_of_fields(mapping: dict[str, Any], *keys: str) -> None:
+    """Convert ISO-8601 string timestamps in *mapping* into UTC-aware datetimes."""
+    for key in keys:
+        val = mapping.get(key)
+        if isinstance(val, str) and val.strip():
+            dt = datetime.fromisoformat(val.strip().replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            mapping[key] = dt
 
 
 @mcp_handler
@@ -48,6 +60,8 @@ async def handle_pricing_resolve(engine: NCEEngine, arguments: dict[str, Any]) -
     namespace_id = uuid.UUID(_require_namespace_id(arguments))
     product = dict(arguments.get("product") or {})
     customer = dict(arguments.get("customer") or {})
+    _coerce_as_of_fields(product, "base_as_of", "supplier_list_as_of")
+    _coerce_as_of_fields(customer, "bid_as_of")
 
     async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
         result = await resolve_price(

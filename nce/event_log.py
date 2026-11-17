@@ -59,6 +59,7 @@ Usage
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -903,6 +904,11 @@ async def _fetch_db_clock(conn: asyncpg.Connection) -> datetime:
     return ts.astimezone(timezone.utc)
 
 
+_DEFAULT_FETCH_PREV_CHAIN_HASH = _fetch_previous_chain_hash
+_DEFAULT_NEXT_EVENT_SEQ = _next_event_seq
+_DEFAULT_FETCH_DB_CLOCK = _fetch_db_clock
+
+
 # ---------------------------------------------------------------------------
 # Append-event helpers (extracted for Clean Code — SRP)
 # ---------------------------------------------------------------------------
@@ -972,6 +978,7 @@ async def _sign_event(
     params: dict[str, Any],
     parent_event_id: uuid.UUID | None,
     prev_chain_hash_hex: str | None = None,
+    signing_fields: dict[str, Any] | None = None,
 ) -> tuple[str, bytes]:
     """
     Load the active signing key, build canonical fields, and HMAC-sign.
@@ -990,16 +997,20 @@ async def _sign_event(
             f"Cannot load active signing key for event_log write: {exc}"
         ) from exc
 
-    signing_fields_dict = _build_signing_fields(
-        event_id=event_id,
-        namespace_id=namespace_id,
-        agent_id=agent_id,
-        event_type=event_type,
-        event_seq=event_seq,
-        occurred_at_iso=occurred_at_iso,
-        params=params,
-        parent_event_id=parent_event_id,
-        prev_chain_hash_hex=prev_chain_hash_hex,
+    signing_fields_dict = (
+        signing_fields
+        if signing_fields is not None
+        else _build_signing_fields(
+            event_id=event_id,
+            namespace_id=namespace_id,
+            agent_id=agent_id,
+            event_type=event_type,
+            event_seq=event_seq,
+            occurred_at_iso=occurred_at_iso,
+            params=params,
+            parent_event_id=parent_event_id,
+            prev_chain_hash_hex=prev_chain_hash_hex,
+        )
     )
 
     try:
@@ -1174,8 +1185,81 @@ async def append_event(
     # 3. D8 defence-in-depth: reject backdated timestamps in params
     _validate_params_no_backdated_timestamp(params)
 
-    # 4. Fetch DB clock (used in signature so it matches stored occurred_at)
-    occurred_at: datetime = await _fetch_db_clock(conn)
+    # 4. Generate event UUID if not provided
+    if event_id is None:
+        event_id = uuid.uuid4()
+
+    # 5. Acquire per-namespace lock in its own statement BEFORE taking the
+    #    READ COMMITTED snapshot that reads event_log.chain_hash, then allocate
+    #    event_seq, fetch DB clock & prev_hash in one post-lock statement.
+    await _acquire_seq_lock(conn, namespace_id)
+    _use_fused_cte = (
+        isinstance(conn, asyncpg.Connection)
+        and _next_event_seq is _DEFAULT_NEXT_EVENT_SEQ
+        and _fetch_db_clock is _DEFAULT_FETCH_DB_CLOCK
+        and _fetch_previous_chain_hash is _DEFAULT_FETCH_PREV_CHAIN_HASH
+    )
+    if _use_fused_cte:
+        try:
+            fused_row = await conn.fetchrow(
+                """
+                WITH seq_step AS (
+                    INSERT INTO event_sequences (namespace_id, seq)
+                    VALUES ($1, 1)
+                    ON CONFLICT (namespace_id)
+                    DO UPDATE SET seq = event_sequences.seq + 1
+                    RETURNING seq
+                )
+                SELECT
+                    seq_step.seq AS seq,
+                    clock_timestamp() AS db_clock,
+                    (
+                        SELECT el.chain_hash
+                        FROM event_log el
+                        WHERE el.namespace_id = $1
+                        ORDER BY el.event_seq DESC
+                        LIMIT 1
+                    ) AS prev_hash
+                FROM seq_step
+                """,
+                namespace_id,
+            )
+            if fused_row is None or fused_row["seq"] is None:
+                raise EventLogSequenceError(
+                    f"event_sequences upsert returned no seq for namespace {namespace_id}"
+                )
+            event_seq = int(fused_row["seq"])
+            occurred_at = fused_row["db_clock"].astimezone(timezone.utc)
+            raw_prev_hash = fused_row["prev_hash"]
+            if raw_prev_hash is None:
+                previous_chain_hash = _GENESIS_SENTINEL
+            elif isinstance(raw_prev_hash, memoryview):
+                previous_chain_hash = bytes(raw_prev_hash)
+            else:
+                previous_chain_hash = bytes(raw_prev_hash)
+        except EventLogSequenceError:
+            raise
+        except asyncpg.PostgresError:
+            raise
+        except Exception as exc:
+            raise EventLogSequenceError(
+                f"Unexpected error allocating event_seq for namespace {namespace_id}: {exc}"
+            ) from exc
+    else:
+        try:
+            event_seq = await _next_event_seq(conn, namespace_id)
+        except EventLogSequenceError:
+            raise
+        except asyncpg.PostgresError:
+            raise
+        except Exception as exc:
+            raise EventLogSequenceError(
+                f"Unexpected error allocating event_seq for namespace {namespace_id}: {exc}"
+            ) from exc
+
+        occurred_at = await _fetch_db_clock(conn)
+        previous_chain_hash = await _fetch_previous_chain_hash(conn, namespace_id)
+
     if replay_occurred_at is not None:
         replay_run_id = params.get("replay_run_id")
         if replay_run_id:
@@ -1193,27 +1277,19 @@ async def append_event(
                 log.warning("Failed to verify replay mode for run %s: %s", replay_run_id, exc)
     occurred_at_iso: str = occurred_at.isoformat()
 
-    # 5. Acquire per-namespace transaction-scoped advisory lock and allocate event_seq
-    await _acquire_seq_lock(conn, namespace_id)
-    try:
-        event_seq: int = await _next_event_seq(conn, namespace_id)
-    except EventLogSequenceError:
-        raise
-    except asyncpg.PostgresError:
-        raise
-    except Exception as exc:
-        raise EventLogSequenceError(
-            f"Unexpected error allocating event_seq for namespace {namespace_id}: {exc}"
-        ) from exc
-
-    # 6. Generate event UUID if not provided
-    if event_id is None:
-        event_id = uuid.uuid4()
-
-    # Fetch previous chain hash (moved before signing so it can be bound into HMAC version 2)
-    previous_chain_hash: bytes = await _fetch_previous_chain_hash(conn, namespace_id)
-
-    # 7. Load signing key, build canonical fields, and HMAC-sign
+    # 6. Build canonical fields once, load signing key, and HMAC-sign
+    prev_chain_hash_hex = previous_chain_hash.hex()
+    signing_fields_dict = _build_signing_fields(
+        event_id=event_id,
+        namespace_id=namespace_id,
+        agent_id=agent_id,
+        event_type=event_type,
+        event_seq=event_seq,
+        occurred_at_iso=occurred_at_iso,
+        params=params,
+        parent_event_id=parent_event_id,
+        prev_chain_hash_hex=prev_chain_hash_hex,
+    )
     key_id, signature = await _sign_event(
         conn,
         event_id=event_id,
@@ -1224,24 +1300,11 @@ async def append_event(
         occurred_at_iso=occurred_at_iso,
         params=params,
         parent_event_id=parent_event_id,
-        prev_chain_hash_hex=previous_chain_hash.hex(),
+        prev_chain_hash_hex=prev_chain_hash_hex,
+        signing_fields=signing_fields_dict,
     )
 
-    # 8. Compute Merkle chain hash.
-    #    content_hash = SHA-256(canonical signing fields)
-    #    chain_hash   = SHA-256(content_hash || previous_chain_hash)
-    #    Genesis events use _GENESIS_SENTINEL (32 zero bytes) as previous.
-    signing_fields_dict = _build_signing_fields(
-        event_id=event_id,
-        namespace_id=namespace_id,
-        agent_id=agent_id,
-        event_type=event_type,
-        event_seq=event_seq,
-        occurred_at_iso=occurred_at_iso,
-        params=params,
-        parent_event_id=parent_event_id,
-        prev_chain_hash_hex=previous_chain_hash.hex(),
-    )
+    # 7. Compute Merkle chain hash using the same canonical signing fields.
     content_hash: bytes = _compute_content_hash(signing_fields=signing_fields_dict)
     chain_hash: bytes = _compute_chain_hash(
         content_hash=content_hash,
@@ -1343,30 +1406,34 @@ async def verify_event_signature(
     # Branch on signature version (v2 signs prev_chain_hash_hex)
     prev_chain_hash_hex: str | None = None
     sig_version = record.get("signature_version")
+    preloaded_prev = record.get("_prev_chain_hash_hex")
     if sig_version is None:
         # If signature_version is missing (e.g. RecordingFakeConnection mock),
         # try version 2 first, fallback to version 1.
-        try:
-            prev_seq = record["event_seq"] - 1
-            if prev_seq <= 0:
-                prev_chain_hash_hex = _GENESIS_SENTINEL.hex()
-            else:
-                prev_row = await conn.fetchrow(
-                    """
-                    SELECT chain_hash
-                    FROM   event_log
-                    WHERE  namespace_id = $1 AND event_seq = $2
-                    """,
-                    record["namespace_id"],
-                    prev_seq,
-                )
-                if prev_row is not None and prev_row["chain_hash"] is not None:
-                    prev_hash = prev_row["chain_hash"]
-                    if isinstance(prev_hash, memoryview):
-                        prev_hash = bytes(prev_hash)
-                    prev_chain_hash_hex = prev_hash.hex()
-        except Exception:
-            pass
+        if isinstance(preloaded_prev, str):
+            prev_chain_hash_hex = preloaded_prev
+        else:
+            try:
+                prev_seq = record["event_seq"] - 1
+                if prev_seq <= 0:
+                    prev_chain_hash_hex = _GENESIS_SENTINEL.hex()
+                else:
+                    prev_row = await conn.fetchrow(
+                        """
+                        SELECT chain_hash
+                        FROM   event_log
+                        WHERE  namespace_id = $1 AND event_seq = $2
+                        """,
+                        record["namespace_id"],
+                        prev_seq,
+                    )
+                    if prev_row is not None and prev_row["chain_hash"] is not None:
+                        prev_hash = prev_row["chain_hash"]
+                        if isinstance(prev_hash, memoryview):
+                            prev_hash = bytes(prev_hash)
+                        prev_chain_hash_hex = prev_hash.hex()
+            except Exception:
+                pass
 
         # Try version 2
         signing_fields_dict = _build_signing_fields(
@@ -1408,28 +1475,31 @@ async def verify_event_signature(
     else:
         sig_version = int(sig_version)
         if sig_version == 2:
-            prev_seq = record["event_seq"] - 1
-            if prev_seq <= 0:
-                prev_chain_hash_hex = _GENESIS_SENTINEL.hex()
+            if isinstance(preloaded_prev, str):
+                prev_chain_hash_hex = preloaded_prev
             else:
-                prev_row = await conn.fetchrow(
-                    """
-                    SELECT chain_hash
-                    FROM   event_log
-                    WHERE  namespace_id = $1 AND event_seq = $2
-                    """,
-                    record["namespace_id"],
-                    prev_seq,
-                )
-                if prev_row is None or prev_row["chain_hash"] is None:
-                    raise DataIntegrityError(
-                        f"Preceding event sequence {prev_seq} not found for namespace {record['namespace_id']} "
-                        f"to verify signature version 2 of event_id={record['id']}."
+                prev_seq = record["event_seq"] - 1
+                if prev_seq <= 0:
+                    prev_chain_hash_hex = _GENESIS_SENTINEL.hex()
+                else:
+                    prev_row = await conn.fetchrow(
+                        """
+                        SELECT chain_hash
+                        FROM   event_log
+                        WHERE  namespace_id = $1 AND event_seq = $2
+                        """,
+                        record["namespace_id"],
+                        prev_seq,
                     )
-                prev_hash = prev_row["chain_hash"]
-                if isinstance(prev_hash, memoryview):
-                    prev_hash = bytes(prev_hash)
-                prev_chain_hash_hex = prev_hash.hex()
+                    if prev_row is None or prev_row["chain_hash"] is None:
+                        raise DataIntegrityError(
+                            f"Preceding event sequence {prev_seq} not found for namespace {record['namespace_id']} "
+                            f"to verify signature version 2 of event_id={record['id']}."
+                        )
+                    prev_hash = prev_row["chain_hash"]
+                    if isinstance(prev_hash, memoryview):
+                        prev_hash = bytes(prev_hash)
+                    prev_chain_hash_hex = prev_hash.hex()
 
         signing_fields_dict = _build_signing_fields(
             event_id=record["id"],
@@ -1538,20 +1608,36 @@ async def verify_merkle_chain(
     """
     if anchor_chain_hash is not None and anchor_seq is None:
         raise ValueError("anchor_seq must be supplied together with anchor_chain_hash")
-    rows = await conn.fetch(
-        """
-        SELECT id, namespace_id, agent_id, event_type, event_seq,
-               occurred_at, params, parent_event_id, chain_hash, signature_version
-        FROM   event_log
-        WHERE  namespace_id = $1
-          AND  event_seq >= $2
-        ORDER BY event_seq ASC
-        """,
-        namespace_id,
-        start_seq,
-    )
-    if end_seq is not None and rows:
-        rows = [r for r in rows if r["event_seq"] <= end_seq]
+    if end_seq is not None and isinstance(conn, asyncpg.Connection):
+        rows = await conn.fetch(
+            """
+            SELECT id, namespace_id, agent_id, event_type, event_seq,
+                   occurred_at, params, parent_event_id, chain_hash, signature_version
+            FROM   event_log
+            WHERE  namespace_id = $1
+              AND  event_seq >= $2
+              AND  event_seq <= $3
+            ORDER BY event_seq ASC
+            """,
+            namespace_id,
+            start_seq,
+            end_seq,
+        )
+    else:
+        rows = await conn.fetch(
+            """
+            SELECT id, namespace_id, agent_id, event_type, event_seq,
+                   occurred_at, params, parent_event_id, chain_hash, signature_version
+            FROM   event_log
+            WHERE  namespace_id = $1
+              AND  event_seq >= $2
+            ORDER BY event_seq ASC
+            """,
+            namespace_id,
+            start_seq,
+        )
+        if end_seq is not None and rows:
+            rows = [r for r in rows if r["event_seq"] <= end_seq]
 
     checked = 0
     first_break: int | None = None
@@ -1583,7 +1669,9 @@ async def verify_merkle_chain(
     _need_anchor_dict: bool = anchor_chain_hash is not None and anchor_seq is not None
     seq_to_recomputed_hash: dict[int, bytes] = {}
 
-    for raw_row in rows:
+    for _row_idx, raw_row in enumerate(rows):
+        if _row_idx > 0 and _row_idx % 500 == 0:
+            await asyncio.sleep(0)
         row: dict[str, Any] = dict(raw_row)
         event_seq = int(row["event_seq"])
 

@@ -6,6 +6,7 @@ Extracted from NCEEngine (Prompt 54, Step 4).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid as _uuid_mod
 from uuid import UUID
@@ -129,6 +130,19 @@ class CognitiveOrchestrator(OrchestratorBase):
         from nce.envelope import clear_unwrapped_dek_cache
 
         clear_unwrapped_dek_cache()
+        redis_client = getattr(self, "redis_client", None)
+        if redis_client is not None:
+            try:
+                pub_fn = getattr(redis_client, "publish", None)
+                if callable(pub_fn):
+                    pub_res = pub_fn(
+                        "nce:crypto:evict",
+                        f'{{"event":"forget","namespace_id":"{namespace_id}","memory_id":"{memory_id}"}}',
+                    )
+                    if asyncio.iscoroutine(pub_res):
+                        await pub_res
+            except Exception:
+                pass
         return {"status": "success", "forgotten": True}
 
     # ------------------------------------------------------------------

@@ -134,7 +134,11 @@ def rewrap(blob: bytes, primary: MasterKey, ring: list[MasterKey] | None = None)
     caller's job and must happen BEFORE the write -- see the sweep script.
     """
 
-    from nce.signing import encrypt_signing_key
+    from nce.signing import (
+        _ENCRYPTED_KEY_BLOB_HKDF,
+        encrypt_fast_data_key,
+        encrypt_signing_key,
+    )
 
     if blob_is_on_primary(blob, primary) is True:
         return None
@@ -144,4 +148,8 @@ def rewrap(blob: bytes, primary: MasterKey, ring: list[MasterKey] | None = None)
         _ENCRYPTED_KEY_BLOB_V5
     ):
         return None
+    v5_head = len(_ENCRYPTED_KEY_BLOB_V5) + _MASTER_KEY_FP_LEN
+    inner = blob[v5_head:] if blob.startswith(_ENCRYPTED_KEY_BLOB_V5) else blob
+    if inner.startswith(_ENCRYPTED_KEY_BLOB_HKDF):
+        return encrypt_fast_data_key(plaintext, primary)
     return encrypt_signing_key(plaintext, primary)
