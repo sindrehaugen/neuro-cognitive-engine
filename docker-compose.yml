@@ -775,7 +775,7 @@ services:
   # Ports: use 5440 (host) to avoid collisions with nce-rltest (5433) and
   # the live trimcp-1 stack (5432).
   citus-coordinator:
-    image: citusdata/citus:12.1.1
+    image: citusdata/citus:14.2.0
     # NOTE: 12.1.1 is PostgreSQL 16 but lacks pgvector. Swap for a combined image.
     profiles:
       - citus
