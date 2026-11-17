@@ -122,12 +122,23 @@ async def test_scoped_pg_session_combines_set_config_when_hnsw_supported() -> No
     """Once _HNSW_ITERATIVE_SCAN_SUPPORTED is True, scoped_pg_session issues 1 combined set_config."""
     from nce import db_utils
 
-    fake_conn = AsyncMock()
-    fake_tx = MagicMock()
-    fake_tx.__aenter__ = AsyncMock(return_value=None)
-    fake_tx.__aexit__ = AsyncMock(return_value=None)
-    fake_conn.transaction = MagicMock(return_value=fake_tx)
+    executed: list[tuple[str, tuple[object, ...]]] = []
 
+    class _FakeTx:
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    class _FakeConn:
+        def transaction(self) -> _FakeTx:
+            return _FakeTx()
+
+        async def execute(self, sql: str, *args: object) -> None:
+            executed.append((sql, args))
+
+    fake_conn = _FakeConn()
     fake_acq = MagicMock()
     fake_acq.__aenter__ = AsyncMock(return_value=fake_conn)
     fake_acq.__aexit__ = AsyncMock(return_value=None)
@@ -141,8 +152,8 @@ async def test_scoped_pg_session_combines_set_config_when_hnsw_supported() -> No
         ns = uuid4()
         async with db_utils.scoped_pg_session(fake_pool, ns):
             pass
-        assert fake_conn.execute.await_count == 1
-        sql_called = fake_conn.execute.await_args.args[0]
+        assert len(executed) == 1
+        sql_called, _ = executed[0]
         assert "set_config('nce.namespace_id', $1, true)" in sql_called
         assert "set_config('hnsw.iterative_scan', 'relaxed_order', true)" in sql_called
     finally:

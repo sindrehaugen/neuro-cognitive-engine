@@ -104,7 +104,7 @@ flowchart TB
 
 ## 2. Primary Entry Points
 
-NCE version 3.5.0 exposes six distinct entry points, isolating workloads across dedicated runtimes:
+NCE version 3.5.1 exposes six distinct entry points, isolating workloads across dedicated runtimes:
 
 ### 2.1 `server.py` — MCP stdio Server
 - **Role**: Entry point for IDE integration (Cursor, Claude Desktop). Envelopes the core cognitive engine in the Model Context Protocol (MCP) using the stdio transport.

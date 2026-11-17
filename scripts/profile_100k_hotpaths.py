@@ -886,6 +886,10 @@ async def main() -> None:
     engine = NCEEngine()
     await engine.connect(run_startup_checks=False)
     try:
+        from nce.master_key_registry import rls_visibility_problem
+
+        async with engine.pg_pool.acquire() as conn:
+            await rls_visibility_problem(conn)
         seed_info = await seed_100k_if_needed(engine.pg_pool, engine.mongo_client, engine)
         canary_info = await verify_zero_canary_leak(engine)
         plans = await capture_explain_plans(engine.pg_pool)
