@@ -2,7 +2,7 @@
 """Mechanical Documentation & Configuration Truth Verifier (v3.5.2).
 
 Asserts:
-  1. 0 broken relative Markdown links across README.md, SECURITY.md, CONTRIBUTING.md, and docs/.
+  1. 0 broken relative Markdown links or missing heading anchor targets across README.md, SECURITY.md, CONTRIBUTING.md, and docs/.
   2. 100% of NCE_* variables in nce/config.py are documented in .env.example and docs/configuration_reference.md.
   3. README.md version matches pyproject.toml and static Core tool count (71).
   4. 0 brand-wall violations (Glamox, Vertex, E2D) across all documentation files.
@@ -18,6 +18,7 @@ _REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 _BRAND_WALL_RE = re.compile(r"\b(glamox|vertex|e2d)\b", re.IGNORECASE)
 _MD_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
+_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(.+?)\s*$")
 
 
 def _strip_fences(md_text: str) -> str:
@@ -32,16 +33,49 @@ def _strip_fences(md_text: str) -> str:
     return "\n".join(out)
 
 
+def _github_slug(heading_text: str) -> str:
+    text = re.sub(r"`([^`]*)`", r"\1", heading_text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = text.strip().lower()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"\s", "-", text)
+    return text
+
+
+def _extract_anchors(fpath: pathlib.Path, cache: dict[pathlib.Path, set[str]]) -> set[str]:
+    resolved = fpath.resolve()
+    if resolved in cache:
+        return cache[resolved]
+    anchors: set[str] = set()
+    if resolved.is_file() and resolved.suffix.lower() == ".md":
+        cleaned = _strip_fences(resolved.read_text(encoding="utf-8"))
+        for line in cleaned.splitlines():
+            m = _HEADING_RE.match(line)
+            if m:
+                anchors.add(_github_slug(m.group(1)))
+    cache[resolved] = anchors
+    return anchors
+
+
 def check_links(files: list[pathlib.Path]) -> list[str]:
     errors: list[str] = []
+    anchor_cache: dict[pathlib.Path, set[str]] = {}
     for fpath in files:
         raw = fpath.read_text(encoding="utf-8")
         cleaned = _strip_fences(raw)
         for match in _MD_LINK_RE.finditer(cleaned):
             target = match.group(1).strip()
             if not target or target.startswith(
-                ("http://", "https://", "mailto:", "#", "conversation://", "file://")
+                ("http://", "https://", "mailto:", "conversation://", "file://")
             ):
+                continue
+            if target.startswith("#"):
+                anchor = target[1:].strip().lower()
+                if fpath.name == "README.md" and anchor:
+                    anchors = _extract_anchors(fpath, anchor_cache)
+                    if anchor not in anchors:
+                        rel_src = fpath.relative_to(_REPO_ROOT)
+                        errors.append(f"{rel_src}: missing heading anchor -> #{anchor}")
                 continue
             path_part = target.split("#", 1)[0].split("?", 1)[0].strip()
             if not path_part:
@@ -118,7 +152,7 @@ def main() -> int:
         return 1
 
     print(
-        f"[OK] Verified {len(md_files)} markdown files: 0 broken links, 100% NCE_* config parity, 0 brand-wall violations."
+        f"[OK] Verified {len(md_files)} markdown files: 0 broken links/anchors, 100% NCE_* config parity, 0 brand-wall violations."
     )
     return 0
 

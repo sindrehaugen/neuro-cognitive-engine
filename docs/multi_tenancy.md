@@ -31,14 +31,14 @@ await conn.execute(
 )
 ```
 
-The database policy uses this variable to filter results. A fail-fast PL/pgSQL helper (`get_nce_namespace()`) validates the GUC value and raises immediately if it is unset or malformed:
+The database policy uses this variable to filter results. A fail-fast `STABLE PARALLEL SAFE` PL/pgSQL helper (`get_nce_namespace()`) validates the GUC value and raises immediately if it is unset or malformed. Wrapping the call in `(SELECT get_nce_namespace())` (migration `038_v351_hotpath_rls_and_indexes.sql`) instructs PostgreSQL to evaluate the GUC once per statement as an `InitPlan` rather than once per row:
 
 ```sql
--- nce/migrations/001_enable_rls.sql (applied to every tenant table)
-CREATE POLICY tenant_isolation_policy ON memories
+-- nce/migrations/038_v351_hotpath_rls_and_indexes.sql (applied to all tenant tables)
+CREATE POLICY memories_tenant_isolation ON memories
 FOR ALL TO nce_app
-USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
-WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+USING (namespace_id = (SELECT get_nce_namespace()))
+WITH CHECK (namespace_id = (SELECT get_nce_namespace()));
 ```
 
 ### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (35 Tables)
@@ -93,8 +93,8 @@ The 35 tables in `EXPECTED_TENANT_RLS_TABLES` span all 10 Pure-Core functional d
 | **Signing Service** | 1 | `signing_credentials` | Encrypted broker signing credentials per tenant namespace (migration 032). |
 | **Principal Mapping** | 1 | `principal_bindings` | Multi-tenant principal identity mapping to roles and external scopes (migration 033). |
 | **Outbound Webhooks** | 1 | `outbound_webhooks` | Outbound webhook subscriptions with event selector matching, HMAC-SHA256 request signing, and transactional outbox relay delivery (migration 034). |
-| **MCP Gateway & Envelope Crypto** | 2 | `mcp_client_tokens`, `encryption_deks` | Scoped SHA-256 hashed MCP client bearer tokens and versioned KEK-wrapped tenant/subject AES-256-GCM DEKs (v3.3.0 / migration 035). |
-| **Procedural Memory** | 1 | `procedural_heuristics` | Distilled procedural guardrails and heuristics with tenant RLS and trigger-maintained `search_tsv` (v3.4.0 / migration 036). |
+| **MCP Gateway & Envelope Crypto** | 2 | `mcp_client_tokens`, `encryption_deks` | Scoped SHA-256 hashed MCP client bearer tokens and versioned KEK-wrapped tenant/subject AES-256-GCM DEKs (migration 035). |
+| **Procedural Memory** | 1 | `procedural_heuristics` | Distilled procedural guardrails and heuristics with tenant RLS and trigger-maintained `search_tsv` (migration 036). |
 
 ---
 

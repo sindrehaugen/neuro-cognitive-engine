@@ -65,6 +65,7 @@ typecheck:
 lint:
 	ruff check .
 	ruff format --check .
+	python scripts/check_docs_integrity.py
 
 fmt:
 	ruff format .
