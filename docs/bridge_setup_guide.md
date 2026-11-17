@@ -281,18 +281,18 @@ Subscriptions for SharePoint and Google Drive expire automatically. The backgrou
 
 ```mermaid
 flowchart TD
-    CronTick[nce.cron tick\nevery BRIDGE_CRON_INTERVAL_MINUTES = 45 min] --> Lock{Acquire Redis Lock\nbridge_subscription_renewal}
-    Lock -- "Lock busy" --> Skip[Skip tick on replica]
-    Lock -- "Acquired" --> Query[Query ACTIVE rows with\nexpires_at < NOW + 12 hours]
-    Query --> Loop{For each\nexpiring row}
-    Loop -- "SharePoint" --> SP[PATCH /v1.0/subscriptions/id\nexpirationDateTime: now+4200min]
-    Loop -- "Google Drive" --> GD[POST /drive/v3/channels/stop\nPOST /drive/v3/changes/watch]
-    Loop -- "Dropbox" --> DB[No-op: Permanent webhook]
-    SP -- "Success" --> UpdatePG[UPDATE bridge_subscriptions\nSET expires_at, status='ACTIVE']
+    CronTick["nce.cron tick\nevery BRIDGE_CRON_INTERVAL_MINUTES = 45 min"] --> Lock{"Acquire Redis Lock\nbridge_subscription_renewal"}
+    Lock -- "Lock busy" --> Skip["Skip tick on replica"]
+    Lock -- "Acquired" --> Query["Query ACTIVE rows with\nexpires_at < NOW + 12 hours"]
+    Query --> Loop{"For each\nexpiring row"}
+    Loop -- "SharePoint" --> SP["PATCH /v1.0/subscriptions/id\nexpirationDateTime: now+4200min"]
+    Loop -- "Google Drive" --> GD["POST /drive/v3/channels/stop\nPOST /drive/v3/changes/watch"]
+    Loop -- "Dropbox" --> DB["No-op: Permanent webhook"]
+    SP -- "Success" --> UpdatePG["UPDATE bridge_subscriptions\nSET expires_at, status='ACTIVE'"]
     GD -- "Success" --> UpdatePG
-    SP -- "Failure" --> Degraded[mark_degraded: SET status='DEGRADED'\nDispatch throttled alert]
+    SP -- "Failure" --> Degraded["mark_degraded: SET status='DEGRADED'\nDispatch throttled alert"]
     GD -- "Failure" --> Degraded
-    UpdatePG --> Release[Release CronLock]
+    UpdatePG --> Release["Release CronLock"]
     Degraded --> Release
 ```
 

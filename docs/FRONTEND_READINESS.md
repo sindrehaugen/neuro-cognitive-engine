@@ -161,7 +161,7 @@ When a host vendors or consumes NCE as a backend engine, NCE is treated as an im
 
 ## Vertical Modules as First-Class NCE Capabilities
 
-NCE ships vertical engines under `nce/vertical_modules/*` that expose capabilities through the unified NCE API surface. See [`docs/vertical_engines/ENGINE_STATUS.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/ENGINE_STATUS.md), [`docs/_generated/surface.md`](_generated/surface.md), and generated [`docs/API.md`](API.md) for current engine, tool, and route inventories:
+NCE ships vertical engines under `nce_verticals/*` (`nce-vertical-engines` plugin package) that expose capabilities through the unified NCE API surface. See [`docs/vertical_engines/ENGINE_STATUS.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/ENGINE_STATUS.md), [`docs/_generated/surface.md`](_generated/surface.md), and generated [`docs/API.md`](API.md) for current engine, tool, and route inventories:
 * **NetBox & Dynamics 365** (core network & CRM integration)
 * **Sales & Agreements** (deal rooms, contract OCR, signed-baseline freeze)
 * **Procurement & Product** (BOM line matching, ETIM lookup, supplier ranking)
@@ -169,5 +169,5 @@ NCE ships vertical engines under `nce/vertical_modules/*` that expose capabiliti
 * **Vendors, Diagnostics, System Design, HR, Field Tech, Support, Assets, Resources, Marketing, Customer Portal, Business Insights**
 
 **Two Extension Paths:**
-1. **NCE-Owned Vertical Engines:** Built directly into `nce/vertical_modules/` and registered in `TOOL_REGISTRY`. Automatically available to all consuming front ends.
+1. **NCE-Owned Vertical Engines:** Packaged in `nce_verticals/` (`nce-vertical-engines`) and registered in `TOOL_REGISTRY` via `nce.plugins`. Automatically available to all consuming front ends.
 2. **Host-Specific Tools:** Implemented in host application code and registered at startup via **NCE-FE-2** `register_tool()`.

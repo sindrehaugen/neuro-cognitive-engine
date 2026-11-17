@@ -118,7 +118,7 @@ This configuration maps directly to the JSON format:
 ### In-Code Guard Checks
 To enforce the opt-in gate, a guard is placed at the boundary of every MCP tool handler (`handle_*`) and REST route handler (`api_*`). The core domain business logic (`do_*`) remains un-guarded to allow programmatic callability.
 
-For the Product engine, this is handled by `require_product_enabled` in `nce/vertical_modules/product/_guard.py`:
+For the Product engine, this is handled by `require_product_enabled` in `nce_verticals/product/_guard.py`:
 
 ```python
 async def require_product_enabled(pool: Any, namespace_id: str) -> None:

@@ -109,17 +109,17 @@ The policy evaluation logic checks rules in this exact order:
 
 ```mermaid
 graph TD
-    Start([Evaluate Policy]) --> Gate1{Risk Flags?}
-    Gate1 -- Tripped --> Reason1[Flagship / Regulated / First of Kind]
-    Gate1 -- Clean --> Gate2{Value > Ceiling?}
-    Gate2 -- Tripped --> Reason2[Exceeds Value Ceiling]
-    Gate2 -- Clean --> Gate3{Volume > Cap?}
-    Gate3 -- Tripped --> Reason3[Exceeds Volume Cap]
-    Gate3 -- Clean --> Gate4{Counterparty not in Allowlist?}
-    Gate4 -- Tripped --> Reason4[Allowlist Violation]
-    Gate4 -- Clean --> Pass([requires_confirm = False])
+    Start(["Evaluate Policy"]) --> Gate1{"Risk Flags?"}
+    Gate1 -- Tripped --> Reason1["Flagship / Regulated / First of Kind"]
+    Gate1 -- Clean --> Gate2{"Value > Ceiling?"}
+    Gate2 -- Tripped --> Reason2["Exceeds Value Ceiling"]
+    Gate2 -- Clean --> Gate3{"Volume > Cap?"}
+    Gate3 -- Tripped --> Reason3["Exceeds Volume Cap"]
+    Gate3 -- Clean --> Gate4{"Counterparty not in Allowlist?"}
+    Gate4 -- Tripped --> Reason4["Allowlist Violation"]
+    Gate4 -- Clean --> Pass(["requires_confirm = False"])
 
-    Reason1 --> Fail([requires_confirm = True])
+    Reason1 --> Fail(["requires_confirm = True"])
     Reason2 --> Fail
     Reason3 --> Fail
     Reason4 --> Fail

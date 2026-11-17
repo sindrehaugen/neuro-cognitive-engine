@@ -29,6 +29,8 @@ jobs:
       run: ruff format --check .
     - name: Docs links & code fences
       run: python scripts/verify_docs_links_and_syntax.py
+    - name: Docs integrity, orphan & config parity check
+      run: python scripts/check_docs_integrity.py
     - name: Engine figures are current (D-GEN gate)
       run: 'python scripts/gen_engine_figures.py --repo . --baseline HEAD             --out docs/_generated/engine_figures.md
         --check

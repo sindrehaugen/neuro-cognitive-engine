@@ -18,10 +18,10 @@ When a host vendors NCE (for example as `backend/nce` in the Host Portal Applica
 
 | Extension type | Lives in | Registered by | In the pristine mirror? |
 |---|---|---|---|
-| NCE-owned vertical (NetBox, D365, Product, …) | `nce/vertical_modules/*` | NCE itself via `TOOL_REGISTRY` | Yes — every host gets it automatically |
+| NCE-owned vertical (NetBox, D365, Product, …) | `nce_verticals/*` (`nce-vertical-engines`) | `nce.plugins` entry points into `TOOL_REGISTRY` | Yes — every host with `nce-vertical-engines` installed gets it automatically |
 | Host-specific tool (Portal steps-modules, etc.) | Host module alongside NCE | Host at startup via `register_tool()` | No — that host only |
 
-The FE-2 `register_tool()` seam is reserved for genuinely host-specific tools. New NCE-native verticals are added to `nce/vertical_modules/` and registered by NCE itself, not by hosts.
+The FE-2 `register_tool()` seam is reserved for genuinely host-specific tools. Official NCE verticals live in `nce_verticals/` (`nce-vertical-engines`) and register via `nce.plugins`, not by hosts.
 
 ---
 

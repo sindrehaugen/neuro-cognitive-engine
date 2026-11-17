@@ -129,7 +129,7 @@ async def set_external_scope(conn: asyncpg.Connection, scope_id: str | UUID) -> 
 1. **Transaction Scoping**: The final parameter `true` in `set_config('nce.external_scope_id', ..., true)` behaves like `SET LOCAL`. It bounds the parameter lifetime strictly to the active transaction. If connections are returned to an `asyncpg.Pool`, they carry no lingering GUC values to subsequent requests.
 2. **Employee Isolation**: Employee sessions must never execute `set_external_scope()`. By omitting this call, the connection relies on the deny-when-unset sentinel for external tables, restricting employees from mistakenly accessing contractor tables without proper administrative context.
 
-### Production Execution Pattern (`nce/vertical_modules/vendors/contractors.py`)
+### Production Execution Pattern (`nce_verticals/vendors/contractors.py`)
 ```python
 async def do_get_contractor(
     engine: Any,

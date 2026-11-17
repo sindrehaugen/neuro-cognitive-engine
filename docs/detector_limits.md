@@ -51,12 +51,12 @@ Static analysis in NCE intentionally balances strictness and false-positive avoi
   1. Direct database mutation calls (`execute`, `executemany`, `fetch`, `fetchrow`, `fetchval` with write SQL keywords).
   2. Core event emitters (`append_event`, `_append_a2a_event`, `emit_graph_write`).
   3. Immediate module-level helper wrappers that perform transactional database writes (specifically `record_ledger_audit`).
-- **Resolved Call Sites**:
-  - `nce/vertical_modules/business_insights/ask.py::do_ask_business`
-  - `nce/vertical_modules/business_insights/board_pack.py::do_generate_board_pack`
-  - `nce/vertical_modules/business_insights/brief.py::do_morning_brief`
-  - `nce/vertical_modules/business_insights/radar.py::do_risk_radar`
-  - `nce/vertical_modules/business_insights/scenario.py::do_run_scenario`
+- **Resolved Call Sites** (`nce_verticals` plugin package):
+  - `nce_verticals/business_insights/ask.py::do_ask_business`
+  - `nce_verticals/business_insights/board_pack.py::do_generate_board_pack`
+  - `nce_verticals/business_insights/brief.py::do_morning_brief`
+  - `nce_verticals/business_insights/radar.py::do_risk_radar`
+  - `nce_verticals/business_insights/scenario.py::do_run_scenario`
 
 ### 3.3 Census Limitations & Non-Goals
 1. **Multi-Level Indirection (>1 call deep)**:

@@ -1,16 +1,16 @@
-# TriMCP v1.0 — Infrastructure Orchestration
+# NCE v3.5.2 — Infrastructure Orchestration
 #
 # Standard workflows for developers and operators.
 
 .PHONY: help up down restart status logs clean build verify typecheck lint fmt fmt-check ruff linux-shim
 
 help:
-	@echo "TriMCP v1.0 — Infrastructure Orchestration"
+	@echo "NCE v3.5.2 — Infrastructure Orchestration"
 	@echo ""
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Targets:"
-	@echo "  up       Start the complete v1.0 stack (Caddy, Admin, Workers, Tri-Stack)"
+	@echo "  up       Start the complete NCE stack (Caddy, Admin, Workers, Quad-DB)"
 	@echo "  down     Stop all services and keep data"
 	@echo "  restart  Restart the application services (worker, admin, a2a, webhook-receiver)"
 	@echo "  status   Show container health and status"
@@ -18,15 +18,15 @@ help:
 	@echo "  build    Force rebuild of application images"
 	@echo "  linux-shim Build reproducible nce-launch Linux binaries (amd64 + arm64)"
 	@echo "  clean    Stop services and REMOVE all data volumes (CAUTION)"
-	@echo "  verify   Run the v1.0 launch verification script"
-	@echo "  typecheck  Run mypy static type checking on trimcp/ (strict mode)"
-	@echo "  lint     Run ruff check + ruff format --check (same gate as CI)"
+	@echo "  verify   Run the launch verification script"
+	@echo "  typecheck  Run mypy static type checking on nce/ (strict mode)"
+	@echo "  lint     Run ruff check + ruff format --check + docs integrity"
 	@echo "  fmt      Apply ruff formatter to the repo"
 	@echo "  fmt-check  Ruff format in check-only mode"
 	@echo "  ruff      Alias for lint"
 	@echo ""
 	@echo "Local Mode:"
-	@echo "  local-up     Start only the Tri-Stack databases (for host-run development)"
+	@echo "  local-up     Start only the Quad-DB databases (for host-run development)"
 	@echo "  local-down   Stop local databases"
 
 up:

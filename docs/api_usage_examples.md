@@ -548,7 +548,15 @@ interface NamespaceListResponse {
       "metadata": {}
     }
   ],
-  "items": [ /* same slice */ ],
+  "items": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "slug": "acme-corp",
+      "parent_id": null,
+      "created_at": "2026-01-15T08:00:00+00:00",
+      "metadata": {}
+    }
+  ],
   "page": 1,
   "limit": 10,
   "total": 1

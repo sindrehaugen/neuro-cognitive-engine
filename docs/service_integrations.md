@@ -17,10 +17,10 @@ The bridge system operates on a **push (webhook) model**: NCE registers subscrip
 ```mermaid
 flowchart TB
   subgraph Providers["Cloud Providers"]
-    SP[SharePoint / OneDrive\nMS Graph]
-    GD[Google Drive\nGoogle Workspace]
-    DB[Dropbox]
-    D365[Dynamics 365\nDataverse Webhooks]
+    SP["SharePoint / OneDrive\nMS Graph"]
+    GD["Google Drive\nGoogle Workspace"]
+    DB["Dropbox"]
+    D365["Dynamics 365\nDataverse Webhooks"]
   end
 
   subgraph NCE["NCE Core Runtime"]
@@ -33,9 +33,9 @@ flowchart TB
   end
 
   subgraph Storage["Data Plane"]
-    PG[(PostgreSQL\npgvector / RLS)]
-    MG[(MongoDB\nEpisodic Payloads)]
-    RD[(Redis\nLocks / Rate Limit / Dedup)]
+    PG[("PostgreSQL\npgvector / RLS")]
+    MG[("MongoDB\nEpisodic Payloads")]
+    RD[("Redis\nLocks / Rate Limit / Dedup")]
   end
 
   SP -- "POST /webhooks/graph" --> WR

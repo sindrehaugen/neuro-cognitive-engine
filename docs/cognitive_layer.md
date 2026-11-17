@@ -142,17 +142,17 @@ NCE automatically flags logical conflicts when new factual information contradic
 
 ```mermaid
 flowchart TD
-    A[New fact memory inserted] --> B[Vector Search\ncosine >= 0.85, top-3 candidates]
-    B --> C{Candidates found?}
-    C -- No --> Z[Done — no contradiction]
-    C -- Yes --> D[KG Conflict Check\nunnest triplets vs kg_edges]
-    D --> E[NLI Cross-Encoder\ncross-encoder/nli-deberta-v3-small]
-    E --> F{Tiebreaker needed?\nkg_hit != nli_hit OR\n0.70 <= nli_score < 0.85}
-    F -- No --> G{Any signal?}
-    F -- Yes --> H[LLM Contradiction Auditor\nContradictionResult validated]
+    A["New fact memory inserted"] --> B["Vector Search\ncosine >= 0.85, top-3 candidates"]
+    B --> C{"Candidates found?"}
+    C -- No --> Z["Done — no contradiction"]
+    C -- Yes --> D["KG Conflict Check\nunnest triplets vs kg_edges"]
+    D --> E["NLI Cross-Encoder\ncross-encoder/nli-deberta-v3-small"]
+    E --> F{"Tiebreaker needed?\nkg_hit != nli_hit OR\n0.70 <= nli_score < 0.85"}
+    F -- No --> G{"Any signal?"}
+    F -- Yes --> H["LLM Contradiction Auditor\nContradictionResult validated"]
     H --> G
     G -- No --> Z
-    G -- Yes --> I[INSERT contradictions\nON CONFLICT DO NOTHING]
+    G -- Yes --> I["INSERT contradictions\nON CONFLICT DO NOTHING"]
 ```
 
 ### Step-by-Step
