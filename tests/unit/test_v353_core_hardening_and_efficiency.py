@@ -835,3 +835,84 @@ def test_webhook_client_ip_selects_rightmost_non_internal_hop() -> None:
         assert _client_ip(_make_req("203.0.113.50, 10.0.0.1")) == "203.0.113.50"
         assert _client_ip(_make_req("198.51.100.99, 203.0.113.50, 10.0.0.1")) == "203.0.113.50"
         assert _client_ip(_make_req("not-an-ip, <bad>", peer="10.0.0.5")) == "10.0.0.5"
+
+
+@pytest.mark.asyncio
+async def test_state_digest_imports_motor_timeout_kwargs_and_preserves_replayed_kg_edges(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from nce.state_digest import compute_namespace_state_digest
+
+    ns = uuid.uuid4()
+    mem_id = uuid.uuid4()
+    ep_oid = ObjectId()
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    fetched_sqls: list[str] = []
+
+    class _FakeCursor:
+        def __init__(self, docs: list[dict]) -> None:
+            self._docs = docs
+
+        def __aiter__(self):
+            async def _gen():
+                for doc in self._docs:
+                    yield doc
+
+            return _gen()
+
+    fake_db = SimpleNamespace(
+        episodes=MagicMock(
+            find=MagicMock(return_value=_FakeCursor([{"_id": ep_oid, "raw_data": "hello"}]))
+        ),
+        code_files=MagicMock(find=MagicMock(return_value=_FakeCursor([]))),
+    )
+
+    @asynccontextmanager
+    async def _fake_scoped_mongo(_client, _ns):
+        yield fake_db
+
+    fake_mongo = MagicMock()
+
+    async def _fake_fetch(sql: str, *args):
+        fetched_sqls.append(sql)
+        if "FROM memories" in sql:
+            return [
+                {
+                    "id": mem_id,
+                    "agent_id": "a1",
+                    "created_at": now,
+                    "memory_type": "episodic",
+                    "assertion_type": "fact",
+                    "valid_from": now,
+                    "valid_to": None,
+                    "derived_from": [],
+                    "metadata": {},
+                    "payload_ref": str(ep_oid),
+                    "wrapped_dek": None,
+                }
+            ]
+        return [
+            {
+                "subject_label": "TargetEntity",
+                "predicate": "linked_to",
+                "object_label": "AnotherEntity",
+                "confidence": 0.9,
+            }
+        ]
+
+    conn = MagicMock()
+    conn.fetch = AsyncMock(side_effect=_fake_fetch)
+
+    with (
+        caplog.at_level("WARNING", logger="nce.state_digest"),
+        patch("nce.state_digest.AsyncIOMotorClient", return_value=fake_mongo),
+        patch("nce.db_utils.scoped_mongo_session", _fake_scoped_mongo),
+    ):
+        digest = await compute_namespace_state_digest(conn, ns, as_of=now)
+
+    assert len(digest) == 64
+    assert "Failed to connect to MongoDB or fetch payloads for digest" not in caplog.text
+    fake_mongo.close.assert_called_once()
+    kg_sql = next(s for s in fetched_sqls if "FROM kg_edges" in s)
+    assert "created_at <=" not in kg_sql
+    assert "WHERE namespace_id = $1" in kg_sql

@@ -84,7 +84,8 @@ async def compute_namespace_state_digest(
     owns_mongo = mongo_client is None
     active_mongo: AsyncIOMotorClient | None = mongo_client
     try:
-        from nce.db_utils import motor_timeout_kwargs, scoped_mongo_session
+        from nce._client_factory import motor_timeout_kwargs
+        from nce.db_utils import scoped_mongo_session
 
         if active_mongo is None:
             active_mongo = AsyncIOMotorClient(cfg.MONGO_URI, **motor_timeout_kwargs())
@@ -208,20 +209,12 @@ async def compute_namespace_state_digest(
     canonical_memories.sort(key=lambda x: x["id"])
 
     # 5. Fetch and canonicalize KG edges
-    if as_of is not None:
-        sql_kg = """
-            SELECT subject_label, predicate, object_label, confidence
-            FROM kg_edges
-            WHERE namespace_id = $1 AND created_at <= $2
-        """
-        kg_rows = await conn.fetch(sql_kg, ns, as_of)
-    else:
-        sql_kg = """
-            SELECT subject_label, predicate, object_label, confidence
-            FROM kg_edges
-            WHERE namespace_id = $1
-        """
-        kg_rows = await conn.fetch(sql_kg, ns)
+    sql_kg = """
+        SELECT subject_label, predicate, object_label, confidence
+        FROM kg_edges
+        WHERE namespace_id = $1
+    """
+    kg_rows = await conn.fetch(sql_kg, ns)
 
     canonical_kg: list[dict[str, Any]] = []
     for r in kg_rows:
