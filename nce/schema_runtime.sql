@@ -112,7 +112,7 @@ BEGIN
             RAISE EXCEPTION 'nce.namespace_id is not a valid UUID: %', val;
     END;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 -- C3 external-principal scope accessor (migration 028).
 -- Returns the nil UUID (deny-sentinel) when nce.external_scope_id is unset/empty,
@@ -134,7 +134,7 @@ BEGIN
             RETURN '00000000-0000-0000-0000-000000000000'::uuid;
     END;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 COMMENT ON FUNCTION get_nce_external_scope() IS
 'C3 external-principal RLS accessor. Returns session external_scope_id or nil-UUID
@@ -148,12 +148,12 @@ DROP POLICY IF EXISTS tenant_isolation_policy ON replay_runs;
 CREATE POLICY tenant_isolation_policy ON replay_runs
     FOR ALL TO nce_app
     USING (
-        (source_namespace_id IS NOT NULL AND source_namespace_id = get_nce_namespace())
-        OR (target_namespace_id IS NOT NULL AND target_namespace_id = get_nce_namespace())
+        (source_namespace_id IS NOT NULL AND source_namespace_id = (SELECT get_nce_namespace()))
+        OR (target_namespace_id IS NOT NULL AND target_namespace_id = (SELECT get_nce_namespace()))
     )
     WITH CHECK (
         source_namespace_id IS NOT NULL
-        AND source_namespace_id = get_nce_namespace()
+        AND source_namespace_id = (SELECT get_nce_namespace())
     );
 
 -- Monthly partition windows (UTC); keeps hot data off the DEFAULT catch-all partition
@@ -286,7 +286,7 @@ BEGIN
     exponent := LEAST(decay_constant * delta_t, MAX_EXP);
     RETURN s_last * EXP(-exponent);
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 DO $$
 BEGIN
@@ -433,8 +433,8 @@ DROP POLICY IF EXISTS namespace_isolation_policy ON outbox_events;
 DROP POLICY IF EXISTS tenant_isolation_policy ON outbox_events;
 CREATE POLICY tenant_isolation_policy ON outbox_events
     FOR ALL TO nce_app
-    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
-    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+    USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()));
 
 DO $$
 BEGIN
@@ -453,8 +453,8 @@ DROP POLICY IF EXISTS namespace_isolation_policy ON saga_execution_log;
 DROP POLICY IF EXISTS tenant_isolation_policy ON saga_execution_log;
 CREATE POLICY tenant_isolation_policy ON saga_execution_log
     FOR ALL TO nce_app
-    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
-    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+    USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()));
 
 DO $$
 BEGIN
@@ -498,7 +498,7 @@ ALTER TABLE topology_graph ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS topology_graph_tenant_isolation ON topology_graph;
 CREATE POLICY topology_graph_tenant_isolation ON topology_graph
     FOR ALL
-    USING (namespace_id = get_nce_namespace());
+    USING (namespace_id = (SELECT get_nce_namespace()));
 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_gc;
 
@@ -539,8 +539,8 @@ ALTER TABLE procedural_heuristics FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation_policy ON procedural_heuristics;
 CREATE POLICY tenant_isolation_policy ON procedural_heuristics
     FOR ALL TO nce_app
-    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
-    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+    USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()));
 GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_gc;
 
@@ -583,8 +583,8 @@ BEGIN
         EXECUTE format(
             'CREATE POLICY tenant_isolation_policy ON public.%I '
             'FOR ALL TO nce_app '
-            'USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace()) '
-            'WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())',
+            'USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace())) '
+            'WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))',
             t
         );
         EXECUTE format('REVOKE ALL ON TABLE public.%I FROM nce_app', t);
@@ -610,10 +610,10 @@ DROP POLICY IF EXISTS tenant_isolation_policy ON a2a_grants;
 CREATE POLICY tenant_isolation_policy ON a2a_grants
     FOR ALL TO nce_app
     USING (
-        owner_namespace_id = get_nce_namespace()
-        OR target_namespace_id = get_nce_namespace()
+        owner_namespace_id = (SELECT get_nce_namespace())
+        OR target_namespace_id = (SELECT get_nce_namespace())
     )
-    WITH CHECK (owner_namespace_id = get_nce_namespace());
+    WITH CHECK (owner_namespace_id = (SELECT get_nce_namespace()));
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE a2a_grants TO nce_app;
 
 -- =============================================================================

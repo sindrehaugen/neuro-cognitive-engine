@@ -263,6 +263,7 @@ async def _saga_recovery_tick(pool: asyncpg.Pool, mongo_client: Any = None) -> N
                   AND COALESCE(updated_at, created_at) < now() - interval '5 minutes'
                 ORDER BY COALESCE(updated_at, created_at)
                 LIMIT 100
+                FOR UPDATE SKIP LOCKED
                 """
             )
 
@@ -381,6 +382,7 @@ async def _saga_recovery_tick(pool: asyncpg.Pool, mongo_client: Any = None) -> N
                     WHERE state = 'recovery_needed'
                     ORDER BY COALESCE(updated_at, created_at)
                     LIMIT 100
+                    FOR UPDATE SKIP LOCKED
                     """
                 )
 

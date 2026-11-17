@@ -39,8 +39,11 @@ and is never read from or written to any database/settings table.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import time
 import uuid
+from collections import OrderedDict
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -50,6 +53,7 @@ from nce.signing import (
     SigningError,
     decrypt_signing_key,
     encrypt_signing_key,
+    master_key_fingerprint_bytes,
     require_master_key,
 )
 
@@ -64,6 +68,56 @@ _NONCE_SIZE: int = 12
 # Wire-format prefix for DEK-encrypted payloads.  Distinguishes payload
 # ciphertext (this module) from key-wrapping blobs (TC2/TC3/TC4 in signing.py).
 _DEK_PAYLOAD_PREFIX: bytes = b"TCDEK\x01"
+
+
+# ---------------------------------------------------------------------------
+# Bounded TTL LRU cache for unwrapped DEKs (zeroes bytearray on eviction)
+# ---------------------------------------------------------------------------
+
+_UNWRAPPED_DEK_CACHE_MAXSIZE: int = 512
+_UNWRAPPED_DEK_CACHE_TTL_S: float = 300.0
+_UNWRAPPED_DEK_CACHE: OrderedDict[tuple[bytes, bytes], tuple[bytearray, float]] = OrderedDict()
+
+
+def _zero_and_evict_dek(key: tuple[bytes, bytes]) -> None:
+    entry = _UNWRAPPED_DEK_CACHE.pop(key, None)
+    if entry is not None:
+        buf, _ = entry
+        for i in range(len(buf)):
+            buf[i] = 0
+
+
+def clear_unwrapped_dek_cache() -> None:
+    """Zero and evict all cached unwrapped DEKs (called on shred/forget/key rotation)."""
+    for k in list(_UNWRAPPED_DEK_CACHE.keys()):
+        _zero_and_evict_dek(k)
+
+
+def _unwrap_dek_cached(wrapped_dek: bytes, master_key: MasterKey) -> bytes:
+    """Unwrap *wrapped_dek* under *master_key* with bounded TTL LRU caching."""
+    now = time.monotonic()
+    for k, (_, exp) in list(_UNWRAPPED_DEK_CACHE.items()):
+        if now > exp:
+            _zero_and_evict_dek(k)
+
+    fp = master_key_fingerprint_bytes(master_key)
+    digest = hashlib.sha256(wrapped_dek).digest()
+    cache_key = (fp, digest)
+
+    entry = _UNWRAPPED_DEK_CACHE.get(cache_key)
+    if entry is not None:
+        buf, exp = entry
+        if now <= exp:
+            _UNWRAPPED_DEK_CACHE.move_to_end(cache_key)
+            return bytes(buf)
+        _zero_and_evict_dek(cache_key)
+
+    dek = unwrap_dek(wrapped_dek, master_key)
+    while len(_UNWRAPPED_DEK_CACHE) >= _UNWRAPPED_DEK_CACHE_MAXSIZE:
+        oldest_key = next(iter(_UNWRAPPED_DEK_CACHE))
+        _zero_and_evict_dek(oldest_key)
+    _UNWRAPPED_DEK_CACHE[cache_key] = (bytearray(dek), now + _UNWRAPPED_DEK_CACHE_TTL_S)
+    return dek
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +173,15 @@ def wrap_dek(dek: bytes, master_key: MasterKey) -> bytes:
     """
     if len(dek) != _DEK_SIZE:
         raise ValueError(f"DEK must be exactly {_DEK_SIZE} bytes; got {len(dek)}.")
-    return encrypt_signing_key(dek, master_key)
+    wrapped = encrypt_signing_key(dek, master_key)
+    now = time.monotonic()
+    fp = master_key_fingerprint_bytes(master_key)
+    cache_key = (fp, hashlib.sha256(wrapped).digest())
+    while len(_UNWRAPPED_DEK_CACHE) >= _UNWRAPPED_DEK_CACHE_MAXSIZE:
+        oldest_key = next(iter(_UNWRAPPED_DEK_CACHE))
+        _zero_and_evict_dek(oldest_key)
+    _UNWRAPPED_DEK_CACHE[cache_key] = (bytearray(dek), now + _UNWRAPPED_DEK_CACHE_TTL_S)
+    return wrapped
 
 
 def unwrap_dek(wrapped_dek: bytes, master_key: MasterKey) -> bytes:
@@ -261,7 +323,7 @@ def maybe_decrypt_raw_data(raw_data: object, wrapped_dek: bytes | None) -> str:
         return raw_data if isinstance(raw_data, str) else str(raw_data)
 
     with require_master_key() as master_key:
-        dek = unwrap_dek(bytes(wrapped_dek), master_key)
+        dek = _unwrap_dek_cached(bytes(wrapped_dek), master_key)
     # decrypt_with_dek zeroes its working copy of the DEK via SecureKeyBuffer
     # (success or failure).  The immutable `dek` bytes cannot be zeroed
     # in-place — a buffer here would only wipe a fresh copy — so its scope

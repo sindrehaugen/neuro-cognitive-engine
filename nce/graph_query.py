@@ -542,7 +542,7 @@ class GraphRAGTraverser:
                         WHERE ent->>'label' IS NOT NULL
                     )
                     SELECT n.label, n.entity_type, m.payload_ref,
-                           m.embedding <=> $1::vector AS distance,
+                           m.embedding <=> $1::halfvec(768) AS distance,
                            n.event_id
                     FROM historical_nodes n
                     JOIN memories m ON n.memory_id = m.id
@@ -564,7 +564,7 @@ class GraphRAGTraverser:
                 rows = await c.fetch(
                     """
                     SELECT label, entity_type, payload_ref,
-                           embedding <=> $1::vector AS distance
+                           embedding <=> $1::halfvec(768) AS distance
                     FROM kg_nodes
                     WHERE ($3::uuid IS NULL OR namespace_id = $3::uuid)
                       AND embedding IS NOT NULL
@@ -971,7 +971,7 @@ class GraphRAGTraverser:
                         await set_namespace_context(c, UUID(str(namespace_id)))
                         dek_rows = await c.fetch(
                             "SELECT payload_ref, wrapped_dek FROM memories "
-                            "WHERE payload_ref = ANY($1::text[]) AND namespace_id = $2::uuid",
+                            "WHERE payload_ref = ANY($1::text[]) AND namespace_id = $2::uuid AND valid_to IS NULL",
                             list(ep_docs.keys()),
                             namespace_id,
                         )

@@ -114,9 +114,9 @@ async def test_wave1_item3_connect_configures_bounded_mongo_and_minio_timeouts()
     ):
         await engine.connect()
 
-    assert captured_motor_kwargs["serverSelectionTimeoutMS"] == 5_000
-    assert captured_motor_kwargs["connectTimeoutMS"] == 5_000
-    assert captured_motor_kwargs["socketTimeoutMS"] == 5_000
+    assert captured_motor_kwargs["serverSelectionTimeoutMS"] == 2_000
+    assert captured_motor_kwargs["connectTimeoutMS"] == 2_000
+    assert captured_motor_kwargs["socketTimeoutMS"] == 2_000
 
     http_client = captured_minio_kwargs["http_client"]
     timeout_cfg = http_client.connection_pool_kw["timeout"]

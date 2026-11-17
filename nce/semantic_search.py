@@ -447,12 +447,12 @@ async def semantic_search(
 
         v_cand_query = Query.from_(m)
         if active_model_id:
-            distance_expr = RawExpression(f"me.embedding <=> {p_vector}::vector")
+            distance_expr = RawExpression(f"me.embedding <=> {p_vector}::halfvec(768)")
             v_cand_query = v_cand_query.join(me).on(
                 (m.id == me.memory_id) & (me.model_id == active_model_id)
             )
         else:
-            distance_expr = RawExpression(f"m.embedding <=> {p_vector}::vector")
+            distance_expr = RawExpression(f"m.embedding <=> {p_vector}::halfvec(768)")
 
         v_cand_query = (
             v_cand_query.left_join(s)  # type: ignore[arg-type]
@@ -483,8 +483,9 @@ async def semantic_search(
         for ident in exact_identifiers:
             p_ident = builder.param(ident)
             ident_predicates.append(
-                f"m.metadata::text ILIKE '%' || {p_ident} || '%' "
-                f"OR COALESCE(m.search_tsv, m.content_fts) @@ plainto_tsquery('simple', {p_ident})"
+                f"m.search_tsv @@ plainto_tsquery('simple', {p_ident}) "
+                f"OR (m.search_tsv IS NULL AND (m.metadata::text ILIKE '%' || {p_ident} || '%' "
+                f"OR m.content_fts @@ plainto_tsquery('simple', {p_ident})))"
             )
         ident_sql_cond = ""
         ident_boost_sql = ""
@@ -519,8 +520,9 @@ async def semantic_search(
             .where(m.namespace_id == p_namespace_id)
             .where(
                 RawExpression(
-                    f"(COALESCE(m.search_tsv, m.content_fts) @@ query.q_eng "
-                    f"OR COALESCE(m.search_tsv, m.content_fts) @@ query.q_simple{ident_sql_cond})"
+                    f"(m.search_tsv @@ query.q_eng "
+                    f"OR m.search_tsv @@ query.q_simple "
+                    f"OR (m.search_tsv IS NULL AND (m.content_fts @@ query.q_eng OR m.content_fts @@ query.q_simple)){ident_sql_cond})"
                 )
             )
             .where(RawExpression("m.memory_type IN ('episodic', 'consolidated', 'semantic')"))
@@ -549,7 +551,7 @@ async def semantic_search(
                         SELECT payload_ref, 0.9 AS kg_score
                         FROM kg_edges
                         WHERE namespace_id = {p_namespace_id} AND payload_ref IS NOT NULL
-                          AND (subject_label ILIKE '%' || {p_query} || '%' OR object_label ILIKE '%' || {p_query} || '%')
+                          AND ((subject_label || ' ' || object_label) ILIKE '%' || {p_query} || '%')
                     ) AS kg"""
                 )
             )

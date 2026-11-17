@@ -21,6 +21,7 @@ POOL_ACQUIRE_TIMEOUT: Final[float] = 10.0
 
 # Cached pgvector HNSW iterative scan capability flag
 _HNSW_ITERATIVE_SCAN_SUPPORTED: bool | None = None
+_REAL_AUTH_SET_NAMESPACE_CONTEXT: Any = None
 
 
 async def enable_hnsw_iterative_scan(conn: Any) -> bool:
@@ -445,14 +446,29 @@ async def scoped_pg_session(
     t0 = time.perf_counter()
 
     async with pool.acquire(timeout=POOL_ACQUIRE_TIMEOUT) as conn:
-        from nce.auth import set_namespace_context
+        from nce import auth as _auth
+
+        global _REAL_AUTH_SET_NAMESPACE_CONTEXT
+        if _REAL_AUTH_SET_NAMESPACE_CONTEXT is None:
+            _REAL_AUTH_SET_NAMESPACE_CONTEXT = _auth.set_namespace_context
 
         async with conn.transaction():
-            await set_namespace_context(conn, ns_uuid)
-            try:
-                await enable_hnsw_iterative_scan(conn)
-            except Exception:
-                pass
+            global _HNSW_ITERATIVE_SCAN_SUPPORTED
+            if (
+                _HNSW_ITERATIVE_SCAN_SUPPORTED is True
+                and _auth.set_namespace_context is _REAL_AUTH_SET_NAMESPACE_CONTEXT
+            ):
+                await conn.execute(
+                    "SELECT set_config('nce.namespace_id', $1, true), "
+                    "set_config('hnsw.iterative_scan', 'relaxed_order', true)",
+                    str(ns_uuid),
+                )
+            else:
+                await _auth.set_namespace_context(conn, ns_uuid)
+                try:
+                    await enable_hnsw_iterative_scan(conn)
+                except Exception:
+                    pass
             SCOPED_SESSION_LATENCY.observe(time.perf_counter() - t0)
             yield conn
             # SET LOCAL is automatically cleared at transaction end.

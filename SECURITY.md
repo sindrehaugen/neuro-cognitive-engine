@@ -10,7 +10,8 @@ Security patches and updates are actively maintained for the following release b
 
 | Version | Supported | Status |
 | :--- | :--- | :--- |
-| **3.4.x** | :white_check_mark: Yes | Current Stable Release (Cognitive Scalability, WORM Advisory Locks & Hybrid RRF) |
+| **3.5.x** | :white_check_mark: Yes | Current Stable Release (Hot-Path RLS InitPlan, DEK Unwrap Cache, Saga Fail-Fast & Supply-Chain Hardening) |
+| **3.4.x** | :white_check_mark: Yes | Maintenance Release (Cognitive Scalability, WORM Advisory Locks & Hybrid RRF) |
 | **3.3.x** | :white_check_mark: Yes | Maintenance Release (Streamable HTTP `/mcp` Gateway & Envelope Crypto) |
 | **3.0.x**–**3.2.x** | :white_check_mark: Yes | Long-Term Support (LTS) Baseline (Decoupled Core & Plugin Architecture) |
 | **< 3.0.0** | :x: No | End of Life (Legacy TriMCP monolithic releases) |

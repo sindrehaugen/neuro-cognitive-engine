@@ -925,6 +925,23 @@ def reset_backend_singleton_for_tests() -> None:
     global _backend
     with _backend_lock:
         _backend = None
+    clear_embedding_query_cache()
+
+
+# ---------------------------------------------------------------------------
+# Bounded TTL LRU query-embedding cache (stateless math: text -> vector)
+# ---------------------------------------------------------------------------
+
+_EMBED_QUERY_CACHE_MAXSIZE: int = 512
+_EMBED_QUERY_CACHE_TTL_S: float = 300.0
+_embed_query_cache: dict[tuple[str, str, int, str], tuple[list[float], bool, float]] = {}
+_embed_query_cache_lock = threading.Lock()
+
+
+def clear_embedding_query_cache() -> None:
+    """Clear the bounded TTL LRU query-embedding cache."""
+    with _embed_query_cache_lock:
+        _embed_query_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -934,9 +951,46 @@ def reset_backend_singleton_for_tests() -> None:
 
 async def embed(text: str) -> list[float]:
     """Embed a single text; returns a VECTOR_DIM-length L2-normalised vector."""
+    import time
+
     degraded_embedding_flag.set(False)
-    vecs = await get_backend().embed([text])
-    return vecs[0] if vecs else _deterministic_hash_embedding(text)
+    backend = get_backend()
+    norm_text = " ".join((text or "").strip().split())
+    text_sha = hashlib.sha256(norm_text.encode("utf-8")).hexdigest()
+    backend_id = f"{type(backend).__name__}:{getattr(backend, '_base', '')}"
+    model_id = str(getattr(backend, "_model", None) or MODEL_ID)
+    cache_key = (backend_id, model_id, int(VECTOR_DIM), text_sha)
+
+    now = time.monotonic()
+    with _embed_query_cache_lock:
+        cached = _embed_query_cache.get(cache_key)
+        if cached is not None:
+            vec, was_degraded, exp = cached
+            if now <= exp:
+                # Move to end (LRU)
+                _embed_query_cache[cache_key] = _embed_query_cache.pop(cache_key)
+                degraded_embedding_flag.set(was_degraded)
+                return list(vec)
+            _embed_query_cache.pop(cache_key, None)
+
+    vecs = await backend.embed([text])
+    res_vec = vecs[0] if vecs else _deterministic_hash_embedding(text)
+    was_degraded = bool(degraded_embedding_flag.get())
+
+    with _embed_query_cache_lock:
+        for k, (_, _, exp) in list(_embed_query_cache.items()):
+            if now > exp:
+                _embed_query_cache.pop(k, None)
+        while len(_embed_query_cache) >= _EMBED_QUERY_CACHE_MAXSIZE:
+            oldest = next(iter(_embed_query_cache))
+            _embed_query_cache.pop(oldest, None)
+        _embed_query_cache[cache_key] = (
+            list(res_vec),
+            was_degraded,
+            now + _EMBED_QUERY_CACHE_TTL_S,
+        )
+
+    return res_vec
 
 
 async def embed_batch(texts: list[str]) -> list[list[float]]:

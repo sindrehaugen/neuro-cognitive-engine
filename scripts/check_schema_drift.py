@@ -203,6 +203,24 @@ def expected_columns(schema_path: Path = _SCHEMA) -> dict[str, set[str]]:
     return {t: c for t, c in tables.items() if t not in _NOT_EXPECTED}
 
 
+def expected_migration_columns(
+    migrations_dir: Path = _REPO_ROOT / "nce" / "migrations",
+) -> dict[str, set[str]]:
+    """Every table -> columns defined across numbered Core migrations ``001_*.sql`` .. ``NNN_*.sql``."""
+    out: dict[str, set[str]] = {}
+    if not migrations_dir.is_dir():
+        return out
+    for mig in sorted(migrations_dir.glob("[0-9][0-9][0-9]_*.sql")):
+        sql = _strip_sql_comments(mig.read_text(encoding="utf-8", errors="replace"))
+        for table, cols in _extract_create_table(sql).items():
+            if not re.search(r"_[0-9]+$", table) and not table.endswith("_default"):
+                out.setdefault(table, set()).update(cols)
+        for table, col in _extract_add_column(sql):
+            if not re.search(r"_[0-9]+$", table) and not table.endswith("_default"):
+                out.setdefault(table, set()).add(col)
+    return {t: c for t, c in out.items() if t not in _NOT_EXPECTED}
+
+
 # ---------------------------------------------------------------------------
 # Nullability -- NOT part of this script's own drift comparison (see the
 # module docstring's "Still NOT compared" list; that stays true, this
@@ -607,6 +625,9 @@ async def _main() -> int:
     args = ap.parse_args()
 
     expected = expected_columns(Path(args.schema))
+    mig_expected = expected_migration_columns()
+    mig_only_tables = sorted(set(mig_expected) - set(expected))
+    core_total_tables = len(set(expected) | set(mig_expected))
     actual = await actual_columns(args.dsn)
     missing_tables, missing_cols = compare(expected, actual)
     missing_rls, missing_pols = compare_rls(
@@ -622,6 +643,8 @@ async def _main() -> int:
             json.dumps(
                 {
                     "expected_tables": len(expected),
+                    "expected_migration_tables": len(mig_only_tables),
+                    "expected_core_tables_total": core_total_tables,
                     "missing_tables": missing_tables,
                     "missing_columns": missing_cols,
                     "missing_rls_enablement": missing_rls,
@@ -634,7 +657,10 @@ async def _main() -> int:
             )
         )
     else:
-        print(f"schema.sql guarantees {len(expected)} tables")
+        print(
+            f"schema.sql guarantees {len(expected)} tables "
+            f"(+ {len(mig_only_tables)} migration-created tables = {core_total_tables} Core SQL tables)"
+        )
         if not (missing_tables or missing_cols or missing_rls or missing_pols or missing_objs):
             print(
                 "NO DRIFT: the database has every table, column, RLS enablement, policy, "

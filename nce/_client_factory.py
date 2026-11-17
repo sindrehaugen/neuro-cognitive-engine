@@ -41,9 +41,9 @@ def make_sync_redis(url: str, **kw: Any) -> redis.Redis:
 def motor_timeout_kwargs(**kw: Any) -> dict[str, Any]:
     """Return bounded timeout kwargs for Motor ``AsyncIOMotorClient``."""
     opts: dict[str, Any] = {
-        "serverSelectionTimeoutMS": 5000,
-        "connectTimeoutMS": 5000,
-        "socketTimeoutMS": 5000,
+        "serverSelectionTimeoutMS": 2000,
+        "connectTimeoutMS": 2000,
+        "socketTimeoutMS": 2000,
     }
     opts.update(kw)
     return opts
