@@ -4,7 +4,7 @@
 
 ## Status
 
-Shipped
+Shipped · **Updated in `v3.5.0`–`v3.5.2`**: Extended key wrapping with `v5` (magic `TC5\x01`, embedding a 16-byte SHA-256 master-key fingerprint ahead of the Argon2id salt/nonce/ciphertext) and added a bounded zeroing-`bytearray` TTL LRU cache (`_UNWRAPPED_DEK_CACHE`, `maxsize=512, ttl=300s`) in `nce/envelope.py` for per-record `TCDEK\x01` AES-256-GCM DEK unwrapping (`246.60 ms -> 0.095 ms` p50), explicitly purged on `shred_memory`, `forget_memory`, and `crypto_shred_subject`.
 
 ## Context
 

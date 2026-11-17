@@ -12,6 +12,9 @@
   - [Configuration Reference](configuration_reference.md)
   - [Frontend Readiness Specification](FRONTEND_READINESS.md)
   - [Data-Source Modes Architecture](DATA_SOURCE_MODES.md)
+  - [Detector Limits & AST Ratchet](detector_limits.md)
+  - [100k-Row Benchmark Report (v3.5.2)](benchmarks/PERF_REPORT_v3.5.2.md)
+  - [Plugin Development Guide](plugin_development.md)
   - [Plugin Overview (Non-Technical)](plugin-overview-nontechnical.md)
 
 - Getting Started
@@ -68,4 +71,4 @@
 
 
 - Official Plugins & Verticals
-  - [20 Vertical Engines (Plugins Repository)](https://github.com/sindrehaugen/nce-vertical-engines)
+  - [22 Vertical Engines (Plugins Repository)](https://github.com/sindrehaugen/nce-vertical-engines)

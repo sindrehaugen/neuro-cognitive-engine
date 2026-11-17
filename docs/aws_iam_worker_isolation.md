@@ -2,8 +2,6 @@
 
 # AWS IAM & Network Boundaries — Fargate Worker Isolation
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
-
 **Date:** 2026-05-08  
 **Phase:** 2 — Infrastructure Hardening
 
@@ -27,14 +25,14 @@ graph TB
     subgraph "AWS Cloud"
         subgraph "VPC — Private Subnets"
             subgraph "ECS Fargate Cluster"
-                ORCH[🟢 Orchestrator Task<br/>trimcp-{deployment}-ecs-orchestrator<br/>Full IAM]
-                WKR[🟡 Worker Task<br/>trimcp-{deployment}-ecs-worker<br/>Restricted IAM]
+                ORCH["🟢 Orchestrator Task<br/>trimcp-{deployment}-ecs-orchestrator<br/>Full IAM"]
+                WKR["🟡 Worker Task<br/>trimcp-{deployment}-ecs-worker<br/>Restricted IAM"]
             end
 
             subgraph "Data Layer"
-                RDS[(RDS Postgres<br/>memory_meta)]
-                DOCDB[(DocumentDB<br/>MongoDB)]
-                REDIS[(ElastiCache<br/>Redis)]
+                RDS[("RDS Postgres<br/>memory_meta")]
+                DOCDB[("DocumentDB<br/>MongoDB")]
+                REDIS[("ElastiCache<br/>Redis")]
             end
         end
 

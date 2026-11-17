@@ -23,15 +23,15 @@ The security posture of NCE combines row isolation (C3) with field isolation (C8
 
 ```mermaid
 graph TD
-    Query[External Request] --> SQL[Database Query]
-    SQL --> RLS{C3: Row-Level Security}
-    RLS -- Reject --> Err[Access Denied]
-    RLS -- Allow --> Rows[(Filtered Rows)]
-    Rows --> Load[Retrieve Dict / kg_node]
-    Load --> Redact{C8: project node, surface}
-    Redact --> AllowList[Check surface-redaction.json]
-    AllowList --> Projection[Drop unlisted fields]
-    Projection --> SafeJSON[Sanitized Output Payload]
+    Query["External Request"] --> SQL["Database Query"]
+    SQL --> RLS{"C3: Row-Level Security"}
+    RLS -- Reject --> Err["Access Denied"]
+    RLS -- Allow --> Rows[("Filtered Rows")]
+    Rows --> Load["Retrieve Dict / kg_node"]
+    Load --> Redact{"C8: project node, surface"}
+    Redact --> AllowList["Check surface-redaction.json"]
+    AllowList --> Projection["Drop unlisted fields"]
+    Projection --> SafeJSON["Sanitized Output Payload"]
 ```
 
 - **Row-Level Security (C3)**: Filters *which* rows a principal can access based on tenant (`namespace_id`) and external scope (`nce.external_scope_id` / `get_nce_external_scope()`).

@@ -25,16 +25,16 @@ For GPU/VRAM-specific monitoring of the re-embedding worker, see the focused sub
 
 ```mermaid
 graph TD
-    A[MCP tool call] -->|instrument_tool decorator| B[TOOL_CALLS / TOOL_LATENCY]
-    C[Saga transaction] -->|SagaMetrics context manager| D[SAGA_DURATION / SAGA_FAILURES]
-    E[Outbox relay] --> F[OUTBOX_* counters]
-    G[RQ task worker] --> H[TASK_DLQ_* metrics]
-    I[HTTP resilience layer] --> J[EXTERNAL_HTTP_* metrics]
-    K[Re-embedder worker] --> L[VRAM gauges]
-    B & D & F & H & J & L --> M[prometheus_client scrape endpoint :8000/metrics]
-    A -->|OTLPSpanExporter| N[OTLP backend :4318]
+    A["MCP tool call"] -->|instrument_tool decorator| B["TOOL_CALLS / TOOL_LATENCY"]
+    C["Saga transaction"] -->|SagaMetrics context manager| D["SAGA_DURATION / SAGA_FAILURES"]
+    E["Outbox relay"] --> F["OUTBOX_* counters"]
+    G["RQ task worker"] --> H["TASK_DLQ_* metrics"]
+    I["HTTP resilience layer"] --> J["EXTERNAL_HTTP_* metrics"]
+    K["Re-embedder worker"] --> L["VRAM gauges"]
+    B & D & F & H & J & L --> M["prometheus_client scrape endpoint :8000/metrics"]
+    A -->|OTLPSpanExporter| N["OTLP backend :4318"]
     C -->|traced_worker_job| N
-    O[Incoming HTTP request] -->|OpenTelemetryTraceMiddleware| N
+    O["Incoming HTTP request"] -->|OpenTelemetryTraceMiddleware| N
 ```
 
 All instrumentation lives in `nce/observability.py`. The module uses a `_StubMetric` fallback so it is safe to import even when `prometheus_client` or `opentelemetry-sdk` are not installed — all metric calls become no-ops.
@@ -43,7 +43,7 @@ All instrumentation lives in `nce/observability.py`. The module uses a `_StubMet
 
 ## 2. Enabling observability
 
-Observability is controlled by four environment variables (see [Configuration Reference §15](configuration_reference.md#15-observability)):
+Observability is controlled by four environment variables (see [Configuration Reference §15](configuration_reference.md#15-observability-opentelemetry--prometheus)):
 
 | Variable | Default | Description |
 |---|---|---|

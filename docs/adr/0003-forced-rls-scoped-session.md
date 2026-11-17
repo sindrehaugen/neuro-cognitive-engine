@@ -4,7 +4,7 @@
 
 ## Status
 
-Shipped (DDL & Scoped Sessions) · 🔴 **Deployment Reality Audited (2026-09-16)**: While DDL migrations configure RLS policies for role `nce_app`, the deployed runtime connects as `mcp_user` (`rolsuper = true, rolbypassrls = true`), making RLS **inert at runtime**. Tenant isolation in production is enforced entirely by application-level `WHERE`-clause predicates (see [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/_security/c3-external-scope-adversarial-review.md)).
+Shipped (DDL & Scoped Sessions) · **Updated in `v3.4`–`v3.5.2`**: All **36 Core forced-RLS tables** (plus **96 vertical-engine forced-RLS tables** and downstream OT/edge plugin tables via `nce.plugins`) enforce `ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` for the non-bypass `nce_app` runtime role, verified at boot by `verify_rls_catalog_consistency()`. In `v3.5.1` (Migration `038`), `get_nce_namespace()` and `get_nce_external_scope()` were marked `STABLE PARALLEL SAFE` and all RLS policies were rewritten to `(SELECT get_nce_namespace())` so PostgreSQL evaluates the tenant GUC once per statement as an `InitPlan` (`0.56 ms`). *(Historical note from 2026-09-16: prior to `nce_app` role enforcement, local dev deployments connecting as superuser `mcp_user` relied on application-level `WHERE` predicates; see [`docs/vertical_engines/_security/c3-external-scope-adversarial-review.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/_security/c3-external-scope-adversarial-review.md)).*
 
 ## Context
 

@@ -64,9 +64,9 @@ The C1–C9 substrate every business engine builds on:
 
 ---
 
-## Vertical Engine Guides
+## Vertical Engine Guides (`nce-vertical-engines`)
 
-Per-engine user + admin runbooks (engines are per-namespace opt-in):
+All 22 official vertical engines ship in [`sindrehaugen/nce-vertical-engines`](https://github.com/sindrehaugen/nce-vertical-engines) (`v3.5.2`) and register dynamically via `nce.plugins` (`nce.verticals` entry points):
 
 - **Product** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/product-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/product-admin.md)
 - **Procurement** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/procurement-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/procurement-admin.md)
@@ -75,10 +75,9 @@ Per-engine user + admin runbooks (engines are per-namespace opt-in):
 - **Sales** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/sales-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/sales-admin.md)
 - **System Design** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/system-design-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/system-design-admin.md)
 - **Project** — [User Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/project-user.md) · [Admin Guide](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/engines/project-admin.md)
-- **NetBox** — [Integration & Cognitive Extensions](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/netbox_and_cognitive_extensions.md): topology activation, asset discovery, operator stress tracking, active-learning queue, and the Phase-3 cognitive specs (ATMS, chrono-branching, spiking activation).
+- **Economy, Assets, Support, Inventory, Field Tech, HR, Marketing, Resources, Business Insights, Customer Portal, Odoo, Salesforce, Diagnostics** — [Complete 22-Engine Documentation Hub](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/README.md) · [Vertical Engine Specifications](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/00-ENGINES-ROADMAP.md)
+- **NetBox** — [Integration & Cognitive Extensions](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/netbox_and_cognitive_extensions.md): topology activation, asset discovery, operator stress tracking, active-learning queue, and Phase-3 cognitive specs.
 - **Dynamics 365** — [Integration Reference](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/d365_integration_reference.md): D365/Dataverse admin REST routes and MCP tool surface.
-
-Design specs for all engines (including not-yet-shipped ones) live under [**Vertical Engine Specifications**](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/00-ENGINES-ROADMAP.md).
 
 ---
 
@@ -105,22 +104,20 @@ Design specs for all engines (including not-yet-shipped ones) live under [**Vert
 
 ---
 
-## Reference & Supplementary
+## Reference, Benchmarks & Supplementary
 
-- [**API Reference**](API.md): Auto-generated route and tool surface (regenerate via `scripts/gen_api_docs.py`).
-- [**Host Parity Matrix**](_generated/host_parity.md): Auto-generated host-to-NCE route family parity table (regenerate via `scripts/gen_portal_parity.py`).
-- [**Architecture Decision Records**](adr/README.md): Ratified ADRs 0001–0007 (WORM log, Quad-DB, forced RLS, signing v2, shadow re-embedding, env-only master key, snapshot/replay).
+- [**100k-Row Performance & LLM-Loop Benchmark Report (`v3.5.2`)**](benchmarks/PERF_REPORT_v3.5.2.md): Empirical latency scorecards, sub-stage breakdowns, `EXPLAIN (ANALYZE, BUFFERS)` plans, and 5-tool chained LLM reasoning loop telemetry.
+- [**Plugin Architecture & Authoring Guide**](plugin_development.md): `NCEPlugin` protocol, `register_tools`, `register_routes`, `register_rls_tables`, and entry-point packaging.
+- [**Plugin Overview (Non-Technical)**](plugin-overview-nontechnical.md): Plain-language overview of NCE plugins for non-technical colleagues.
+- [**Vertical Module Pattern**](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/VERTICAL_MODULE_PATTERN.md): Authoring guide for NCE vertical modules.
+- [**API Reference (Curated)**](api_reference.md): Curated HTTP endpoint and MCP tool overview.
+- [**API Reference (Auto-Generated)**](API.md): Auto-generated route and tool surface (regenerate via `scripts/gen_api_docs.py`).
+- [**Detector Limits & AST Ratchet**](detector_limits.md): Swallowed-DB-write AST scanner scope, 1-level indirection rules, and shrink-only ratchet contract.
 - [**Data-Source Modes**](DATA_SOURCE_MODES.md): Per-function `d365 | both | nce` switch — living architecture spec.
 - [**Frontend Readiness**](FRONTEND_READINESS.md): Living spec for making NCE fully front-end-ready; NCE-FE-1..6 build list.
-- [**Vertical Module Pattern**](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/VERTICAL_MODULE_PATTERN.md): Authoring guide for NCE vertical modules.
-- [**Plugin Overview (Non-Technical)**](plugin-overview-nontechnical.md): Plain-language overview of NCE plugins for non-technical colleagues.
+- [**Architecture Decision Records**](adr/README.md): Ratified ADRs 0001–0008 (WORM log, Quad-DB, forced RLS, signing v2/v5, shadow re-embedding, env-only master key, snapshot/replay, append-only ticket action log).
+- **Auto-Generated Telemetry & Surface Ledgers (`docs/_generated/`)**:
+  - [**Canonical Surface Inventory**](_generated/surface.md) · [**Engine Figures**](_generated/engine_figures.md) · [**Golden Thread Seams**](_generated/golden_thread_seams.md) · [**Host Parity Matrix**](_generated/host_parity.md) · [**C12 Resource Surface**](_generated/resource_surface.md) · [**Waves Landed Ledger**](_generated/waves_landed.md)
+- **Docsify Site Navigation Chrome**: [`_sidebar.md`](_sidebar.md) · [`_navbar.md`](_navbar.md) · [`_404.md`](_404.md)
+- **Repository Governance & Changelogs**: [`../README.md`](../README.md) · [`../CHANGELOG.md`](../CHANGELOG.md) · [`../CONTRIBUTING.md`](../CONTRIBUTING.md) · [`../SECURITY.md`](../SECURITY.md)
 
----
-
-## Planned / Forthcoming
-
-Guides are added as each implementation ships to `main`:
-
-- **Remaining engine guides** — Economy, Assets, Support, Inventory, Field Tech, HR, Marketing, Staff Resources, Business Insights, Customer Portal, Network Ops, Remote Access & RMM. Design specs already live under [**Vertical Engine Specifications**](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/00-ENGINES-ROADMAP.md).
-- **Cognitive-muscles / diagnostics / innovation docs** — governance-rails, diagnostic log digestion, pipeline governor, self-healing actuation, transport hub (tracking the refactor pipeline as it merges).
-- **Day-2 operator runbooks & upgrade guide** — backup/restore, DR, key rotation, version-to-version upgrades.
