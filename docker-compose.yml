@@ -85,7 +85,7 @@ services:
           memory: 2G
 
   mongodb:
-    image: mongo:7.0
+    image: mongo:8.2
     container_name: nce-mongo
     # Disk-I/O tuning (VI.5c D1): zstd block compressor (vs the snappy default)
     # for collection data — transcripts/code/payloads compress well, so this
