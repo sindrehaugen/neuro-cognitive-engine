@@ -38,8 +38,11 @@ jobs:
       - name: Run pip-audit (CVE scan)
         id: pip_audit
         run: |
-          pip-audit -r requirements.txt --format=json -o /tmp/audit.json --strict --disable-pip || true
-          echo "audit_exit=$?" >> $GITHUB_OUTPUT
+          set +e
+          pip-audit -r requirements.txt --format=json -o /tmp/audit.json --strict --disable-pip
+          rc=$?
+          set -e
+          echo "audit_exit=$rc" >> "$GITHUB_OUTPUT"
 
       - name: Check for outdated packages
         id: outdated

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.4.4] - 2026-11-17
+
+### Changed
+- **Sub-2s Redis Fail-Closed Timeouts (`nce/config.py`, `nce/orchestrator.py`, `nce/auth.py`):** Added `REDIS_SOCKET_TIMEOUT_S` and `REDIS_CONNECT_TIMEOUT_S` (default `1.5`s) and wired them into engine Redis pools and `NonceStore`, ensuring paused/unreachable Redis fails closed (`-32005`) in `< 2000 ms`.
+- **True Compact MCP Router (`nce/mcp_http_gateway.py`):** Trimmed `tool_exposure_mode="compact"` initial `tools/list` to the 12 core working-memory tools (`discover_tools` + 11 core memory/graph/contradiction tools, `<= 16`), deferring admin/A2A/bridge/replay schemas to `discover_tools(query=...)` while preserving all tools in `full` mode.
+- **Admin Token Scopes & Documentation (`admin/plugins.html`, `README.md`):** Added an `admin` scope checkbox to the `/admin/plugins` token-minting modal and updated the `README.md` MinIO storage table to include `PDF/logs/binary`.
+- **CI/CD & Dependency Hygiene (`.github/workflows/dep-audit.yml`, `scripts/dep_report.py`, `.github/workflows/refresh-lock.yml`, `.github/dependabot.yml`):** Added empty-secret SMTP guard and real `pip-audit` exit-code propagation in `dep-audit.yml` + `scripts/dep_report.py`, added `refresh-lock.yml` fallback, fixed `dependabot.yml` `docker-compose` ecosystem configuration, and cleaned up secret-scanner test fixtures.
+- **Dependency Floor Consolidation (`pyproject.toml`, `requirements.txt`, `requirements.lock`):** Consolidated Dependabot floor bumps (`fastapi>=0.162.5`, `pydantic>=2.14.3`, `python-multipart>=0.0.32`, `RestrictedPython>=8.5`, `rq>=3.0.0`, `pypdf>=7.0.1`, `sentence-transformers>=6.3.0`, `python-docx>=1.2.0`, `tree-sitter-language-pack>=1.23.1`, `vsdx>=0.6.1`) and refreshed `requirements.lock`.
+
+---
+
 ## [3.4.3] - 2026-11-12
 
 ### Added

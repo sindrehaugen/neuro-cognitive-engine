@@ -203,15 +203,17 @@ async def send_email(subject: str, body: str) -> None:
         print("aiosmtplib not installed — skipping email notification.", file=sys.stderr)
         return
 
-    host = os.environ.get("NCE_SMTP_HOST")
-    port = int(os.environ.get("NCE_SMTP_PORT", "587"))
-    user = os.environ.get("NCE_SMTP_USER")
-    password = os.environ.get("NCE_SMTP_PASS")
-    recipients_raw = os.environ.get("NCE_ADMIN_EMAIL", "")
+    host = os.environ.get("NCE_SMTP_HOST", "").strip()
+    raw_port = os.environ.get("NCE_SMTP_PORT", "").strip()
+    user = os.environ.get("NCE_SMTP_USER", "").strip()
+    password = os.environ.get("NCE_SMTP_PASS", "").strip()
+    recipients_raw = os.environ.get("NCE_ADMIN_EMAIL", "").strip()
 
     if not all([host, user, password, recipients_raw]):
         print("SMTP config incomplete — skipping email notification.", file=sys.stderr)
         return
+
+    port = int(raw_port) if raw_port else 587
 
     recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
 

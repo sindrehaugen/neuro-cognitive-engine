@@ -187,8 +187,8 @@ class NCEEngine(OrchestratorBase):
         )
         self.redis_client = redis.from_url(
             cfg.REDIS_URL,
-            socket_connect_timeout=5,
-            socket_timeout=5,
+            socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,
+            socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,
             max_connections=cfg.REDIS_MAX_CONNECTIONS,
             health_check_interval=30,
         )
@@ -197,8 +197,8 @@ class NCEEngine(OrchestratorBase):
 
         self.redis_sync_client = redis_sync.from_url(
             cfg.REDIS_URL,
-            socket_connect_timeout=5,
-            socket_timeout=5,
+            socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,
+            socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,
             max_connections=cfg.REDIS_MAX_CONNECTIONS,
             health_check_interval=30,
         )

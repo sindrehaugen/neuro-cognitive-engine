@@ -4,7 +4,7 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.4.3-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-3.4.4-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -149,7 +149,7 @@ Duties are split across four engines so each does only what it is best at:
 | **PostgreSQL + pgvector** | Relational core & vector index | Semantic embeddings (HNSW), knowledge-graph triplets (`kg_nodes` / `kg_edges`), RLS policies, the WORM `event_log` |
 | **MongoDB** | Episodic payload archive | Heavy unstructured content — transcripts, code, document pages — referenced by ObjectID |
 | **Redis** | Transient & coordination | TTL context caches, rate limits, distributed locks, single-use HMAC nonces, RQ job queues |
-| **MinIO** | Object storage (S3 API) | Binary artifacts (image/audio/video) and the deterministic LLM response cache used by replay |
+| **MinIO** | Object storage (S3 API) | Binary artifacts (image/audio/video/PDF/logs/binary) and the deterministic LLM response cache used by replay |
 
 ---
 
@@ -398,5 +398,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-NCE — Neuro-Cognitive Engine · v3.4.3 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
+NCE — Neuro-Cognitive Engine · v3.4.4 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
 

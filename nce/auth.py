@@ -1210,6 +1210,8 @@ class NonceStore:
             self._pool = ConnectionPool.from_url(
                 self._redis_url,
                 max_connections=self._max_connections,
+                socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,
+                socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,
             )
             self._redis = Redis(connection_pool=self._pool)
         return self._redis
