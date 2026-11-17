@@ -141,10 +141,9 @@ updates:
           - "version-update:semver-major"
           - "version-update:semver-minor"
 
-  # Root: picks up docker-compose.yml's service images where the Dependabot version
-  # supports compose manifests under the docker ecosystem.  Unverified at time of
-  # writing -- confirm on the first scheduled run before relying on it.
-  - package-ecosystem: "docker"
+  # Root: picks up docker-compose.yml service images via Dependabot's
+  # docker-compose ecosystem.
+  - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -156,12 +155,3 @@ updates:
       - "docker"
     commit-message:
       prefix: "deps(docker)"
-    ignore:
-      # Patch-level base-image updates only. A python major/minor bump must move the
-      # base image, requirements.lock's compile Python and the CI matrix TOGETHER --
-      # scripts/check_python_platform_coupling.py enforces that, and #104/#105 showed
-      # Dependabot proposing 3.12->3.14 with nine green checks and no image ever built.
-      - dependency-name: "python"
-        update-types:
-          - "version-update:semver-major"
-          - "version-update:semver-minor"

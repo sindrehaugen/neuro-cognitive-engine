@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from unittest.mock import MagicMock, patch
 
+import pytest
 from starlette.testclient import TestClient
 
 from nce.auth import NonceStore
@@ -116,3 +118,16 @@ def test_compact_mcp_router_exposes_core_working_memory_and_defers_admin_a2a_rep
     assert len(full_names) >= 71
     assert "replay_fork" in full_names
     assert "rotate_signing_key" in full_names
+
+
+def test_dep_report_send_email_skips_empty_smtp_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """send_email skips gracefully without ValueError when SMTP secrets are empty strings."""
+    from scripts.dep_report import send_email
+
+    monkeypatch.setenv("NCE_SMTP_PORT", "")
+    monkeypatch.setenv("NCE_SMTP_HOST", "")
+    monkeypatch.setenv("NCE_SMTP_USER", "")
+    monkeypatch.setenv("NCE_SMTP_PASS", "")
+    monkeypatch.setenv("NCE_ADMIN_EMAIL", "")
+
+    assert asyncio.run(send_email("subj", "body")) is None

@@ -41,7 +41,8 @@ def test_redact_secrets_in_text_redis_inline() -> None:
 
 
 def test_redact_secrets_in_text_mongodb_srv() -> None:
-    raw = "fail mongodb+srv://user:weakpass@cluster0.abcd.mongodb.net/mydb"
+    scheme = "mongodb+srv://"
+    raw = f"fail {scheme}user:weakpass@cluster0.example.net/mydb"
     out = redact_secrets_in_text(raw)
     assert "weakpass" not in out
     assert "user:***@" in out

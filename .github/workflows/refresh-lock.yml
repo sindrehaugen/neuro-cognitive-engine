@@ -32,6 +32,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   refresh:
@@ -79,7 +80,7 @@ jobs:
           git checkout -b "$BRANCH"
           git add requirements.lock
           git commit -m "chore(deps): refresh requirements.lock (pip-compile --upgrade)"
-          git push -u origin "$BRANCH"
+          git push --force-with-lease -u origin "$BRANCH"
 
           # Body is generated, so it always reflects the real diff rather than a template.
           {
@@ -100,4 +101,5 @@ jobs:
             --head "$BRANCH" \
             --title "chore(deps): refresh requirements.lock (pip-compile --upgrade)" \
             --body-file /tmp/body.md \
-            --label dependencies
+            --label dependencies \
+            || { echo "::warning::createPullRequest denied; opening issue"; gh issue create --title "chore(deps): refresh requirements.lock ($BRANCH)" --body-file /tmp/body.md --label dependencies || true; }
