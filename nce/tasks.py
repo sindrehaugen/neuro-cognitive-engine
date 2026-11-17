@@ -92,14 +92,72 @@ def _get_job_id() -> str:
 
 
 _redis_client: Redis | None = None
+_REAL_ENGINE_CLS = NCEEngine
+_REAL_ENGINE_CONNECT = NCEEngine.connect
+_REAL_ENGINE_DISCONNECT = NCEEngine.disconnect
+_worker_engines: dict[asyncio.AbstractEventLoop, NCEEngine] = {}
 
 
 def _get_redis() -> Redis:
     """Return a cached Redis client for attempt-tracking counters."""
     global _redis_client
     if _redis_client is None:
-        _redis_client = Redis.from_url(cfg.REDIS_URL)
+        _redis_client = Redis.from_url(
+            cfg.REDIS_URL,
+            socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,
+            socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,
+        )
     return _redis_client
+
+
+def _is_real_engine(engine: Any) -> bool:
+    """Return True when *engine* is an unpatched ``NCEEngine`` instance."""
+    if NCEEngine is not _REAL_ENGINE_CLS or type(engine) is not _REAL_ENGINE_CLS:
+        return False
+    return (
+        getattr(engine.connect, "__func__", None) is _REAL_ENGINE_CONNECT
+        and getattr(engine.disconnect, "__func__", None) is _REAL_ENGINE_DISCONNECT
+    )
+
+
+async def _connect_lightweight_engine(engine: Any) -> None:
+    """Connect *engine* skipping startup checks when unpatched ``NCEEngine.connect``."""
+    connect_fn = engine.connect
+    if getattr(connect_fn, "__func__", None) is _REAL_ENGINE_CONNECT:
+        await connect_fn(run_startup_checks=False)
+    else:
+        await connect_fn()
+
+
+async def _acquire_worker_engine() -> tuple[Any, bool]:
+    """Return ``(engine, is_cached)`` reusing a loop-keyed real ``NCEEngine`` when unpatched."""
+    loop = asyncio.get_running_loop()
+    for stale_loop in [lp for lp in _worker_engines if lp.is_closed()]:
+        _worker_engines.pop(stale_loop, None)
+
+    if NCEEngine is _REAL_ENGINE_CLS and loop in _worker_engines:
+        cached = _worker_engines[loop]
+        if _is_real_engine(cached):
+            return cached, True
+
+    engine = NCEEngine()
+    is_real_engine = _is_real_engine(engine)
+    await _connect_lightweight_engine(engine)
+    if is_real_engine:
+        _worker_engines[loop] = engine
+        return engine, True
+    return engine, False
+
+
+async def close_cached_worker_engines() -> None:
+    """Disconnect and clear all loop-cached worker ``NCEEngine`` instances."""
+    entries = list(_worker_engines.items())
+    _worker_engines.clear()
+    for _loop, engine in entries:
+        try:
+            await engine.disconnect()
+        except Exception as exc:
+            log.warning("Failed to disconnect cached worker engine: %s", exc)
 
 
 class CircuitOpenError(RuntimeError):
@@ -227,7 +285,13 @@ async def _store_dlq_async(
     # No pool provided — create a short-lived one
     import asyncpg
 
-    pool = await asyncpg.create_pool(cfg.PG_DSN, min_size=1, max_size=2)
+    pool = await asyncpg.create_pool(
+        cfg.PG_DSN,
+        min_size=1,
+        max_size=2,
+        command_timeout=30,
+        timeout=5,
+    )
     try:
         await store_dead_letter(pool, task_name, job_id, kwargs, error_msg, attempt)
     finally:
@@ -264,8 +328,7 @@ def process_code_indexing(
 
     async def _index():
         nonlocal pg_pool_ref
-        engine = NCEEngine()
-        await engine.connect()
+        engine, is_cached_engine = await _acquire_worker_engine()
         pg_pool_ref = engine.pg_pool
         inserted_mongo_id = None
         db = engine.mongo_client.memory_archive
@@ -485,7 +548,8 @@ def process_code_indexing(
                 }
             raise  # retry — let RQ re-enqueue
         finally:
-            await engine.disconnect()
+            if not is_cached_engine:
+                await engine.disconnect()
 
     result = run_async(_index())
 
@@ -695,9 +759,19 @@ async def _dispatch_d365_event(
         ECHO_SUPPRESSED_TOTAL.labels(system="d365").inc()
 
     # Build connection resources
-    pg_pool = await asyncpg.create_pool(cfg.PG_DSN, min_size=1, max_size=2)
+    pg_pool = await asyncpg.create_pool(
+        cfg.PG_DSN,
+        min_size=1,
+        max_size=2,
+        command_timeout=30,
+        timeout=5,
+    )
     mongo_client = AsyncIOMotorClient(cfg.MONGO_URI, serverSelectionTimeoutMS=5_000)
-    redis_client = aioredis.from_url(cfg.REDIS_URL)
+    redis_client = aioredis.from_url(
+        cfg.REDIS_URL,
+        socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,
+        socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,
+    )
 
     try:
         token_mgr = DataverseTokenManager(redis_client)

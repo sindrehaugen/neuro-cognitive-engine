@@ -16,8 +16,10 @@ import httpx
 from redis import Redis
 
 from nce import bridge_repo
+from nce.auth import mcp_http_session_var
 from nce.bridge_providers import BRIDGE_PROVIDERS
 from nce.config import cfg
+from nce.db_utils import scoped_pg_session
 from nce.extractors.dispatch import get_priority_queue
 from nce.http_resilience import oauth_token_post_form, post_json_with_retry
 from nce.mcp_errors import mcp_handler
@@ -400,14 +402,33 @@ async def complete_bridge_auth(engine: NCEEngine, arguments: dict[str, Any]) -> 
     )
 
 
+def _require_bridge_namespace_id(arguments: dict[str, Any]) -> uuid.UUID:
+    """Resolve and validate tenant namespace_id from tool arguments or HTTP session."""
+    raw = arguments.get("namespace_id")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        sess = mcp_http_session_var.get()
+        if sess is not None and getattr(sess, "namespace_id", None):
+            raw = sess.namespace_id
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raise ValueError("namespace_id is required")
+    try:
+        return raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw).strip())
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError(f"Invalid namespace_id UUID: {raw!r}") from exc
+
+
 @mcp_handler
 async def list_bridges(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     user_id = arguments["user_id"]
+    namespace_id = _require_bridge_namespace_id(arguments)
     include_disconnected = bool(arguments.get("include_disconnected", False))
 
-    async with engine.pg_pool.acquire(timeout=10.0) as conn:
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
         rows = await bridge_repo.list_for_user(
-            conn, user_id, include_disconnected=include_disconnected
+            conn,
+            user_id,
+            namespace_id=namespace_id,
+            include_disconnected=include_disconnected,
         )
     return json.dumps({"bridges": [bridge_repo.subscription_to_public_dict(r) for r in rows]})
 
@@ -415,9 +436,10 @@ async def list_bridges(engine: NCEEngine, arguments: dict[str, Any]) -> str:
 @mcp_handler
 async def disconnect_bridge(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     user_id = arguments["user_id"]
+    namespace_id = _require_bridge_namespace_id(arguments)
     bridge_id = uuid.UUID(arguments["bridge_id"])
-    async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        row = await bridge_repo.get_by_id(conn, bridge_id)
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        row = await bridge_repo.get_by_id(conn, bridge_id, namespace_id=namespace_id)
         if not row or str(row["user_id"]) != user_id:
             raise ValueError("bridge not found for user")
 
@@ -432,7 +454,7 @@ async def disconnect_bridge(engine: NCEEngine, arguments: dict[str, Any]) -> str
 
     token_payload: dict[str, Any] | None = None
     if not token:
-        async with engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
             token_payload = await bridge_repo.get_token(conn, bridge_id)
         if token_payload:
             token = token_payload.get("access_token", "")
@@ -460,15 +482,16 @@ async def disconnect_bridge(engine: NCEEngine, arguments: dict[str, Any]) -> str
             if r.status_code not in (200, 204):
                 log.warning("Drive channel stop: %s %s", r.status_code, r.text[:200])
 
-    async with engine.pg_pool.acquire(timeout=10.0) as conn:
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
         await conn.execute(
             """
             UPDATE bridge_subscriptions
             SET status = 'DISCONNECTED',
                 updated_at = NOW()
-            WHERE id = $1
+            WHERE id = $1 AND namespace_id = $2::uuid
             """,
             bridge_id,
+            namespace_id,
         )
         await bridge_repo.save_token(conn, bridge_id, {})
 
@@ -478,14 +501,17 @@ async def disconnect_bridge(engine: NCEEngine, arguments: dict[str, Any]) -> str
 @mcp_handler
 async def force_resync_bridge(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     user_id = arguments["user_id"]
+    namespace_id = _require_bridge_namespace_id(arguments)
     bridge_id = uuid.UUID(arguments["bridge_id"])
-    async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        row = await bridge_repo.get_by_id(conn, bridge_id)
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        row = await bridge_repo.get_by_id(conn, bridge_id, namespace_id=namespace_id)
         if not row or str(row["user_id"]) != user_id:
             raise ValueError("bridge not found for user")
         await conn.execute(
-            "UPDATE bridge_subscriptions SET cursor = NULL, updated_at = NOW() WHERE id = $1",
+            "UPDATE bridge_subscriptions SET cursor = NULL, updated_at = NOW() "
+            "WHERE id = $1 AND namespace_id = $2::uuid",
             bridge_id,
+            namespace_id,
         )
 
     prov = row["provider"]
@@ -496,7 +522,14 @@ async def force_resync_bridge(engine: NCEEngine, arguments: dict[str, Any]) -> s
         ck = f"bridge:cursor:sharepoint:{site}:{drive}"
         rcli.delete(ck)
 
-    q = get_priority_queue(0, Redis.from_url(cfg.REDIS_URL))
+    q = get_priority_queue(
+        0,
+        Redis.from_url(
+            cfg.REDIS_URL,
+            socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,
+            socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,
+        ),
+    )
     job_id: str | None = None
     if prov == "sharepoint":
         if "|" not in rid or rid == "pending":
@@ -551,15 +584,20 @@ async def force_resync_bridge(engine: NCEEngine, arguments: dict[str, Any]) -> s
 
 
 def bridge_redis() -> Redis:
-    return Redis.from_url(cfg.REDIS_URL)
+    return Redis.from_url(
+        cfg.REDIS_URL,
+        socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,
+        socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,
+    )
 
 
 @mcp_handler
 async def bridge_status(engine: NCEEngine, arguments: dict[str, Any]) -> str:
     user_id = arguments["user_id"]
+    namespace_id = _require_bridge_namespace_id(arguments)
     bridge_id = uuid.UUID(arguments["bridge_id"])
-    async with engine.pg_pool.acquire(timeout=10.0) as conn:
-        row = await bridge_repo.get_by_id(conn, bridge_id)
+    async with scoped_pg_session(engine.pg_pool, namespace_id) as conn:
+        row = await bridge_repo.get_by_id(conn, bridge_id, namespace_id=namespace_id)
         if not row or str(row["user_id"]) != user_id:
             raise ValueError("bridge not found for user")
     out = bridge_repo.subscription_to_public_dict(row)

@@ -335,40 +335,12 @@ class CognitiveOrchestrator(OrchestratorBase):
 
                             cascade_set = {loser_id}
 
-                            # 1. Topology/infrastructure cascade
+                            # 1. Topology/infrastructure + transitive derived_from memory cascade
                             targets_to_evaluate = [loser_id] + sorted(discovered_topology_nodes)
                             topo_cascade = await evaluate_atms_intervention(
                                 conn, ns_uuid, targets_to_evaluate
                             )
                             cascade_set.update(topo_cascade)
-
-                            # 2. Memory dependents recursively via derived_from
-                            max_cascade = 100
-                            todo = [loser_id]
-                            visited = {loser_id}
-
-                            while todo and len(visited) < max_cascade:
-                                current = todo.pop()
-                                dep_rows = await conn.fetch(
-                                    """
-                                    SELECT id FROM memories
-                                    WHERE namespace_id = $1::uuid
-                                      AND (derived_from @> jsonb_build_array($2::text)
-                                           OR derived_from @> jsonb_build_array($2::uuid))
-                                      AND valid_to IS NULL
-                                    """,
-                                    ns_uuid,
-                                    current,
-                                )
-                                for r in dep_rows:
-                                    dep_id = str(r["id"])
-                                    if dep_id not in visited:
-                                        visited.add(dep_id)
-                                        todo.append(dep_id)
-                                        if len(visited) >= max_cascade:
-                                            break
-
-                            cascade_set.update(visited)
 
                             # 3. Persist soft-deletions
                             await persist_atms_invalidation(conn, ns_uuid, cascade_set)

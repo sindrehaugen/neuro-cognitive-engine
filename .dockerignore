@@ -1,0 +1,15 @@
+.git
+.venv
+.worktrees
+.env*
+deploy/secrets
+*.pem
+*.key
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+tests/
+build/

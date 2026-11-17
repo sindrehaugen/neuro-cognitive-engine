@@ -494,6 +494,13 @@ async def test_outbox_relay_webhook_delivery_gate(monkeypatch):
 
     mock_client = httpx.Client(transport=httpx.MockTransport(mock_transport_handler))
     monkeypatch.setattr("httpx.Client", lambda *args, **kwargs: mock_client)
+    monkeypatch.setattr(
+        "socket.getaddrinfo",
+        lambda host, port, *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 0))],
+    )
+    from nce._http_utils import _resolve_safe_ip
+
+    _resolve_safe_ip.cache_clear()
 
     # Simulated DB state
     processed_events: set[UUID] = set()
@@ -563,7 +570,8 @@ async def test_outbox_relay_webhook_delivery_gate(monkeypatch):
     # Verify receiver received exactly 1 request with correct headers
     assert len(received_requests) == 1
     req1 = received_requests[0]
-    assert req1.url == target_url
+    assert str(req1.url) == "https://93.184.216.34/api/events"
+    assert req1.headers.get("host") == "receiver.example.com"
     assert req1.headers.get("x-nce-timestamp") is not None
     assert req1.headers.get("x-nce-nonce") is not None
 
@@ -607,6 +615,13 @@ async def test_outbox_relay_multi_tenant_isolation(monkeypatch):
 
     mock_client = httpx.Client(transport=httpx.MockTransport(mock_transport_handler))
     monkeypatch.setattr("httpx.Client", lambda *args, **kwargs: mock_client)
+    monkeypatch.setattr(
+        "socket.getaddrinfo",
+        lambda host, port, *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 0))],
+    )
+    from nce._http_utils import _resolve_safe_ip
+
+    _resolve_safe_ip.cache_clear()
 
     tenant_a_webhook = {
         "id": uuid4(),

@@ -582,6 +582,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "user_id": {"type": "string"},
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID"},
                 "include_disconnected": {
                     "type": "boolean",
                     "default": False,
@@ -598,6 +599,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "user_id": {"type": "string"},
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID"},
                 "bridge_id": {"type": "string"},
             },
             "required": ["user_id", "bridge_id"],
@@ -610,6 +612,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "user_id": {"type": "string"},
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID"},
                 "bridge_id": {"type": "string"},
             },
             "required": ["user_id", "bridge_id"],
@@ -622,6 +625,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "user_id": {"type": "string"},
+                "namespace_id": {"type": "string", "description": "Tenant namespace UUID"},
                 "bridge_id": {"type": "string"},
             },
             "required": ["user_id", "bridge_id"],

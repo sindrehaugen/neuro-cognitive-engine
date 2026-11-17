@@ -188,6 +188,9 @@ class MTLSAuthMiddleware:
         The downstream ASGI application.
     protected_prefix : str
         URL paths starting with this prefix are protected (default ``"/"``).
+    protected_prefixes : tuple[str, ...] | None
+        Optional tuple of URL path prefixes that require mTLS. When provided,
+        overrides ``protected_prefix``; otherwise ``(protected_prefix,)`` is used.
     enabled : bool
         Whether mTLS enforcement is active.  When ``False`` the middleware
         is a no-op pass-through.
@@ -211,6 +214,7 @@ class MTLSAuthMiddleware:
         app,
         *,
         protected_prefix: str = "/",
+        protected_prefixes: tuple[str, ...] | None = None,
         enabled: bool = False,
         strict: bool = True,
         trusted_proxy_hops: int = 0,
@@ -220,6 +224,9 @@ class MTLSAuthMiddleware:
     ) -> None:
         self.app = app
         self.protected_prefix = protected_prefix
+        self.protected_prefixes: tuple[str, ...] = (
+            tuple(protected_prefixes) if protected_prefixes is not None else (protected_prefix,)
+        )
         self.enabled = enabled
         self.strict = strict
         self.trusted_proxy_hops = trusted_proxy_hops
@@ -234,9 +241,9 @@ class MTLSAuthMiddleware:
             )
         if not self.enabled:
             log.warning(
-                "MTLSAuthMiddleware: mTLS is DISABLED for prefix %s — "
+                "MTLSAuthMiddleware: mTLS is DISABLED for prefixes %s — "
                 "all requests will pass through without certificate validation",
-                self.protected_prefix,
+                self.protected_prefixes,
             )
 
     async def __call__(self, scope, receive, send) -> None:
@@ -245,8 +252,10 @@ class MTLSAuthMiddleware:
             return
 
         path = scope.get("path", "")
-        prefix = self.protected_prefix
-        if not (path == prefix or path.startswith(prefix.rstrip("/") + "/")):
+        if not any(
+            path == prefix or path.startswith(prefix.rstrip("/") + "/")
+            for prefix in self.protected_prefixes
+        ):
             await self.app(scope, receive, send)
             return
 

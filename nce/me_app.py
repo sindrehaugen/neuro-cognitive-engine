@@ -740,37 +740,10 @@ async def post_me_govern(request: Request) -> JSONResponse:
                     result_summary={"status": "success", "action": "retract"},
                 )
 
-                # 3. Topology / causal graph cascade
+                # 3. Topology / causal graph + transitive derived_from memory cascade
                 cascade_set = {str(memory_id)}
                 topo_cascade = await evaluate_atms_intervention(conn, ns_id, str(memory_id))
                 cascade_set.update(topo_cascade)
-
-                # 4. Transitive derived_from memory dependents cascade
-                max_cascade = 100
-                todo = [str(memory_id)]
-                visited = {str(memory_id)}
-                while todo and len(visited) < max_cascade:
-                    current = todo.pop()
-                    dep_rows = await conn.fetch(
-                        """
-                        SELECT id FROM memories
-                        WHERE namespace_id = $1::uuid
-                          AND (derived_from @> jsonb_build_array($2::text)
-                               OR derived_from @> jsonb_build_array($2::uuid))
-                          AND valid_to IS NULL
-                        """,
-                        ns_id,
-                        current,
-                    )
-                    for r in dep_rows:
-                        dep_id = str(r["id"])
-                        if dep_id not in visited:
-                            visited.add(dep_id)
-                            todo.append(dep_id)
-                            if len(visited) >= max_cascade:
-                                break
-
-                cascade_set.update(visited)
 
                 # 5. Persist soft-deletions of all cascades in the database
                 await persist_atms_invalidation(conn, ns_id, cascade_set)

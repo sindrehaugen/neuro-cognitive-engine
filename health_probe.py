@@ -31,9 +31,9 @@ async def probe():
 
     # 2. Redis Probe
     try:
-        from redis.asyncio import from_url as async_redis_from_url
+        from nce._client_factory import make_async_redis
 
-        r = async_redis_from_url(cfg.REDIS_URL, socket_connect_timeout=2)
+        r = make_async_redis(cfg.REDIS_URL, socket_connect_timeout=2)
         await r.ping()
         await r.aclose()
     except Exception as e:
@@ -51,12 +51,20 @@ async def probe():
         return False
 
     # 4. MongoDB Probe
+    client = None
     try:
-        client = AsyncIOMotorClient(cfg.MONGO_URI, serverSelectionTimeoutMS=2000)
+        from nce._client_factory import motor_timeout_kwargs
+
+        client = AsyncIOMotorClient(
+            cfg.MONGO_URI, **motor_timeout_kwargs(serverSelectionTimeoutMS=2000)
+        )
         await client.admin.command("ping")
     except Exception as e:
         print(f"MongoDB Connection Failed: {e}")
         return False
+    finally:
+        if client is not None:
+            client.close()
 
     # 5. Embedding Engine Check (Soft Check)
     # We check if the model is reachable or loaded if we are the worker/server

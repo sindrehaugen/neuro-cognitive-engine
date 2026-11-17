@@ -67,9 +67,8 @@ def _resolve_safe_ip(hostname: str, allow_loopback: bool = False) -> str:
 
     try:
         infos = socket.getaddrinfo(hostname, None)
-    except socket.gaierror:
-        # Unresolvable hosts will fail naturally at connection time.
-        return hostname
+    except socket.gaierror as exc:
+        _block_request(hostname, f"DNS resolution failed for {hostname!r}: {exc}")
 
     safe_ip: str | None = None
     for _family, _type, _proto, _canonname, sockaddr in infos:
@@ -98,7 +97,7 @@ def _resolve_safe_ip(hostname: str, allow_loopback: bool = False) -> str:
             safe_ip = ip_str
 
     if safe_ip is None:
-        return hostname
+        _block_request(hostname, f"No safe IP resolved for {hostname!r}")
     return safe_ip
 
 

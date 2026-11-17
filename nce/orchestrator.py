@@ -25,8 +25,7 @@ if TYPE_CHECKING:
     from nce.orchestrators.temporal import TemporalOrchestrator
 
 import asyncpg
-import redis.asyncio as redis
-import urllib3
+import redis.asyncio as redis  # noqa: F401 — retained for test patch target nce.orchestrator.redis.from_url
 from minio import Minio
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, ConfigDict, Field
@@ -171,13 +170,18 @@ class NCEEngine(OrchestratorBase):
 
         self.modules: EngineRegistry = populate_engine_modules(self)
 
-    async def connect(self):
+    async def connect(self, run_startup_checks: bool = True):
+        from nce._client_factory import (
+            make_async_redis,
+            make_minio,
+            make_sync_redis,
+            motor_timeout_kwargs,
+        )
+
         cfg.validate()
         self.mongo_client = AsyncIOMotorClient(
             cfg.MONGO_URI,
-            serverSelectionTimeoutMS=5_000,
-            connectTimeoutMS=5_000,
-            socketTimeoutMS=5_000,
+            **motor_timeout_kwargs(),
         )
         self.pg_pool = await asyncpg.create_pool(
             cfg.PG_DSN,
@@ -185,22 +189,13 @@ class NCEEngine(OrchestratorBase):
             max_size=cfg.PG_MAX_POOL,
             command_timeout=30,
         )
-        self.redis_client = redis.from_url(
+        self.redis_client = make_async_redis(
             cfg.REDIS_URL,
-            socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,
-            socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,
             max_connections=cfg.REDIS_MAX_CONNECTIONS,
-            health_check_interval=30,
         )
-        # RQ needs a synchronous connection
-        import redis as redis_sync
-
-        self.redis_sync_client = redis_sync.from_url(
+        self.redis_sync_client = make_sync_redis(
             cfg.REDIS_URL,
-            socket_connect_timeout=cfg.REDIS_CONNECT_TIMEOUT_S,
-            socket_timeout=cfg.REDIS_SOCKET_TIMEOUT_S,
             max_connections=cfg.REDIS_MAX_CONNECTIONS,
-            health_check_interval=30,
         )
 
         # Optional read-replica pool
@@ -212,44 +207,39 @@ class NCEEngine(OrchestratorBase):
                 command_timeout=30,
             )
 
-        await self._init_pg_schema()
-        await self._apply_pg_migrations()
-        await self._apply_plugin_pg_migrations()
-        # Verification is cheap and read-only; seeding is expensive and mutating.
-        # Validate first so a drifted deployment fails in ~1 s instead of paying
-        # the full seed cost and *then* refusing to start.  Seeding depends only
-        # on schema + migrations having run, not on verification order.
-        # Before the enforcement checks, not after: version skew is what makes
-        # those checks fail, and their error text reads like a code bug. Naming
-        # the skew first turns 13 lines of "add to EXPECTED_TENANT_RLS_TABLES"
-        # into "this image is older than this database".
-        await self._verify_schema_version()
-        await self._ensure_initial_signing_key()
-        await self._verify_master_key_matches_data()
-        await self._verify_worm_enforcement()
-        await self._verify_rls_enforcement()
-        await self._seed_node_ownership_all()
-        await self._check_global_legacy_warning()
-        await self._init_mongo_indexes()
+        if run_startup_checks:
+            await self._init_pg_schema()
+            await self._apply_pg_migrations()
+            await self._apply_plugin_pg_migrations()
+            # Verification is cheap and read-only; seeding is expensive and mutating.
+            # Validate first so a drifted deployment fails in ~1 s instead of paying
+            # the full seed cost and *then* refusing to start.  Seeding depends only
+            # on schema + migrations having run, not on verification order.
+            # Before the enforcement checks, not after: version skew is what makes
+            # those checks fail, and their error text reads like a code bug. Naming
+            # the skew first turns 13 lines of "add to EXPECTED_TENANT_RLS_TABLES"
+            # into "this image is older than this database".
+            await self._verify_schema_version()
+            await self._ensure_initial_signing_key()
+            await self._verify_master_key_matches_data()
+            await self._verify_worm_enforcement()
+            await self._verify_rls_enforcement()
+            await self._seed_node_ownership_all()
+            await self._check_global_legacy_warning()
+            await self._init_mongo_indexes()
 
         # Initialize MinIO
-        self.minio_client = Minio(
+        self.minio_client = make_minio(
             cfg.MINIO_ENDPOINT,
             access_key=cfg.MINIO_ACCESS_KEY,
             secret_key=cfg.MINIO_SECRET_KEY,
             secure=cfg.MINIO_SECURE,
-            http_client=urllib3.PoolManager(
-                timeout=urllib3.Timeout(connect=2.0, read=5.0),
-                retries=urllib3.Retry(
-                    total=2,
-                    backoff_factor=0.2,
-                    status_forcelist=(502, 503, 504),
-                ),
-            ),
+            minio_cls=Minio,
         )
 
         # Ensure audio/video buckets exist asynchronously
-        await asyncio.to_thread(self._init_minio_buckets)
+        if run_startup_checks:
+            await asyncio.to_thread(self._init_minio_buckets)
 
         from nce.graph_query import GraphRAGTraverser
 
@@ -306,12 +296,27 @@ class NCEEngine(OrchestratorBase):
         log.info("NCEEngine connected (Now Quad-Stack with MinIO).")
 
     async def disconnect(self):
+        from nce.background_task_manager import _registry
+
+        await _registry.drain(timeout=5.0)
+
+        if self.memory is not None:
+            bg_tasks = list(getattr(self.memory, "_bg_cleanup_tasks", ()))
+            for task in bg_tasks:
+                if not task.done():
+                    task.cancel()
+            if bg_tasks:
+                await asyncio.gather(*bg_tasks, return_exceptions=True)
+
         if self.mongo_client:
             self.mongo_client.close()
-        if self.pg_pool:
-            await self.pg_pool.close()
-        if self.pg_read_pool:
-            await self.pg_read_pool.close()
+        for pool in (self.pg_pool, self.pg_read_pool):
+            if pool:
+                try:
+                    await asyncio.wait_for(pool.close(), timeout=10.0)
+                except asyncio.TimeoutError:
+                    log.warning("PG pool.close() timed out after 10s; terminating pool.")
+                    pool.terminate()
         if self.redis_client:
             await self.redis_client.aclose()
         if self.redis_sync_client:

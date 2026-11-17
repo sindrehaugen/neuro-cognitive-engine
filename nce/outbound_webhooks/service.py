@@ -21,6 +21,8 @@ from uuid import UUID
 import asyncpg  # type: ignore[import-untyped]
 import httpx
 
+from nce._http_utils import UnsafeURLError, _normalize_hostname, _resolve_safe_ip
+from nce.config import live_ssrf_allowlist_hosts
 from nce.net_safety import validate_outbound_url
 from nce.outbound_webhooks.models import OutboundWebhook
 
@@ -145,7 +147,7 @@ def send_webhook_http_sync(
     url: str,
     secret: str,
     payload_dict: dict[str, Any],
-    timeout: float = 5.0,
+    timeout: float | httpx.Timeout | None = None,
 ) -> bool:
     """Synchronously deliver a webhook payload via HTTP POST.
 
@@ -158,11 +160,39 @@ def send_webhook_http_sync(
         log.warning("[outbound_webhook] SSRF blocked delivery to %s: %s", url, exc)
         return False
 
+    parsed = httpx.URL(url)
+    original_hostname = parsed.host
+    target_url = url
+    extra_headers: dict[str, str] = {}
+    if original_hostname:
+        norm_host = _normalize_hostname(original_hostname)
+        if norm_host not in live_ssrf_allowlist_hosts():
+            try:
+                resolved_ip = _resolve_safe_ip(norm_host)
+            except UnsafeURLError as exc:
+                log.warning("[outbound_webhook] SSRF blocked delivery to %s: %s", url, exc)
+                return False
+            target_url = str(parsed.copy_with(host=resolved_ip))
+            extra_headers["Host"] = original_hostname
+
     body_bytes = json.dumps(payload_dict, default=str).encode("utf-8")
     headers = sign_outbound_webhook(secret, "POST", url, body_bytes)
+    headers.update(extra_headers)
+    if timeout is None:
+        effective_timeout: httpx.Timeout = httpx.Timeout(10.0, connect=5.0, read=10.0)
+    elif isinstance(timeout, httpx.Timeout):
+        effective_timeout = timeout
+    else:
+        t_val = float(timeout)
+        effective_timeout = httpx.Timeout(t_val, connect=min(5.0, t_val), read=t_val)
+    post_kwargs: dict[str, Any] = {"headers": headers, "content": body_bytes}
+    if parsed.scheme == "https" and original_hostname and "Host" in extra_headers:
+        post_kwargs["extensions"] = {"sni_hostname": original_hostname}
     try:
-        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-            resp = client.post(url, headers=headers, content=body_bytes)
+        with httpx.Client(
+            timeout=effective_timeout, follow_redirects=False, trust_env=False
+        ) as client:
+            resp = client.post(target_url, **post_kwargs)
             if resp.status_code >= 400:
                 log.warning(
                     "[outbound_webhook] delivery to %s returned HTTP %d",

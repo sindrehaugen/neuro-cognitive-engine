@@ -37,8 +37,8 @@ COPY requirements.lock .
 
 RUN pip install --no-cache-dir -r requirements.lock --no-index --find-links=/wheels \
     && rm -rf /wheels \
-    # Download spaCy model required for Graphify (Phase 2) with pinned version
-    && python -m spacy download en_core_web_sm \
+    # Download spaCy model required for Graphify (Phase 2) with exact pinned 3.8.0 wheel matching spacy==3.8.18
+    && pip install --no-cache-dir --no-deps https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl \
     # Create non-root user
     && useradd --system --uid 10001 --create-home nce
 
@@ -50,15 +50,14 @@ COPY admin ./admin
 COPY deploy/multiuser/entrypoint.sh ./entrypoint.sh
 COPY deploy/plugins /tmp/nce-plugin-wheels
 
-# Install any optional pre-built plugin wheels staged in deploy/plugins/,
-# then ensure the app directory is owned by our non-root user.
+# Install any optional pre-built plugin wheels staged in deploy/plugins/;
+# keep /app code root:root owned (read-only to the non-root runtime user).
 RUN set -e; \
     if ls /tmp/nce-plugin-wheels/*.whl >/dev/null 2>&1; then \
         pip install --no-cache-dir --no-index --find-links=/tmp/nce-plugin-wheels /tmp/nce-plugin-wheels/*.whl; \
     fi \
     && rm -rf /tmp/nce-plugin-wheels \
-    && chmod 0755 /app/entrypoint.sh \
-    && chown -R nce:nce /app
+    && chmod 0755 /app/entrypoint.sh
 
 USER nce
 

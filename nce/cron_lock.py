@@ -143,9 +143,9 @@ async def acquire_cron_lock(
     client = redis_client
     try:
         if owned_client:
-            from redis.asyncio import Redis as AsyncRedis
+            from nce._client_factory import make_async_redis
 
-            client = AsyncRedis.from_url(cfg.REDIS_URL)
+            client = make_async_redis(cfg.REDIS_URL)
 
         token = await _acquire_lock(client, key, ttl_seconds)
         if token is None:
@@ -189,9 +189,9 @@ async def release_cron_lock(
     client = redis_client
     try:
         if owned_client:
-            from redis.asyncio import Redis as AsyncRedis
+            from nce._client_factory import make_async_redis
 
-            client = AsyncRedis.from_url(cfg.REDIS_URL)
+            client = make_async_redis(cfg.REDIS_URL)
 
         return await _release_lock(client, lock.key, lock.token)
 

@@ -560,12 +560,17 @@ class MemoryOrchestrator(OrchestratorBase):
                             "DELETE FROM pii_redactions WHERE memory_id = $1", memory_id
                         )
                         try:
-                            await conn.execute(
-                                "DELETE FROM outbox_events WHERE aggregate_id = $1 AND status = 'pending'",
-                                str(memory_id),
+                            async with conn.transaction():
+                                await conn.execute(
+                                    "DELETE FROM outbox_events WHERE aggregate_id = $1 AND status = 'pending'",
+                                    str(memory_id),
+                                )
+                        except Exception as outbox_exc:
+                            log.warning(
+                                "[ROLLBACK] Outbox cleanup skipped/failed for memory_id=%s: %s",
+                                memory_id,
+                                outbox_exc,
                             )
-                        except Exception:
-                            pass
                         await conn.execute(
                             "DELETE FROM kg_node_embeddings "
                             "WHERE node_id IN (SELECT id FROM kg_nodes WHERE payload_ref = $1)",
@@ -700,6 +705,12 @@ class MemoryOrchestrator(OrchestratorBase):
                     target_oid,
                     retry_exc,
                 )
+        log.error(
+            "[ROLLBACK] Deferred Mongo cleanup exhausted all retries for doc %s (saga_id=%s).",
+            target_oid,
+            saga_id,
+        )
+        SagaMetrics.record_failure("mongo_deferred_exhausted")
 
     # ------------------------------------------------------------------
     # store_memory (Saga Pattern)
@@ -1195,17 +1206,14 @@ class MemoryOrchestrator(OrchestratorBase):
                 def _resolve_and_validate_path(staging_dir: str | None, file_path: str) -> str:
                     import pathlib
 
-                    if staging_dir:
-                        base = pathlib.Path(staging_dir).resolve()
-                        cand = (base / pathlib.Path(file_path).name).resolve()
-                        if not (cand.is_file() and base in cand.parents):
-                            raise FileNotFoundError(
-                                f"Artifact not found or outside staging dir: {file_path!r}"
-                            )
-                    else:
-                        cand = pathlib.Path(file_path).resolve()
-                        if not cand.is_file():
-                            raise FileNotFoundError(f"Artifact file not found: {file_path!r}")
+                    if not staging_dir:
+                        raise ValueError(
+                            "NCE_ARTIFACT_STAGING_DIR must be configured for store_artifact"
+                        )
+                    base = pathlib.Path(staging_dir).resolve()
+                    cand = (base / pathlib.Path(file_path).name).resolve()
+                    if not (cand.is_file() and base in cand.parents):
+                        raise FileNotFoundError("Artifact not found or outside staging dir")
                     return str(cand)
 
                 safe_path = await asyncio.to_thread(
@@ -1719,6 +1727,13 @@ class MemoryOrchestrator(OrchestratorBase):
                         metadata = {}
                 metadata = metadata or {}
 
+                # 0b. Evaluate ATMS cascade BEFORE valid_to is set on the target
+                #     memory so fetch_transitive_derived_memories includes mem_uuid
+                #     as an active root in its recursive CTE.
+                cascade_set: set[str] = {str(mem_uuid)}
+                topo_cascade = await evaluate_atms_intervention(conn, ns_uuid, str(mem_uuid))
+                cascade_set.update(topo_cascade)
+
                 # 1+2. Destroy the DEK and the plaintext derivatives on the
                 # memories row.  Zeroing wrapped_dek crypto-shreds the Mongo
                 # ciphertext; content_fts/embedding are reversible derivatives.
@@ -1752,48 +1767,25 @@ class MemoryOrchestrator(OrchestratorBase):
                 if payload_ref:
                     await conn.execute(
                         "DELETE FROM kg_node_embeddings "
-                        "WHERE node_id IN (SELECT id FROM kg_nodes WHERE payload_ref = $1)",
+                        "WHERE node_id IN (SELECT id FROM kg_nodes WHERE payload_ref = $1 AND namespace_id = $2::uuid)",
                         payload_ref,
+                        ns_uuid,
                     )
                     res_edges = await conn.execute(
-                        "DELETE FROM kg_edges WHERE payload_ref = $1", payload_ref
+                        "DELETE FROM kg_edges WHERE payload_ref = $1 AND namespace_id = $2::uuid",
+                        payload_ref,
+                        ns_uuid,
                     )
                     edges_deleted = int(res_edges.split()[-1]) if res_edges else 0
                     res_nodes = await conn.execute(
-                        "DELETE FROM kg_nodes WHERE payload_ref = $1", payload_ref
+                        "DELETE FROM kg_nodes WHERE payload_ref = $1 AND namespace_id = $2::uuid",
+                        payload_ref,
+                        ns_uuid,
                     )
                     nodes_deleted = int(res_nodes.split()[-1]) if res_nodes else 0
 
-                # 3b. Cascade soft-deletion to derived/consolidated dependents
-                #     and topology edges via the Batch-23 ATMS mechanism.
-                cascade_set: set[str] = {str(mem_uuid)}
-                topo_cascade = await evaluate_atms_intervention(conn, ns_uuid, str(mem_uuid))
-                cascade_set.update(topo_cascade)
-
-                max_cascade = 100
-                todo = [str(mem_uuid)]
-                visited = {str(mem_uuid)}
-                while todo and len(visited) < max_cascade:
-                    current = todo.pop()
-                    dep_rows = await conn.fetch(
-                        """
-                        SELECT id FROM memories
-                        WHERE namespace_id = $1::uuid
-                          AND (derived_from @> jsonb_build_array($2::text)
-                               OR derived_from @> jsonb_build_array($2::uuid))
-                          AND valid_to IS NULL
-                        """,
-                        ns_uuid,
-                        current,
-                    )
-                    for dep in dep_rows:
-                        dep_id = str(dep["id"])
-                        if dep_id not in visited:
-                            visited.add(dep_id)
-                            todo.append(dep_id)
-                            if len(visited) >= max_cascade:
-                                break
-                cascade_set.update(visited)
+                # 3b. Persist ATMS invalidation cascade (derived/consolidated
+                #     dependents and topology edges via Batch-23 ATMS CTE).
                 await persist_atms_invalidation(conn, ns_uuid, cascade_set)
 
                 # 4. Delete the PII vault rows (encrypted derivatives).
@@ -2110,7 +2102,7 @@ class MemoryOrchestrator(OrchestratorBase):
         from nce.semantic_search import semantic_search
 
         return await semantic_search(
-            pg_pool=self.pg_pool,
+            pg_pool=self._db_pool(read_only=True),
             mongo_client=self.mongo_client,
             embedding_fn=_embeddings.embed,
             query=query,
@@ -2119,4 +2111,5 @@ class MemoryOrchestrator(OrchestratorBase):
             limit=limit,
             offset=offset,
             as_of=as_of,
+            redis_client=self.redis_client,
         )

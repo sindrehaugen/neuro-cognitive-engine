@@ -114,7 +114,9 @@ _D365_WEBHOOK_SECRET: str = (os.environ.get("NCE_D365_WEBHOOK_SECRET") or "").st
 @lru_cache(maxsize=1)
 def _redis_client() -> Redis:
     """Shared sync Redis client for RQ enqueue (one pool per process)."""
-    return Redis.from_url(cfg.REDIS_URL)
+    from nce._client_factory import make_sync_redis
+
+    return make_sync_redis(cfg.REDIS_URL)
 
 
 # Lazy async Postgres pool (one per process). Mirrors the ``_redis_client``

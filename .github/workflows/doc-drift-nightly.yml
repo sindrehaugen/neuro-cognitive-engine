@@ -86,6 +86,9 @@ on:
     - cron: "30 4 * * *" # daily, offset from nightly-golden-thread.yml's 02:00 UTC
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Confirm docs/API.md, openapi.json, engine figures, surface.md, host_parity.md are current on main

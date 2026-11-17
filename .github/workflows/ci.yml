@@ -5,6 +5,10 @@ on:
     branches:
     - main
     - master
+
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Ruff lint & format
@@ -108,6 +112,8 @@ jobs:
       run: bandit -r nce server.py admin_server.py --severity-level high -q
     - name: pip-audit (requirements)
       run: pip-audit -r requirements.txt --strict
+    - name: pip-audit (requirements.lock)
+      run: pip-audit -r requirements.lock --no-deps --disable-pip --strict
     - name: Docker Compose config validate
       env:
         REDIS_PASSWORD: ci-config-validate-dummy
@@ -118,6 +124,8 @@ jobs:
         docker compose -f docker-compose.yml config --quiet
 
         '
+    - name: Docker image build check
+      run: docker build -f deploy/multiuser/Dockerfile -t nce:ci-check .
   integration:
     name: Pytest (integration smoke)
     runs-on: ubuntu-latest
@@ -138,6 +146,11 @@ jobs:
         ports:
         - 6380:6379
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 12
+      mongodb:
+        image: mongo:7.0
+        ports:
+        - 27017:27017
+        options: --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1}).ok'" --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
     - uses: actions/checkout@v7
     - uses: actions/setup-python@v7
@@ -239,6 +252,13 @@ jobs:
         NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
         NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: '1'
       run: pytest tests/test_event_log_*.py -m integration -q --tb=short
+    - name: "Integration — replay handlers (I1)"
+      env:
+        PG_DSN: postgresql://mcp_user:mcp_password@localhost:15432/memory_meta
+        MONGO_URI: mongodb://127.0.0.1:27017
+        NCE_MASTER_KEY: ci-test-master-key-32chars-minimum!!
+        NCE_INTEGRATION_REFRESH_SIGNING_ON_DECRYPT_FAIL: '1'
+      run: pytest tests/test_replay_handlers_integration.py -m integration -q --tb=short
   cache-invalidation:
     name: Pytest (REST/MCP cache invalidation)
     runs-on: ubuntu-latest

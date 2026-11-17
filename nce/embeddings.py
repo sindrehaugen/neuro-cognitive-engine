@@ -38,6 +38,25 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("nce-embeddings")
 
+_sync_http_client: Any = None
+_sync_http_client_lock = threading.Lock()
+
+
+def _get_sync_http_client() -> Any:
+    """Return a module-level pooled ``httpx.Client`` for sidecar embedding calls."""
+    global _sync_http_client
+    if _sync_http_client is not None and not getattr(_sync_http_client, "is_closed", False):
+        return _sync_http_client
+    with _sync_http_client_lock:
+        if _sync_http_client is None or getattr(_sync_http_client, "is_closed", False):
+            import httpx
+
+            _sync_http_client = httpx.Client(
+                timeout=httpx.Timeout(120.0, connect=5.0),
+                trust_env=False,
+            )
+        return _sync_http_client
+
 
 class EmbeddingDimensionMismatchError(ValueError):
     """Raised when a vector write attempts to mix dimensions or models against pinned namespace configuration."""
@@ -730,16 +749,16 @@ class CognitiveRemoteBackend(EmbeddingBackend):
         from nce.http_resilience import request_with_retry_sync
 
         try:
-            with httpx.Client(timeout=120.0) as client:
-                r = request_with_retry_sync(
-                    client,
-                    "POST",
-                    url,
-                    json=payload,
-                    headers=headers,
-                    operation_name="embedding_sidecar:primary",
-                )
-                data = r.json()
+            client = _get_sync_http_client()
+            r = request_with_retry_sync(
+                client,
+                "POST",
+                url,
+                json=payload,
+                headers=headers,
+                operation_name="embedding_sidecar:primary",
+            )
+            data = r.json()
         except Exception as e:
             # Classify the error so we can decide whether to try the fallback model.
             is_rate_limit = isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 429
@@ -767,16 +786,17 @@ class CognitiveRemoteBackend(EmbeddingBackend):
                 payload_fallback["model"] = fallback_model
 
                 try:
-                    with httpx.Client(timeout=60.0) as client:
-                        r = request_with_retry_sync(
-                            client,
-                            "POST",
-                            url,
-                            json=payload_fallback,
-                            headers=headers,
-                            operation_name="embedding_sidecar:fallback",
-                        )
-                        data = r.json()
+                    client = _get_sync_http_client()
+                    r = request_with_retry_sync(
+                        client,
+                        "POST",
+                        url,
+                        json=payload_fallback,
+                        headers=headers,
+                        timeout=60.0,
+                        operation_name="embedding_sidecar:fallback",
+                    )
+                    data = r.json()
                 except Exception as fe:
                     return _fallback_with_error(
                         texts,

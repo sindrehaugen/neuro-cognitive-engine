@@ -2338,11 +2338,10 @@ async def api_admin_dlq_circuit_close(request):
         )
 
     try:
-        from redis import Redis
-
+        from nce._client_factory import make_sync_redis
         from nce.dead_letter_queue import close_circuit, is_circuit_open
 
-        redis_client = Redis.from_url(_shared.cfg.REDIS_URL)
+        redis_client = make_sync_redis(_shared.cfg.REDIS_URL)
         was_open = is_circuit_open(redis_client, task_name)
         close_circuit(redis_client, task_name)
         redis_client.close()

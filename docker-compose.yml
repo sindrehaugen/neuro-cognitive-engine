@@ -168,6 +168,7 @@ services:
       args:
         NCE_GIT_SHA: ${NCE_GIT_SHA:-}
         NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
+    stop_grace_period: 60s
     # Multicore (VI.5a): scale background indexing/sync across N RQ worker
     # replicas. Lanes (high_priority -> batch_processing -> default) stay as-is;
     # each replica is an independent forking Worker. No container_name so
@@ -279,6 +280,7 @@ services:
         NCE_BUILD_TIME: ${NCE_BUILD_TIME:-}
     command: ["python", "-m", "nce.cron"]
     container_name: nce-cron
+    stop_grace_period: 60s
     env_file:
       - deploy/compose.stack.env
       - deploy/compose.stack.env.generated

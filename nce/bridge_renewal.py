@@ -60,7 +60,9 @@ async def _acquire_refresh_lock(provider: str, bridge_id: Any) -> Any:
         return _DummyRedis()
 
     try:
-        redis_client = AsyncRedis.from_url(cfg.REDIS_URL)
+        from nce._client_factory import make_async_redis
+
+        redis_client = make_async_redis(cfg.REDIS_URL, client_cls=AsyncRedis)
         key = _refresh_lock_key(provider, bridge_id)
         acquired = await redis_client.set(key, "1", nx=True, ex=_REFRESH_LOCK_TTL_SECONDS)
         if acquired is not None:

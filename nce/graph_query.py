@@ -644,73 +644,73 @@ class GraphRAGTraverser:
             bfs_event_ids: list[str] = []
 
             if as_of and namespace_id:
-                # Time-travel BFS: reconstruct edges from event_log
+                # Time-travel BFS: materialize event_log history once before recursive traversal
                 labels = await c.fetch(
                     """
-                    WITH RECURSIVE traversal AS (
-                        SELECT $1::text AS label, 0 AS depth, ARRAY[$1::text] AS path
-                        UNION
-                        SELECT DISTINCT
-                            h.neighbor,
-                            t.depth + 1,
-                            t.path || h.neighbor
-                        FROM traversal t
-                        JOIN LATERAL (
-                            WITH ns AS (
-                                SELECT namespaces.id,
-                                       namespaces.parent_id,
-                                       (namespaces.metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
-                                FROM namespaces
-                                WHERE namespaces.id = $3::uuid
-                            ),
-                            memory_events AS (
-                                SELECT DISTINCT ON ((event_log.params->>'memory_id')::uuid)
-                                    (event_log.params->>'memory_id')::uuid AS memory_id,
-                                    event_log.event_type AS event_type,
-                                    event_log.params->'triplets' AS triplets,
-                                    event_log.id AS event_id
-                                FROM event_log
-                                CROSS JOIN ns
-                                WHERE (event_log.params->>'memory_id') IS NOT NULL
-                                  AND (
-                                      (event_log.namespace_id = ns.id AND event_log.occurred_at <= $4)
-                                      OR (event_log.namespace_id = ns.parent_id AND event_log.occurred_at <= LEAST($4, ns.forked_as_of))
-                                  )
-                                  AND event_log.event_type IN ('store_memory', 'forget_memory', 'memory_shredded')
-                                ORDER BY (event_log.params->>'memory_id')::uuid, event_log.occurred_at DESC, event_log.event_seq DESC
-                            ),
-                            active_memories AS (
-                                SELECT me.memory_id, me.triplets, me.event_id
-                                FROM memory_events me
-                                WHERE me.event_type = 'store_memory'
-                            ),
-                            historical_edges AS (
-                                SELECT
-                                    COALESCE(trip->>'subject_label', trip->>'subject') AS subject_label,
-                                    trip->>'predicate' AS predicate,
-                                    COALESCE(trip->>'object_label', trip->>'object') AS object_label,
-                                    COALESCE((trip->>'confidence')::float, 1.0) AS confidence,
-                                    am.memory_id,
-                                    am.event_id
-                                FROM active_memories am
-                                CROSS JOIN LATERAL jsonb_array_elements(
-                                    COALESCE(CASE WHEN jsonb_typeof(am.triplets) = 'array' THEN am.triplets END, '[]'::jsonb)
-                                ) AS trip
-                                WHERE COALESCE(trip->>'subject_label', trip->>'subject') IS NOT NULL
-                                  AND trip->>'predicate' IS NOT NULL
-                                  AND COALESCE(trip->>'object_label', trip->>'object') IS NOT NULL
-                            )
-                            SELECT 
-                                CASE WHEN e.subject_label = t.label THEN e.object_label ELSE e.subject_label END AS neighbor
-                            FROM historical_edges e
-                            JOIN memories m ON e.memory_id = m.id
-                            WHERE e.subject_label = t.label OR e.object_label = t.label
-                            LIMIT $5
-                        ) h ON true
-                        WHERE t.depth < $2
-                          AND h.neighbor <> ALL(t.path)
+                    WITH ns AS (
+                        SELECT namespaces.id,
+                               namespaces.parent_id,
+                               (namespaces.metadata->'fork_config'->>'forked_from_as_of')::timestamptz AS forked_as_of
+                        FROM namespaces
+                        WHERE namespaces.id = $3::uuid
+                    ),
+                    memory_events AS MATERIALIZED (
+                        SELECT DISTINCT ON ((event_log.params->>'memory_id')::uuid)
+                            (event_log.params->>'memory_id')::uuid AS memory_id,
+                            event_log.event_type AS event_type,
+                            event_log.params->'triplets' AS triplets,
+                            event_log.id AS event_id
+                        FROM event_log
+                        CROSS JOIN ns
+                        WHERE (event_log.params->>'memory_id') IS NOT NULL
+                          AND (
+                              (event_log.namespace_id = ns.id AND event_log.occurred_at <= $4)
+                              OR (event_log.namespace_id = ns.parent_id AND event_log.occurred_at <= LEAST($4, ns.forked_as_of))
+                          )
+                          AND event_log.event_type IN ('store_memory', 'forget_memory', 'memory_shredded')
+                        ORDER BY (event_log.params->>'memory_id')::uuid, event_log.occurred_at DESC, event_log.event_seq DESC
+                    ),
+                    active_memories AS (
+                        SELECT me.memory_id, me.triplets, me.event_id
+                        FROM memory_events me
+                        WHERE me.event_type = 'store_memory'
+                    ),
+                    historical_edges AS MATERIALIZED (
+                        SELECT
+                            COALESCE(trip->>'subject_label', trip->>'subject') AS subject_label,
+                            trip->>'predicate' AS predicate,
+                            COALESCE(trip->>'object_label', trip->>'object') AS object_label,
+                            COALESCE((trip->>'confidence')::float, 1.0) AS confidence,
+                            am.memory_id,
+                            am.event_id
+                        FROM active_memories am
+                        CROSS JOIN LATERAL jsonb_array_elements(
+                            COALESCE(CASE WHEN jsonb_typeof(am.triplets) = 'array' THEN am.triplets END, '[]'::jsonb)
+                        ) AS trip
+                        WHERE COALESCE(trip->>'subject_label', trip->>'subject') IS NOT NULL
+                          AND trip->>'predicate' IS NOT NULL
+                          AND COALESCE(trip->>'object_label', trip->>'object') IS NOT NULL
                     )
                     SELECT label FROM (
+                        WITH RECURSIVE traversal AS (
+                            SELECT $1::text AS label, 0 AS depth, ARRAY[$1::text] AS path
+                            UNION
+                            SELECT DISTINCT
+                                h.neighbor,
+                                t.depth + 1,
+                                t.path || h.neighbor
+                            FROM traversal t
+                            JOIN LATERAL (
+                                SELECT
+                                    CASE WHEN e.subject_label = t.label THEN e.object_label ELSE e.subject_label END AS neighbor
+                                FROM historical_edges e
+                                JOIN memories m ON e.memory_id = m.id
+                                WHERE e.subject_label = t.label OR e.object_label = t.label
+                                LIMIT $5
+                            ) h ON true
+                            WHERE t.depth < $2
+                              AND h.neighbor <> ALL(t.path)
+                        )
                         SELECT label, MIN(depth) as min_depth FROM traversal GROUP BY label
                     ) AS distinct_labels ORDER BY min_depth ASC LIMIT $6
                     """,
@@ -734,7 +734,7 @@ class GraphRAGTraverser:
                             FROM namespaces
                             WHERE namespaces.id = $2::uuid
                         ),
-                        memory_events AS (
+                        memory_events AS MATERIALIZED (
                             SELECT DISTINCT ON ((event_log.params->>'memory_id')::uuid)
                                 (event_log.params->>'memory_id')::uuid AS memory_id,
                                 event_log.event_type AS event_type,
@@ -755,7 +755,7 @@ class GraphRAGTraverser:
                             FROM memory_events me
                             WHERE me.event_type = 'store_memory'
                         ),
-                        historical_edges AS (
+                        historical_edges AS MATERIALIZED (
                             SELECT
                                 COALESCE(trip->>'subject_label', trip->>'subject') AS subject_label,
                                 trip->>'predicate' AS predicate,
@@ -1129,7 +1129,7 @@ class GraphRAGTraverser:
                 FROM namespaces
                 WHERE namespaces.id = $2::uuid
             ),
-            memory_events AS (
+            memory_events AS MATERIALIZED (
                 SELECT DISTINCT ON ((event_log.params->>'memory_id')::uuid)
                     (event_log.params->>'memory_id')::uuid AS memory_id,
                     event_log.event_type AS event_type,
@@ -1151,7 +1151,7 @@ class GraphRAGTraverser:
                 FROM memory_events me
                 WHERE me.event_type = 'store_memory'
             ),
-            historical_nodes AS (
+            historical_nodes AS MATERIALIZED (
                 SELECT DISTINCT ON (ent->>'label')
                     ent->>'label' AS label,
                     COALESCE(ent->>'entity_type', ent->>'type') AS entity_type,

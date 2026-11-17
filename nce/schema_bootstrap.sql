@@ -200,6 +200,11 @@ CREATE INDEX IF NOT EXISTS idx_memories_embedding_hnsw ON memories USING hnsw (e
 -- Fleet admin: COUNT(*) / lookups by tenant without scanning all time partitions
 CREATE INDEX IF NOT EXISTS idx_memories_namespace_id ON memories (namespace_id);
 CREATE INDEX IF NOT EXISTS idx_memories_ns_derivation_depth ON memories (namespace_id, derivation_depth);
+CREATE INDEX IF NOT EXISTS idx_memories_derived_from_gin
+    ON memories USING GIN (derived_from jsonb_path_ops) WHERE valid_to IS NULL;
+CREATE INDEX IF NOT EXISTS idx_memories_ns_agent_recent
+    ON memories (namespace_id, agent_id, created_at DESC)
+    WHERE valid_to IS NULL AND memory_type = 'episodic';
 
 -- payload_ref CHECK constraint — enforce MongoDB ObjectId hex format (24 hex chars)
 DO $$
@@ -302,6 +307,12 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_kg_nodes_embedding_hnsw ON kg_nodes USING hnsw (embedding halfvec_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_kg_nodes_updated ON kg_nodes (updated_at);
+CREATE INDEX IF NOT EXISTS idx_kg_nodes_ns_payload_ref
+    ON kg_nodes (namespace_id, payload_ref) WHERE payload_ref IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_kg_nodes_label_trgm
+    ON kg_nodes USING GIN (label gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_kg_nodes_ns_type_label
+    ON kg_nodes (namespace_id, entity_type, label);
 
 CREATE TABLE IF NOT EXISTS kg_edges (
     id            UUID DEFAULT gen_random_uuid(),
@@ -383,6 +394,12 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_kg_edges_subject ON kg_edges (subject_label);
 CREATE INDEX IF NOT EXISTS idx_kg_edges_object  ON kg_edges (object_label);
 CREATE INDEX IF NOT EXISTS idx_kg_edges_updated ON kg_edges (updated_at);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_ns_payload_ref
+    ON kg_edges (namespace_id, payload_ref) WHERE payload_ref IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_kg_edges_subj_trgm
+    ON kg_edges USING GIN (subject_label gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_obj_trgm
+    ON kg_edges USING GIN (object_label gin_trgm_ops);
 
 -- --- Phase 0.3: PII Redactions Vault ---
 CREATE TABLE IF NOT EXISTS pii_redactions (
@@ -447,6 +464,10 @@ CREATE TABLE IF NOT EXISTS contradictions_default PARTITION OF contradictions DE
 
 -- Fleet admin: open contradiction counts per namespace
 CREATE INDEX IF NOT EXISTS idx_contradictions_namespace_id ON contradictions (namespace_id);
+CREATE INDEX IF NOT EXISTS idx_contradictions_ns_mem_a_open
+    ON contradictions (namespace_id, memory_a_id) WHERE resolved_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_contradictions_ns_mem_b_open
+    ON contradictions (namespace_id, memory_b_id) WHERE resolved_at IS NULL;
 
 -- --- Phase 2.1: Embedding Models & Migrations ---
 CREATE TABLE IF NOT EXISTS embedding_models (
@@ -724,12 +745,12 @@ $$ LANGUAGE plpgsql STABLE;
 
 
 CREATE INDEX IF NOT EXISTS idx_event_log_ns_time ON event_log (namespace_id, occurred_at);
-CREATE INDEX IF NOT EXISTS idx_event_log_ns_seq  ON event_log (namespace_id, event_seq);
 CREATE INDEX IF NOT EXISTS idx_event_log_parent  ON event_log (parent_event_id) WHERE parent_event_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_event_log_memory_id ON event_log (((params->>'memory_id')::uuid));
 CREATE INDEX IF NOT EXISTS idx_event_log_event_type ON event_log (event_type);
-CREATE INDEX IF NOT EXISTS idx_event_log_time_travel ON event_log (namespace_id, occurred_at)
-    WHERE event_type IN ('store_memory', 'forget_memory');
+CREATE INDEX IF NOT EXISTS idx_event_log_time_travel
+    ON event_log (namespace_id, ((params->>'memory_id')::uuid), occurred_at DESC, event_seq DESC)
+    WHERE event_type IN ('store_memory', 'forget_memory', 'memory_shredded');
 CREATE INDEX IF NOT EXISTS idx_event_log_params_gin ON event_log USING GIN (params);
 
 -- Monthly partition windows (UTC); keeps hot data off the DEFAULT catch-all partition

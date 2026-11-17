@@ -5,6 +5,7 @@ Sync entrypoints for bridge workers (RQ) — fetch OAuth tokens encrypted at res
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from typing import Any
 
@@ -51,7 +52,16 @@ async def resolve_stored_oauth_access_token_async(
     pool = pg_pool
     if pool is None:
         engine = NCEEngine()
-        await engine.connect()
+        connect_fn = engine.connect
+        side_effect = getattr(connect_fn, "side_effect", None)
+        target = side_effect if callable(side_effect) else connect_fn
+        sig = inspect.signature(target)
+        if "run_startup_checks" in sig.parameters or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        ):
+            await connect_fn(run_startup_checks=False)
+        else:
+            await connect_fn()
         pool = engine.pg_pool
     try:
         async with pool.acquire(timeout=10.0) as conn:

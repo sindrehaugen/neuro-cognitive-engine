@@ -37,7 +37,40 @@ async def ocr_pil_image(img: Any, *, lang: str = "eng") -> tuple[str, list[str]]
             if ic >= 0:
                 confs.append(ic)
         avg = (sum(confs) / len(confs) / 100.0) if confs else 0.0
-        text = (pytesseract.image_to_string(img, lang=lang) or "").strip()
+
+        texts = data.get("text", [])
+        blocks = data.get("block_num", [])
+        pars = data.get("par_num", [])
+        lines = data.get("line_num", [])
+
+        line_words: dict[tuple[int, int, int], list[str]] = {}
+        for idx, raw_word in enumerate(texts):
+            word = (str(raw_word) if raw_word is not None else "").strip()
+            if not word:
+                continue
+            key = (
+                int(blocks[idx]) if idx < len(blocks) else 0,
+                int(pars[idx]) if idx < len(pars) else 0,
+                int(lines[idx]) if idx < len(lines) else 0,
+            )
+            line_words.setdefault(key, []).append(word)
+
+        paragraphs: list[str] = []
+        cur_bp: tuple[int, int] | None = None
+        cur_lines: list[str] = []
+        for (blk, par, _ln), words in line_words.items():
+            line_text = " ".join(words)
+            if cur_bp is None:
+                cur_bp = (blk, par)
+            elif (blk, par) != cur_bp:
+                paragraphs.append("\n".join(cur_lines))
+                cur_lines = []
+                cur_bp = (blk, par)
+            cur_lines.append(line_text)
+        if cur_lines:
+            paragraphs.append("\n".join(cur_lines))
+
+        text = "\n\n".join(paragraphs).strip()
         return text, avg
 
     try:

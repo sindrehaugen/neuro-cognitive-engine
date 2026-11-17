@@ -3,6 +3,10 @@ name: Nightly Golden Thread (Live Stack)
   schedule:
   - cron: 0 2 * * *
   workflow_dispatch: null
+
+permissions:
+  contents: read
+
 jobs:
   golden-thread:
     name: Golden Thread E2E Scenario

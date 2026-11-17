@@ -96,7 +96,7 @@ def test_presigned_url_put_validation():
 
 
 @pytest.mark.asyncio
-async def test_store_artifact_saga_rollback(monkeypatch):
+async def test_store_artifact_saga_rollback(monkeypatch, tmp_path):
     from nce.models import ArtifactPayload
     from nce.orchestrators.memory import MemoryOrchestrator
 
@@ -113,8 +113,10 @@ async def test_store_artifact_saga_rollback(monkeypatch):
         minio_client=minio_client,
     )
 
-    # Mock file system path resolver
-    monkeypatch.setattr("pathlib.Path.is_file", lambda self: True)
+    # Configure staging directory and sample artifact
+    sample = tmp_path / "test.png"
+    sample.write_bytes(b"png")
+    monkeypatch.setattr("nce.orchestrators.memory.cfg.NCE_ARTIFACT_STAGING_DIR", str(tmp_path))
 
     # Mock store_memory to fail, triggering rollback
     orchestrator.store_memory = AsyncMock(side_effect=RuntimeError("Saga DB Failure"))
@@ -265,7 +267,7 @@ async def test_dispatch_gc_collection():
 
 
 @pytest.mark.asyncio
-async def test_store_artifact_object_name_prefix(monkeypatch):
+async def test_store_artifact_object_name_prefix(monkeypatch, tmp_path):
     from nce.models import ArtifactPayload
     from nce.orchestrators.memory import MemoryOrchestrator
 
@@ -281,7 +283,9 @@ async def test_store_artifact_object_name_prefix(monkeypatch):
         minio_client=minio_client,
     )
 
-    monkeypatch.setattr("pathlib.Path.is_file", lambda self: True)
+    sample = tmp_path / "test.png"
+    sample.write_bytes(b"png")
+    monkeypatch.setattr("nce.orchestrators.memory.cfg.NCE_ARTIFACT_STAGING_DIR", str(tmp_path))
     orchestrator.store_memory = AsyncMock(return_value={"payload_ref": "some_ref"})
 
     ns_id = uuid4()

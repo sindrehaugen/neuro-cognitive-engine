@@ -505,11 +505,8 @@ async def fetch_transitive_derived_memories(
         rows = await conn.fetch(
             """
             WITH RECURSIVE derived_cascade AS (
-                SELECT id, 0 AS depth, ARRAY[id] AS visited_ids
-                FROM memories
-                WHERE namespace_id = $1::uuid
-                  AND id = ANY($2::uuid[])
-                  AND valid_to IS NULL
+                SELECT seed_id AS id, 0 AS depth, ARRAY[seed_id] AS visited_ids
+                FROM unnest($2::uuid[]) AS seed_id
                 UNION
                 SELECT m.id, dc.depth + 1, dc.visited_ids || m.id
                 FROM memories m
@@ -547,12 +544,15 @@ async def evaluate_atms_intervention(
     invalidated_node_id: str | list[str] | set[str],
 ) -> set[str]:
     """Loads the causal graph for a namespace, builds an ATMS, and cascades invalidation."""
-    graph = await CausalGraph.load_from_db(conn, namespace_id)
-    atms = build_atms_from_causal_graph(graph)
-
     targets = (
         [invalidated_node_id] if isinstance(invalidated_node_id, str) else list(invalidated_node_id)
     )
+    if not targets:
+        return set()
+
+    graph = await CausalGraph.load_from_db(conn, namespace_id, seed_node_ids=targets)
+    atms = build_atms_from_causal_graph(graph)
+
     cascade: set[str] = set()
     for nid in targets:
         c = atms.invalidate_assumption(nid)
