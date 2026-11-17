@@ -9,7 +9,7 @@
 
 services:
   redis:
-    image: redis:7.4-alpine
+    image: redis:8.10-alpine
     container_name: nce-redis
     # Redis AUTH (security): require a password sourced from ${REDIS_PASSWORD}
     # (env / secret manager — NEVER a literal here). Clients authenticate via the
