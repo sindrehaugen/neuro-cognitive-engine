@@ -39,8 +39,7 @@ async def enable_hnsw_iterative_scan(conn: Any) -> bool:
 
     try:
         await conn.execute("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
-        if not hasattr(conn, "_mock_name"):
-            _HNSW_ITERATIVE_SCAN_SUPPORTED = True
+        _HNSW_ITERATIVE_SCAN_SUPPORTED = True
         return True
     except (asyncpg.UndefinedObjectError, asyncpg.PostgresError) as exc:
         exc_str = str(exc).lower()
@@ -458,7 +457,6 @@ async def scoped_pg_session(
             if (
                 _HNSW_ITERATIVE_SCAN_SUPPORTED is True
                 and _auth.set_namespace_context is _REAL_AUTH_SET_NAMESPACE_CONTEXT
-                and not hasattr(conn, "_mock_name")
             ):
                 await conn.execute(
                     "SELECT set_config('nce.namespace_id', $1, true), "

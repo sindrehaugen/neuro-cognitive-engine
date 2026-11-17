@@ -316,8 +316,11 @@ async def test_bridge_handlers_require_namespace_and_use_scoped_session() -> Non
         raw = await bridge_mcp_handlers.list_bridges(engine, {"user_id": "u1"})
         assert json.loads(raw) == {"bridges": []}
         assert lf.call_args.kwargs["namespace_id"] == ns_uuid
-        conn.execute.assert_any_await(
-            "SELECT set_config('nce.namespace_id', $1, true)", str(ns_uuid)
+        assert any(
+            len(c.args) >= 2
+            and "set_config('nce.namespace_id', $1, true)" in str(c.args[0])
+            and c.args[1] == str(ns_uuid)
+            for c in conn.execute.await_args_list
         )
 
 
