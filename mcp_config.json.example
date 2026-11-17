@@ -1,6 +1,22 @@
 {
   "mcpServers": {
+    "nce-stdio": {
+      "command": "python",
+      "args": [
+        "server.py"
+      ],
+      "env": {
+        "NCE_MCP_API_KEY": "nce_mcp_REPLACE_WITH_STDIO_TENANT_KEY",
+        "NCE_MCP_NAMESPACE_ID": "00000000-0000-4000-8000-000000000001"
+      }
+    },
     "nce-http": {
+      "url": "http://localhost:8005/mcp",
+      "headers": {
+        "Authorization": "Bearer nce_mcp_REPLACE_WITH_SCOPED_TOKEN"
+      }
+    },
+    "nce-http-tls": {
       "url": "https://localhost:8443/mcp",
       "headers": {
         "Authorization": "Bearer nce_mcp_REPLACE_WITH_SCOPED_TOKEN"
@@ -13,7 +29,7 @@
         "nce.mcp_client_proxy"
       ],
       "env": {
-        "NCE_MCP_HTTP_URL": "https://localhost:8443/mcp",
+        "NCE_MCP_HTTP_URL": "http://localhost:8005/mcp",
         "NCE_MCP_CLIENT_TOKEN": "nce_mcp_REPLACE_WITH_SCOPED_TOKEN"
       }
     }

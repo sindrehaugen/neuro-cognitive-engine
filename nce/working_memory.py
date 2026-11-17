@@ -41,14 +41,16 @@ async def _fetch_kg_neighborhood(
     ns_uuid: UUID,
     goal: str,
     as_of: datetime | None,
+    *,
+    conn: Any = None,
 ) -> list[dict[str, Any]]:
     """Traverse KG neighborhood with recursive CTE and cycle guard."""
     # Extract candidate seed tokens from goal
     goal_words = [w for w in goal.split() if len(w) >= 3][:5]
     search_token = goal_words[0] if goal_words else goal[:30]
 
-    async with scoped_pg_session(pool, ns_uuid) as conn:
-        rows = await conn.fetch(
+    async def _query(c: Any) -> list[dict[str, Any]]:
+        rows = await c.fetch(
             """
             WITH RECURSIVE kg_walk AS (
                 SELECT 
@@ -105,15 +107,23 @@ async def _fetch_kg_neighborhood(
             for r in rows
         ]
 
+    if conn is not None:
+        return await _query(conn)
+    async with scoped_pg_session(pool, ns_uuid) as c:
+        return await _query(c)
+
 
 async def _fetch_contradictions(
     pool: Any,
     ns_uuid: UUID,
     as_of: datetime | None,
+    *,
+    conn: Any = None,
 ) -> list[dict[str, Any]]:
     """Query active unresolved contradictions within the temporal horizon."""
-    async with scoped_pg_session(pool, ns_uuid) as conn:
-        rows = await conn.fetch(
+
+    async def _query(c: Any) -> list[dict[str, Any]]:
+        rows = await c.fetch(
             """
             SELECT id, memory_a_id, memory_b_id, agent_id, detected_at,
                    detection_path, signals, confidence, note
@@ -138,17 +148,32 @@ async def _fetch_contradictions(
             out.append(d)
         return out
 
+    if conn is not None:
+        return await _query(conn)
+    async with scoped_pg_session(pool, ns_uuid) as c:
+        return await _query(c)
+
 
 async def _fetch_heuristics(
     pool: Any,
     ns_uuid: UUID,
     goal: str,
     as_of: datetime | None,
+    *,
+    conn: Any = None,
 ) -> list[dict[str, Any]]:
-    """Query active procedural heuristics with its own scoped connection."""
-    async with scoped_pg_session(pool, ns_uuid) as conn:
+    """Query active procedural heuristics."""
+    if conn is not None:
         return await fetch_relevant_procedural_heuristics(
             conn,
+            ns_uuid,
+            goal,
+            limit=10,
+            as_of=as_of,
+        )
+    async with scoped_pg_session(pool, ns_uuid) as c:
+        return await fetch_relevant_procedural_heuristics(
+            c,
             ns_uuid,
             goal,
             limit=10,
@@ -264,13 +289,55 @@ async def compile_working_memory(
             log.warning("compile_working_memory: contradictions branch failed: %s", exc)
             return []
 
-    # Execute all 4 branches concurrently on separate connections
-    search_hits, kg_nodes_edges, procedural_rules, contradiction_alerts = await asyncio.gather(
-        _run_search(),
-        _run_kg(),
-        _run_heuristics(),
-        _run_contradictions(),
-    )
+    # Coalesce the 3 fast SQL branches onto a single scoped connection when running against a real asyncpg.Pool
+    import asyncpg as _asyncpg
+
+    if isinstance(pg_pool, _asyncpg.Pool):
+
+        async def _run_sql_branches() -> tuple[
+            list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]
+        ]:
+            kg_res: list[dict[str, Any]] = []
+            heur_res: list[dict[str, Any]] = []
+            contra_res: list[dict[str, Any]] = []
+            async with scoped_pg_session(pg_pool, ns_uuid) as shared_conn:
+                try:
+                    kg_res = await _fetch_kg_neighborhood(
+                        pg_pool, ns_uuid, goal, as_of_dt, conn=shared_conn
+                    )
+                except Exception as exc:
+                    log.warning("compile_working_memory: KG branch failed: %s", exc)
+                try:
+                    heur_res = await _fetch_heuristics(
+                        pg_pool, ns_uuid, goal, as_of_dt, conn=shared_conn
+                    )
+                except Exception as exc:
+                    log.warning(
+                        "compile_working_memory: procedural heuristics branch failed: %s", exc
+                    )
+                try:
+                    contra_res = await _fetch_contradictions(
+                        pg_pool, ns_uuid, as_of_dt, conn=shared_conn
+                    )
+                except Exception as exc:
+                    log.warning("compile_working_memory: contradictions branch failed: %s", exc)
+            return kg_res, heur_res, contra_res
+
+        (
+            search_hits,
+            (kg_nodes_edges, procedural_rules, contradiction_alerts),
+        ) = await asyncio.gather(
+            _run_search(),
+            _run_sql_branches(),
+        )
+    else:
+        # Fallback for mock pools in unit tests
+        search_hits, kg_nodes_edges, procedural_rules, contradiction_alerts = await asyncio.gather(
+            _run_search(),
+            _run_kg(),
+            _run_heuristics(),
+            _run_contradictions(),
+        )
 
     # Build structured provenance citations
     provenance_citations: list[dict[str, Any]] = []

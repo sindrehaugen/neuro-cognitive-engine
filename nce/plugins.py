@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.metadata
 import inspect
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -96,6 +97,19 @@ class NCEPlugin(Protocol):
 
 
 _DISCOVERED_PLUGINS: dict[str, NCEPlugin] | None = None
+_DESCRIPTOR_CACHE: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+_TENANT_RLS_CACHE: dict[tuple[Any, ...], dict[str, str]] = {}
+_GLOBAL_TABLES_CACHE: dict[tuple[Any, ...], set[str]] = {}
+
+
+def _plugin_env_cache_key() -> tuple[Any, ...]:
+    return (
+        id(_DISCOVERED_PLUGINS),
+        len(_DISCOVERED_PLUGINS) if _DISCOVERED_PLUGINS is not None else -1,
+        os.environ.get("NCE_ENABLED_ENGINES", ""),
+        os.environ.get("NCE_ENGINE_TYPE_FILTER", ""),
+        os.environ.get("NCE_ENGINE_CATEGORY_FILTER", ""),
+    )
 
 
 def load_plugins(*, force_reload: bool = False) -> dict[str, NCEPlugin]:
@@ -103,6 +117,10 @@ def load_plugins(*, force_reload: bool = False) -> dict[str, NCEPlugin]:
     global _DISCOVERED_PLUGINS
     if _DISCOVERED_PLUGINS is not None and not force_reload:
         return _DISCOVERED_PLUGINS
+    if force_reload:
+        _DESCRIPTOR_CACHE.clear()
+        _TENANT_RLS_CACHE.clear()
+        _GLOBAL_TABLES_CACHE.clear()
 
     plugins: dict[str, NCEPlugin] = {}
     try:
@@ -236,6 +254,9 @@ def get_all_plugin_tenant_rls_tables() -> dict[str, str]:
     explicit_resolved_mdirs: set[Path] = set()
 
     plugins = load_plugins()
+    cache_key = _plugin_env_cache_key() + tuple((pid, id(p)) for pid, p in sorted(plugins.items()))
+    if cache_key in _TENANT_RLS_CACHE:
+        return dict(_TENANT_RLS_CACHE[cache_key])
     for plugin_id, plugin in plugins.items():
         plugin_explicit: dict[str, str] = {}
 
@@ -289,13 +310,18 @@ def get_all_plugin_tenant_rls_tables() -> dict[str, str]:
                 "Error scanning RLS tables in migrations for plugin %s: %s", plugin_id, exc
             )
 
+    _TENANT_RLS_CACHE[cache_key] = dict(tables)
     return tables
 
 
 def get_all_plugin_global_tables() -> set[str]:
     """Collect global (non-tenant, non-RLS) PostgreSQL table names declared by plugins."""
+    plugins = load_plugins()
+    cache_key = _plugin_env_cache_key() + tuple((pid, id(p)) for pid, p in sorted(plugins.items()))
+    if cache_key in _GLOBAL_TABLES_CACHE:
+        return set(_GLOBAL_TABLES_CACHE[cache_key])
     global_tables: set[str] = set()
-    for plugin_id, plugin in load_plugins().items():
+    for plugin_id, plugin in plugins.items():
         cap_getter = getattr(plugin, "get_capabilities", None)
         if callable(cap_getter):
             try:
@@ -324,6 +350,7 @@ def get_all_plugin_global_tables() -> set[str]:
                             global_tables.add(item.strip().lower())
             except Exception as exc:
                 log.exception("Error reading global tables from plugin %s: %s", plugin_id, exc)
+    _GLOBAL_TABLES_CACHE[cache_key] = set(global_tables)
     return global_tables
 
 
@@ -421,6 +448,13 @@ def list_plugin_engine_descriptors(
     descriptors: list[dict[str, Any]] = []
 
     plugins_map = load_plugins()
+    desc_cache_key = (
+        _plugin_env_cache_key()
+        + (type_filter or "", category_filter or "")
+        + tuple((pid, id(p)) for pid, p in sorted(plugins_map.items()))
+    )
+    if desc_cache_key in _DESCRIPTOR_CACHE:
+        return [dict(d) for d in _DESCRIPTOR_CACHE[desc_cache_key]]
     umbrella_modules: set[str] = set()
     for p in plugins_map.values():
         if callable(
@@ -476,6 +510,7 @@ def list_plugin_engine_descriptors(
                     continue
             descriptors.append(norm)
 
+    _DESCRIPTOR_CACHE[desc_cache_key] = [dict(d) for d in descriptors]
     return descriptors
 
 

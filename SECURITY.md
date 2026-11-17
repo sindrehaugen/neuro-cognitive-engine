@@ -64,7 +64,8 @@ NCE's security model enforces defense-in-depth across the entire data lifecycle 
                                             ▼
                        ┌────────────────────────────────────────┐
                        │     PostgreSQL 16 Multi-Tenant RLS     │
-                       │     SET LOCAL app.current_namespace    │
+                       │   set_config('nce.namespace_id', ...)  │
+                       │     (SELECT get_nce_namespace())       │
                        └────────────────────┬───────────────────┘
                                             │
                                             ▼
@@ -108,8 +109,8 @@ Agent-to-Agent (A2A) cross-network federation operates under zero-trust authoriz
 ### 5. Multi-Tenant Row-Level Security (PostgreSQL RLS)
 
 NCE isolates tenant data at the storage layer rather than relying on application-level filtering:
-- Every relational table enforces PostgreSQL Row-Level Security (`ENABLE ROW LEVEL SECURITY; FORCE ROW LEVEL SECURITY;`).
-- Session isolation is set per-query or per-transaction via `SET LOCAL app.current_namespace = '<namespace-uuid>'`.
+- Every tenant relational table (`36` Core + `96` Vertical = `132` total forced-RLS tables) enforces PostgreSQL Row-Level Security (`ENABLE ROW LEVEL SECURITY; FORCE ROW LEVEL SECURITY;`).
+- Session isolation is bound per transaction via `scoped_pg_session(pool, namespace_id)`, which executes `SELECT set_config('nce.namespace_id', $1, true), set_config('hnsw.iterative_scan', 'relaxed_order', true)` in a single round-trip and evaluates policies via the `STABLE PARALLEL SAFE` `(SELECT get_nce_namespace())` `InitPlan` pattern.
 - Any query attempting cross-tenant access without administrative bypass raises a database-level violation, ensuring complete tenant confinement even in the event of an application logic defect.
 
 ### 6. WORM Event Log Immutability & Advisory Locks
@@ -136,10 +137,10 @@ Outbound HTTP communications (OAuth document bridges, external notifications, an
 
 ### 9. Hierarchical KEK/DEK Envelope Encryption & Provable Crypto-Shredding
 
-Data privacy and cryptographic isolation leverage hierarchical envelope encryption (`nce/crypto/envelope.py`):
-- **Versioned KEK Ring:** Master secret (`NCE_MASTER_KEY`) derives versioned Key Encryption Keys (KEKs).
+Data privacy and cryptographic isolation leverage hierarchical envelope encryption (`nce/envelope.py` and `nce/crypto/envelope.py`):
+- **Versioned KEK Ring & Bounded Zeroing DEK Cache:** Master secret (`NCE_MASTER_KEY`) derives versioned Key Encryption Keys (KEKs). Unwrapped DEKs are cached in a bounded 300s TTL LRU (`_UNWRAPPED_DEK_CACHE`, max 512 entries) backed by mutable `bytearray` buffers that are zeroed in-place on eviction or shredding.
 - **Per-Subject DEK Wrapping:** Relational records (`memories`, `encryption_deks`) store AES-256-GCM wrapped Data Encryption Keys (`wrapped_dek`).
-- **GDPR Provable Forgetting:** Right-to-be-forgotten requests permanently nullify the wrapped DEK. Without the key, encrypted content and corresponding `search_tsv` tokens become mathematically unrecoverable, producing verifiable RFC 8785 canonical shredding receipts.
+- **GDPR Provable Forgetting:** Right-to-be-forgotten requests (`shred_memory`, `forget_memory`, `crypto_shred_subject`) permanently nullify `wrapped_dek` and purge the in-memory DEK cache. Without the key, encrypted content and corresponding `search_tsv` tokens become mathematically unrecoverable, producing verifiable RFC 8785 canonical shredding receipts.
 
 ### 10. Automated Static Analysis & Quality CI Gates
 
