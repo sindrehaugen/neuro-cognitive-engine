@@ -971,7 +971,7 @@ class GraphRAGTraverser:
                         await set_namespace_context(c, UUID(str(namespace_id)))
                         dek_rows = await c.fetch(
                             "SELECT payload_ref, wrapped_dek FROM memories "
-                            "WHERE payload_ref = ANY($1::text[]) AND namespace_id = $2::uuid AND valid_to IS NULL",
+                            "WHERE payload_ref = ANY($1::text[]) AND namespace_id = $2::uuid AND valid_to IS NULL LIMIT 200",
                             list(ep_docs.keys()),
                             namespace_id,
                         )

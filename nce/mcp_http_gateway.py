@@ -76,6 +76,22 @@ _TOOLS_LIST_CACHE: dict[
     list[dict[str, Any]],
 ] = {}
 
+# Cached canonical gateway tool list + pre-tokenized search index keyed by (plugins_id, tool_registry_len, stdio_tools_len)
+_ALL_GATEWAY_TOOLS_CACHE: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
+_GATEWAY_TOOLS_TOKEN_INDEX: dict[tuple[int, int, int], dict[str, set[str]]] = {}
+
+# Bounded 30-second TTL cache for verified DB token lookups (keyed by token_sha256 -> (expires_monotonic, token_dict))
+_VERIFIED_TOKEN_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_VERIFIED_TOKEN_CACHE_TTL_S = 30.0
+
+
+def invalidate_verified_token_cache(token_sha256: str | None = None) -> None:
+    """Invalidate cached DB token verification state (on revocation or rotation)."""
+    if token_sha256 is None:
+        _VERIFIED_TOKEN_CACHE.clear()
+    else:
+        _VERIFIED_TOKEN_CACHE.pop(token_sha256, None)
+
 
 @dataclass
 class MCPGatewaySession:
@@ -99,6 +115,7 @@ class MCPGatewaySession:
     token_sha256: str = ""
     expires_at: float = 0.0
     is_oidc: bool = False
+    last_redis_sync_mono: float = 0.0
 
 
 def _parse_expires_at_epoch(val: Any) -> float | None:
@@ -188,6 +205,10 @@ async def _is_session_revoked_or_expired(session: MCPGatewaySession, pg_pool: An
         return False
 
     if pg_pool is not None and not session.is_oidc:
+        now_mono = time.monotonic()
+        cached_tok = _VERIFIED_TOKEN_CACHE.get(session.token_sha256)
+        if cached_tok is not None and now_mono < cached_tok[0]:
+            return False
         try:
             async with pg_pool.acquire() as conn:
                 row = await conn.fetchrow(
@@ -195,7 +216,14 @@ async def _is_session_revoked_or_expired(session: MCPGatewaySession, pg_pool: An
                     session.token_sha256,
                 )
                 if row is None:
+                    _VERIFIED_TOKEN_CACHE.pop(session.token_sha256, None)
                     return True
+                if len(_VERIFIED_TOKEN_CACHE) >= 512:
+                    _VERIFIED_TOKEN_CACHE.pop(next(iter(_VERIFIED_TOKEN_CACHE)), None)
+                _VERIFIED_TOKEN_CACHE[session.token_sha256] = (
+                    now_mono + _VERIFIED_TOKEN_CACHE_TTL_S,
+                    {"token_sha256": session.token_sha256},
+                )
         except Exception as exc:
             logger.warning("Session token re-verification failed: %s", exc)
 
@@ -544,9 +572,32 @@ DISCOVER_TOOLS_TOOL: dict[str, Any] = {
                 "type": "string",
                 "description": "Filter by canonical engine category slug (commercial, operations-delivery, finance-governance, service-support, av-it-integrator, enterprise-erp, field-service-ops)",
             },
+            "limit": {
+                "type": "integer",
+                "description": "Optional maximum number of matching tool schemas to return (default 25, max 100)",
+            },
         },
     },
 }
+
+
+_STRIPPED_COMPACT_SCHEMA_PROPS: frozenset[str] = frozenset({"mcp_api_key", "admin_api_key"})
+
+
+def _compact_input_schema(schema: dict[str, Any] | None) -> dict[str, Any]:
+    """Return a token-lean copy of *schema* omitting gateway-injected auth credential fields."""
+    if not isinstance(schema, dict):
+        return {"type": "object"}
+    props = schema.get("properties")
+    if not isinstance(props, dict) or not (props.keys() & _STRIPPED_COMPACT_SCHEMA_PROPS):
+        return schema
+    new_props = {k: v for k, v in props.items() if k not in _STRIPPED_COMPACT_SCHEMA_PROPS}
+    out = dict(schema)
+    out["properties"] = new_props
+    req = out.get("required")
+    if isinstance(req, list):
+        out["required"] = [r for r in req if r not in _STRIPPED_COMPACT_SCHEMA_PROPS]
+    return out
 
 
 async def _enqueue_session_event(session: MCPGatewaySession, event_data: dict[str, Any]) -> None:
@@ -567,10 +618,17 @@ async def _enqueue_session_event(session: MCPGatewaySession, event_data: dict[st
 
 
 def _all_gateway_tools() -> list[dict[str, Any]]:
-    """Return canonical tool metadata dicts across Core + all registered plugins."""
+    """Return canonical tool metadata dicts across Core + all registered plugins (cached O(1))."""
+    from nce import plugins as _plugins_mod
     from nce.mcp_stdio_tools import TOOLS
     from nce.plugins import load_plugins
     from nce.tool_registry import TOOL_REGISTRY
+
+    plugins_map = load_plugins()
+    cache_key = (id(_plugins_mod._DISCOVERED_PLUGINS), len(TOOL_REGISTRY), len(TOOLS))
+    cached = _ALL_GATEWAY_TOOLS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
 
     result: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -586,7 +644,7 @@ def _all_gateway_tools() -> list[dict[str, Any]]:
 
     plugin_defs: dict[str, dict[str, Any]] = {}
     try:
-        for _pid, plugin in load_plugins().items():
+        for _pid, plugin in plugins_map.items():
             getter = getattr(plugin, "get_mcp_tool_definitions", None)
             defs = getter() if callable(getter) else None
             if defs is None:
@@ -630,6 +688,8 @@ def _all_gateway_tools() -> list[dict[str, Any]]:
             )
         seen.add(name)
 
+    _ALL_GATEWAY_TOOLS_CACHE.clear()
+    _ALL_GATEWAY_TOOLS_CACHE[cache_key] = result
     return result
 
 
@@ -658,6 +718,7 @@ async def _persist_session_redis(redis_client: Any, session: MCPGatewaySession) 
         await redis_client.hset(_REDIS_MCP_SESSIONS_KEY, session.session_id, payload)
         if hasattr(redis_client, "expire"):
             await redis_client.expire(_REDIS_MCP_SESSIONS_KEY, ttl_s)
+        session.last_redis_sync_mono = time.monotonic()
     except Exception:
         pass
 
@@ -679,75 +740,188 @@ _COMPACT_CORE_WORKING_MEMORY_TOOLS: frozenset[str] = frozenset(
 )
 
 
+def _tokenize_search_text(text: str) -> set[str]:
+    import re as _re
+
+    return {tok for tok in _re.findall(r"[a-z0-9]+", text.lower()) if len(tok) >= 2}
+
+
+_DISCOVER_INDEX_CACHE: dict[tuple[int, int], list[dict[str, Any]]] = {}
+
+
+def _get_discover_index() -> list[dict[str, Any]]:
+    from nce.plugins import list_plugin_engine_descriptors
+    from nce.tool_registry import TOOL_REGISTRY, infer_tool_engine
+
+    all_tools = _all_gateway_tools()
+    try:
+        descriptors = list_plugin_engine_descriptors()
+    except Exception:
+        descriptors = []
+    cache_key = (id(all_tools), len(descriptors))
+    cached = _DISCOVER_INDEX_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    descriptors_by_slug = {d.get("slug"): d for d in descriptors}
+    indexed: list[dict[str, Any]] = []
+    for idx, tool_dict in enumerate(all_tools):
+        t_name = tool_dict["name"]
+        t_desc = tool_dict["description"]
+        t_schema = tool_dict["inputSchema"]
+        t_compact_schema = _compact_input_schema(t_schema)
+        spec = TOOL_REGISTRY.get(t_name)
+        tool_engine = infer_tool_engine(spec) if spec else None
+        desc = descriptors_by_slug.get(tool_engine) if tool_engine else None
+        t_name_low = t_name.lower()
+        t_desc_low = (t_desc or "").lower()
+        eng_low = tool_engine.lower() if tool_engine else ""
+        eng_name_low = desc.get("name", "").lower() if desc else ""
+        eng_desc_low = desc.get("description", "").lower() if desc else ""
+        name_tokens = _tokenize_search_text(t_name_low)
+        desc_tokens = _tokenize_search_text(t_desc_low)
+        combined_tokens = (
+            name_tokens
+            | desc_tokens
+            | _tokenize_search_text(f"{eng_low} {eng_name_low} {eng_desc_low}")
+        )
+        indexed.append(
+            {
+                "idx": idx,
+                "name": t_name,
+                "description": t_desc,
+                "full_entry": {"name": t_name, "description": t_desc, "inputSchema": t_schema},
+                "compact_entry": {
+                    "name": t_name,
+                    "description": t_desc,
+                    "inputSchema": t_compact_schema,
+                },
+                "tool_engine": tool_engine,
+                "desc": desc,
+                "desc_types_low": {t.lower() for t in desc.get("types", [])} if desc else set(),
+                "desc_cats_low": {c.lower() for c in desc.get("categories", [])} if desc else set(),
+                "name_low": t_name_low,
+                "desc_low": t_desc_low,
+                "eng_low": eng_low,
+                "eng_name_low": eng_name_low,
+                "eng_desc_low": eng_desc_low,
+                "name_tokens": name_tokens,
+                "desc_tokens": desc_tokens,
+                "combined_tokens": combined_tokens,
+            }
+        )
+    _DISCOVER_INDEX_CACHE.clear()
+    _DISCOVER_INDEX_CACHE[cache_key] = indexed
+    return indexed
+
+
 async def discover_tools_handler(
     session: MCPGatewaySession,
     arguments: dict[str, Any],
     *,
     redis_client: Any = None,
 ) -> dict[str, Any]:
-    """Handler for discover_tools meta-tool."""
+    """Handler for discover_tools meta-tool (O(1) pre-tokenized index + BM25/keyword ranking)."""
     query = str(arguments.get("query") or "").strip().lower()
+    query_tokens = _tokenize_search_text(query) if query else set()
     type_filter = arguments.get("type_filter")
     category_filter = arguments.get("category_filter")
+    t_wanted = type_filter.strip().lower() if type_filter else None
+    c_wanted = category_filter.strip().lower() if category_filter else None
+    raw_limit = arguments.get("limit")
+    limit_val: int | None = None
+    if raw_limit is not None and not isinstance(raw_limit, bool):
+        try:
+            limit_val = max(1, min(int(raw_limit), 100))
+        except (ValueError, TypeError):
+            limit_val = None
 
     from nce.plugins import list_plugin_engine_descriptors
-    from nce.tool_registry import TOOL_REGISTRY, infer_tool_engine
 
     try:
         descriptors = list_plugin_engine_descriptors()
     except Exception:
         descriptors = []
-    descriptors_by_slug = {d.get("slug"): d for d in descriptors}
 
-    matched_tools: list[dict[str, Any]] = []
+    scored_tools: list[tuple[float, int, dict[str, Any]]] = []
+    is_compact = session.tool_exposure_mode == "compact"
+    min_overlap = max(1, (len(query_tokens) + 1) // 2) if query_tokens else 1
+    allow_all_engines = "*" in session.allowed_engines or "all" in session.allowed_engines
 
-    for tool_dict in _all_gateway_tools():
-        t_name = tool_dict["name"]
-        t_desc = tool_dict["description"]
-        t_schema = tool_dict["inputSchema"]
-        spec = TOOL_REGISTRY.get(t_name)
-        tool_engine = infer_tool_engine(spec) if spec else None
-
-        if not is_engine_allowed_for_session(tool_engine, session.allowed_engines, descriptors):
+    for item in _get_discover_index():
+        tool_engine = item["tool_engine"]
+        if not allow_all_engines and not is_engine_allowed_for_session(
+            tool_engine, session.allowed_engines, descriptors
+        ):
             continue
 
-        desc = descriptors_by_slug.get(tool_engine) if tool_engine else None
+        if t_wanted and t_wanted not in item["desc_types_low"]:
+            continue
 
-        if type_filter:
-            t_wanted = type_filter.strip().lower()
-            if not desc or t_wanted not in [t.lower() for t in desc.get("types", [])]:
-                continue
+        if c_wanted and c_wanted not in item["desc_cats_low"]:
+            continue
 
-        if category_filter:
-            c_wanted = category_filter.strip().lower()
-            if not desc or c_wanted not in [c.lower() for c in desc.get("categories", [])]:
-                continue
-
+        score = 1.0
         if query:
-            name_match = query in t_name.lower()
-            desc_match = query in (t_desc or "").lower()
-            eng_match = (query in tool_engine.lower()) if tool_engine else False
-            eng_desc_match = (
-                (
-                    query in desc.get("name", "").lower()
-                    or query in desc.get("description", "").lower()
+            t_name_low = item["name_low"]
+            t_desc_low = item["desc_low"]
+            eng_low = item["eng_low"]
+            eng_name_low = item["eng_name_low"]
+            eng_desc_low = item["eng_desc_low"]
+
+            name_match = query in t_name_low
+            desc_match = query in t_desc_low
+            eng_match = bool(eng_low and query in eng_low)
+            eng_desc_match = bool(query in eng_name_low or query in eng_desc_low)
+
+            if name_match or desc_match or eng_match or eng_desc_match:
+                score = (
+                    (10.0 if name_match else 0.0)
+                    + (6.0 if eng_match else 0.0)
+                    + (4.0 if desc_match else 0.0)
+                    + (2.0 if eng_desc_match else 0.0)
                 )
-                if desc
-                else False
-            )
-            if not (name_match or desc_match or eng_match or eng_desc_match):
+                if query_tokens:
+                    score += 3.0 * len(query_tokens & item["name_tokens"]) + 1.5 * len(
+                        query_tokens & item["desc_tokens"]
+                    )
+            elif query_tokens:
+                overlap = query_tokens & item["combined_tokens"]
+                if len(overlap) < min_overlap:
+                    continue
+                score = (
+                    3.0 * len(query_tokens & item["name_tokens"])
+                    + 1.5 * len(query_tokens & item["desc_tokens"])
+                    + 1.0 * len(overlap)
+                )
+            else:
                 continue
 
-        session.expanded_tools.add(t_name)
-        matched_tools.append(
-            {
-                "name": t_name,
-                "description": t_desc,
-                "inputSchema": t_schema,
-            }
+        scored_tools.append(
+            (
+                score,
+                item["idx"],
+                item["compact_entry"] if is_compact else item["full_entry"],
+            )
         )
 
-    await _persist_session_redis(redis_client, session)
+    if query and len(scored_tools) > 1:
+        scored_tools.sort(key=lambda entry: (-entry[0], entry[1]))
+
+    if limit_val is not None:
+        scored_tools = scored_tools[:limit_val]
+
+    matched_tools: list[dict[str, Any]] = []
+    newly_expanded = False
+    for _, _, t_entry in scored_tools:
+        t_name = t_entry["name"]
+        if t_name not in session.expanded_tools:
+            session.expanded_tools.add(t_name)
+            newly_expanded = True
+        matched_tools.append(t_entry)
+
+    if newly_expanded:
+        await _persist_session_redis(redis_client, session)
 
     notification = {
         "jsonrpc": "2.0",
@@ -929,7 +1103,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
             {
                 "status": "ok",
                 "service": "mcp-gateway",
-                "version": "3.5.1",
+                "version": "3.5.2",
             }
         )
 
@@ -943,18 +1117,22 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
         redis_client = getattr(engine, "redis_client", None) if engine else None
         pg_pool = getattr(engine, "pg_pool", None) if engine else None
 
-        if session_id and redis_client is not None:
+        now_mono = time.monotonic()
+        existing_in_mem = _GATEWAY_SESSIONS.get(session_id) if session_id else None
+        if (
+            session_id
+            and redis_client is not None
+            and (
+                existing_in_mem is None or (now_mono - existing_in_mem.last_redis_sync_mono) >= 2.0
+            )
+        ):
             try:
                 raw_redis_sess = await redis_client.hget(_REDIS_MCP_SESSIONS_KEY, session_id)
                 if raw_redis_sess is None:
                     # Evict if revoked on another worker process
                     _GATEWAY_SESSIONS.pop(session_id, None)
                 else:
-                    s_data = json.loads(
-                        raw_redis_sess.decode("utf-8")
-                        if isinstance(raw_redis_sess, bytes)
-                        else str(raw_redis_sess)
-                    )
+                    s_data = orjson.loads(raw_redis_sess)
                     if session_id not in _GATEWAY_SESSIONS:
                         _store_gateway_session(
                             MCPGatewaySession(
@@ -971,12 +1149,14 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                                 token_sha256=str(s_data.get("token_sha256", "")),
                                 expires_at=float(s_data.get("expires_at", 0.0) or 0.0),
                                 is_oidc=bool(s_data.get("is_oidc", False)),
+                                last_redis_sync_mono=now_mono,
                             )
                         )
                     else:
                         _GATEWAY_SESSIONS[session_id].expanded_tools.update(
                             s_data.get("expanded_tools", [])
                         )
+                        _GATEWAY_SESSIONS[session_id].last_redis_sync_mono = now_mono
             except Exception:
                 pass
 
@@ -996,16 +1176,18 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                 )
             if auth_header.lower().startswith("bearer "):
                 token = auth_header[7:].strip()
-                try:
-                    token_data = await verify_mcp_token(token, pg_pool=pg_pool)
-                except Exception as exc:
-                    logger.warning("MCP session bearer verification failed: %s", exc)
-                    return None, JSONResponse({"error": "Unauthorized"}, status_code=401)
-                if str(token_data.get("namespace_id")) != str(session.namespace_id):
-                    return None, JSONResponse(
-                        {"error": "Forbidden: session namespace mismatch"},
-                        status_code=403,
-                    )
+                tok_sha = hashlib.sha256(token.encode("utf-8")).hexdigest()
+                if not session.token_sha256 or tok_sha != session.token_sha256:
+                    try:
+                        token_data = await verify_mcp_token(token, pg_pool=pg_pool)
+                    except Exception as exc:
+                        logger.warning("MCP session bearer verification failed: %s", exc)
+                        return None, JSONResponse({"error": "Unauthorized"}, status_code=401)
+                    if str(token_data.get("namespace_id")) != str(session.namespace_id):
+                        return None, JSONResponse(
+                            {"error": "Forbidden: session namespace mismatch"},
+                            status_code=403,
+                        )
             if not _check_session_rate_limit(session):
                 return None, JSONResponse(
                     {
@@ -1096,7 +1278,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     },
                     "serverInfo": {
                         "name": "nce-memory-gateway",
-                        "version": "3.5.1",
+                        "version": "3.5.2",
                     },
                 },
             }
@@ -1136,12 +1318,26 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                         tool_engine = infer_tool_engine(spec) if spec else None
                         if t_name in _COMPACT_CORE_WORKING_MEMORY_TOOLS:
                             # Core working-memory tool exposed upfront in compact mode
-                            exposed_tools.append(tool_dict)
+                            exposed_tools.append(
+                                {
+                                    "name": t_name,
+                                    "description": tool_dict["description"],
+                                    "inputSchema": _compact_input_schema(tool_dict["inputSchema"]),
+                                }
+                            )
                         elif t_name in session.expanded_tools:
                             if is_engine_allowed_for_session(
                                 tool_engine, session.allowed_engines, descriptors
                             ):
-                                exposed_tools.append(tool_dict)
+                                exposed_tools.append(
+                                    {
+                                        "name": t_name,
+                                        "description": tool_dict["description"],
+                                        "inputSchema": _compact_input_schema(
+                                            tool_dict["inputSchema"]
+                                        ),
+                                    }
+                                )
                 else:
                     for tool_dict in all_tools:
                         t_name = tool_dict["name"]
@@ -1180,7 +1376,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "result": {
-                        "content": [{"type": "text", "text": json.dumps(res)}],
+                        "content": [{"type": "text", "text": orjson.dumps(res).decode("utf-8")}],
                         "isError": False,
                     },
                 }
@@ -1377,9 +1573,17 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                 if isinstance(raw_result, str):
                     res_text = raw_result
                 elif isinstance(raw_result, list):
-                    res_text = json.dumps([getattr(item, "text", str(item)) for item in raw_result])
+                    if raw_result and hasattr(raw_result[0], "text"):
+                        if len(raw_result) == 1:
+                            res_text = str(raw_result[0].text)
+                        else:
+                            res_text = orjson.dumps(
+                                [getattr(item, "text", str(item)) for item in raw_result]
+                            ).decode("utf-8")
+                    else:
+                        res_text = orjson.dumps(raw_result, default=str).decode("utf-8")
                 elif isinstance(raw_result, dict):
-                    res_text = json.dumps(raw_result)
+                    res_text = orjson.dumps(raw_result, default=str).decode("utf-8")
                 else:
                     res_text = str(raw_result)
 
@@ -1445,7 +1649,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
 
         try:
             body_bytes = await request.body()
-            body_json = json.loads(body_bytes)
+            body_json = orjson.loads(body_bytes)
         except Exception as parse_exc:
             return JSONResponse(
                 {
@@ -1468,20 +1672,12 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     results.append(res)
             response_payload = results
         else:
-            req_method = body_json.get("method") if isinstance(body_json, dict) else None
             response_payload = await _handle_jsonrpc_request(session, body_json)
-            if not wants_sse and req_method == "tools/list":
-                content_bytes = orjson.dumps(response_payload)
-                return Response(
-                    content=content_bytes,
-                    media_type="application/json",
-                    headers={"Mcp-Session-Id": session.session_id},
-                )
 
         if wants_sse:
 
             async def sse_response_generator():
-                data_str = json.dumps(response_payload)
+                data_str = orjson.dumps(response_payload, default=str).decode("utf-8")
                 yield f"event: message\ndata: {data_str}\n\n"
 
             return StreamingResponse(
@@ -1494,8 +1690,9 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                 },
             )
 
-        return JSONResponse(
-            response_payload,
+        return Response(
+            content=orjson.dumps(response_payload, default=str),
+            media_type="application/json",
             headers={"Mcp-Session-Id": session.session_id},
         )
 

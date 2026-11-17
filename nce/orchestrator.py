@@ -188,6 +188,7 @@ class NCEEngine(OrchestratorBase):
             min_size=cfg.PG_MIN_POOL,
             max_size=cfg.PG_MAX_POOL,
             command_timeout=30,
+            statement_cache_size=256,
         )
         self.redis_client = make_async_redis(
             cfg.REDIS_URL,

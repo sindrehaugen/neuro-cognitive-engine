@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from nce.plugins import register_all_plugin_tools
 from nce.resource_surface import build_all_resource_tool_specs
 from nce.tool_registry import (
     ADMIN_ONLY_TOOLS,
@@ -21,7 +22,10 @@ from nce.tool_registry import (
     ToolSpec,
 )
 
-_C12_TOOL_SPECS = build_all_resource_tool_specs()
+_PLUGIN_ONLY_SPECS: dict[str, ToolSpec] = {}
+register_all_plugin_tools(_PLUGIN_ONLY_SPECS)
+
+_C12_TOOL_SPECS = {**build_all_resource_tool_specs(), **_PLUGIN_ONLY_SPECS}
 _C12_TOOL_NAMES = frozenset(_C12_TOOL_SPECS)
 _C12_MUTATION_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.mutation)
 _C12_CACHEABLE_TOOLS = frozenset(n for n, s in _C12_TOOL_SPECS.items() if s.cacheable)

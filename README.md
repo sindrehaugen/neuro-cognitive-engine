@@ -4,7 +4,7 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.5.1-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-3.5.2-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -24,6 +24,7 @@ The engine is **provider-agnostic** (BYO LLM — local, OpenAI, Anthropic, Gemin
 - [The Quad-Database Stack](#the-quad-database-stack)
 - [Capabilities](#capabilities)
 - [Surfaces & Entrypoints](#surfaces--entrypoints)
+- [Performance, Scale & LLM-Loop Latency](#performance-scale--llm-loop-latency)
 - [Quickstart](#quickstart)
 - [Connecting an MCP Client](#connecting-an-mcp-client)
 - [MCP Tool Surface](#mcp-tool-surface)
@@ -190,6 +191,23 @@ A **Dynamic Tools Console** in the Admin UI can enable/disable individual stdio 
 
 ---
 
+## Performance, Scale & LLM-Loop Latency
+
+NCE `v3.5.2` is engineered so the memory substrate is never the bottleneck during multi-tool streaming LLM reasoning loops. Against a live **100,000-row** envelope-encrypted (`TCDEK\x01` AES-256-GCM) tenant dataset (`100k` `memories` + Mongo `episodes`, `20k` `memory_salience`, `5k` `kg_nodes`, `15k` `kg_edges`, `10k` signed WORM `event_log` rows):
+
+| Operation / Chained LLM-Loop Step | `v3.5.0` Baseline (`p50`) | `v3.5.1` Direct Engine (`p50`) | `v3.5.2` `/mcp` HTTP Gateway (`p50 / p95`) | Key Optimization |
+| :--- | ---: | ---: | ---: | :--- |
+| `discover_tools(limit=8)` (`compact` mode) | `35.78 ms` | `35.78 ms` | **`1.35 ms / 9.32 ms`** | `O(1)` pre-tokenized catalog cache + compact schema stripping |
+| `semantic_search(limit=5)` (`100k` rows) | `681.31 ms` | `24.46 ms` | **`35.60 ms / 38.87 ms`** | Fused CTE, `halfvec(768)` HNSW, direct `search_tsv` GIN, zeroing DEK LRU |
+| `compile_working_memory` (`100k` rows) | `651.32 ms` | `26.70 ms` | **`38.44 ms / 41.80 ms`** | Shared `scoped_pg_session` SQL branch coalescing + query-embedding LRU |
+| `graph_search(max_depth=2)` (`15k` edges) | `108.73 ms` | `21.00 ms` | **`36.18 ms / 48.64 ms`** | Cycle-safe recursive CTE + `idx_kg_edges_combined_trgm` GIN |
+| **Full 5-Tool Chained LLM Reasoning Turn** | `~1,515 ms` | `~148 ms` | **`116.94 ms` (`p50`)** | 30s verified-token cache + 2s Redis session sync + coalesced salience ring buffer |
+| **Mongo-Pause Saga Failover (`store_memory`)** | `10.10 s` | `2.36 s` | **`2.38 s` (`< 3.0s`)** | `2000ms` Motor timeouts + bounded inline rollback + `SKIP LOCKED` recovery |
+
+Full benchmark methodology and `EXPLAIN (ANALYZE, BUFFERS)` plans: [docs/benchmarks/PERF_REPORT_v3.5.1.md](docs/benchmarks/PERF_REPORT_v3.5.1.md) · [docs/benchmarks/PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md).
+
+---
+
 ## Quickstart
 
 > Prerequisites: **Docker Desktop** and **Python 3.10+**.
@@ -284,7 +302,9 @@ make verify                        # runs verify_v1_launch.py end-to-end
 
 ## MCP Tool Surface
 
-NCE provides **71** static core MCP tools dispatched through `nce/mcp_stdio_dispatch.py` and the Streamable HTTP `/mcp` gateway, enforcing auth, quotas, and runtime enable/disable state. Highlights (`[ADMIN]` tools require `admin_api_key`):
+NCE provides **71** static core MCP tools (`38` Core SQL migrations across `43` Core SQL tables, `36` forced-RLS Core tables + `96` forced-RLS Vertical tables = `132` total forced-RLS tables) dispatched through `nce/mcp_stdio_dispatch.py` and the Streamable HTTP `/mcp` gateway (`:8005` direct HTTP, `:8443/mcp` TLS via Caddy; Prometheus metrics on `:8000`, Admin REST on `:8003`, A2A on `:8004`).
+
+In **`compact` exposure mode** (default on `/mcp`), `tools/list` initially exposes only **12** core working-memory tools (`11` memory/graph/schema tools + `discover_tools`) with redundant auth arguments (`mcp_api_key`, `admin_api_key`) stripped from `inputSchema`, keeping initial LLM context overhead to `~3,100` tokens; agents dynamically activate any of the remaining Core or Vertical tools in `< 2 ms` via `discover_tools(query=..., limit=...)`. Highlights (`[ADMIN]` tools require the `admin` token scope on `/mcp` or `admin_api_key` on stdio):
 
 | Tool | What it does |
 | :--- | :--- |
@@ -381,7 +401,8 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 | Time & simulation | [time_travel.md](docs/time_travel.md) · [replay.md](docs/replay.md) · [migrations.md](docs/migrations.md) |
 | Integrations | [service_integrations.md](docs/service_integrations.md) · [bridge_setup_guide.md](docs/bridge_setup_guide.md) · [a2a.md](docs/a2a.md) |
 | Edge | [airgapped_deployment.md](docs/airgapped_deployment.md) · [vram_monitoring.md](docs/vram_monitoring.md) |
-| Plugins & Verticals | [shared-core/overview.md](docs/shared-core/overview.md) · [nce-vertical-engines](https://github.com/sindrehaugen/nce-vertical-engines) |
+| Plugins & Verticals | [plugin_development.md](docs/plugin_development.md) · [shared-core/overview.md](docs/shared-core/overview.md) · [nce-vertical-engines](https://github.com/sindrehaugen/nce-vertical-engines) |
+| Benchmarks | [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · [PERF_REPORT_v3.5.1.md](docs/benchmarks/PERF_REPORT_v3.5.1.md) |
 | Design decisions | [adr/](docs/adr/) |
 
 ---
@@ -398,5 +419,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-NCE — Neuro-Cognitive Engine · v3.5.1 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
+NCE — Neuro-Cognitive Engine · v3.5.2 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
 

@@ -7,6 +7,7 @@ can be tested and maintained independently of the orchestrator's lifecycle.
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
 import re
@@ -33,6 +34,9 @@ _EMBED_TIMEOUT_SECONDS: float = 10.0
 _MAX_RAW_DATA_CHARS: int = 16_000
 _REINFORCE_SEMAPHORE = asyncio.Semaphore(4)
 _REAL_ASYNCIO_CREATE_TASK = asyncio.create_task
+_SALIENCE_RING_BUFFER: collections.deque[tuple[Any, str, str, float, list[str]]] = (
+    collections.deque(maxlen=4096)
+)
 _nli_async_clients: dict[asyncio.AbstractEventLoop, Any] = {}
 
 
@@ -180,9 +184,9 @@ async def _fire_reinforcement(
     import nce.salience as _salience
 
     try:
-        async with _REINFORCE_SEMAPHORE:
-            async with scoped_pg_session(pool, namespace_id) as _conn:
-                if _salience.reinforce is not _salience._REAL_REINFORCE:
+        if _salience.reinforce is not _salience._REAL_REINFORCE:
+            async with _REINFORCE_SEMAPHORE:
+                async with scoped_pg_session(pool, namespace_id) as _conn:
                     for res in results:
                         await _salience.reinforce(
                             _conn,
@@ -191,13 +195,35 @@ async def _fire_reinforcement(
                             namespace_id,
                             delta=delta,
                         )
+            return
+
+        mem_ids = [str(res["memory_id"]) for res in results if res.get("memory_id")]
+        if not mem_ids:
+            return
+        _SALIENCE_RING_BUFFER.append(
+            (pool, str(namespace_id), str(agent_id), float(delta), mem_ids)
+        )
+
+        async with _REINFORCE_SEMAPHORE:
+            if not _SALIENCE_RING_BUFFER:
+                return
+            batches: dict[tuple[int, str, str, float], tuple[Any, list[str]]] = {}
+            while _SALIENCE_RING_BUFFER:
+                p_ref, ns_str, ag_str, d_val, ids = _SALIENCE_RING_BUFFER.popleft()
+                b_key = (id(p_ref), ns_str, ag_str, d_val)
+                if b_key not in batches:
+                    batches[b_key] = (p_ref, list(ids))
                 else:
+                    batches[b_key][1].extend(ids)
+
+            for (_, ns_str, ag_str, d_val), (p_ref, merged_ids) in batches.items():
+                async with scoped_pg_session(p_ref, ns_str) as _conn:
                     await _salience.reinforce_batch(
                         _conn,
-                        [str(res["memory_id"]) for res in results if res.get("memory_id")],
-                        agent_id,
-                        namespace_id,
-                        delta=delta,
+                        merged_ids,
+                        ag_str,
+                        ns_str,
+                        delta=d_val,
                     )
     except Exception:
         log.warning("Reinforcement background task failed (non-fatal)")

@@ -113,6 +113,14 @@ Every secret resolved through `nce.config.secret_env` supports a companion `<NAM
 | `NCE_JWT_PREFIX` | `str` | `/api/v1/` | URL route prefix guarded by `JWTAuthMiddleware`. |
 | `NCE_JWT_KEY_DIR` | `str` | `Path.cwd()` | Base filesystem directory used to resolve relative `file://` paths in `NCE_JWT_PUBLIC_KEY`. |
 | `NCE_JWT_LEEWAY_SECONDS` | `int` | `30` | Clock skew tolerance in seconds for JWT `exp` and `nbf` claims. |
+| `NCE_OIDC_ADMIN_SCOPES_ALLOWLIST` | `tuple[str, ...]` | `()` | Comma-separated allowlist of OIDC scopes permitted to elevate to `admin` scope on `/mcp` JWT sessions (default empty — `admin` is stripped unless allowlisted). |
+| `NCE_MCP_SESSION_TTL_S` | `int` | `3600` | Session TTL in seconds for `/mcp` Streamable HTTP Gateway sessions persisted in memory and Redis (`nce:mcp:sessions`). |
+| `NCE_MCP_ALLOWED_ORIGINS` | `str` | localhost defaults | Comma-separated `Origin` allowlist enforced on `/mcp` Streamable HTTP Gateway requests for DNS-rebinding defense. |
+| `NCE_MCP_GATEWAY_HOST` | `str` | `0.0.0.0` | Bind host for the standalone `/mcp` Streamable HTTP Gateway (`python -m nce.mcp_http_gateway`). |
+| `NCE_MCP_GATEWAY_PORT` | `int` | `8005` | Bind port for the standalone `/mcp` Streamable HTTP Gateway (`python -m nce.mcp_http_gateway`). |
+| `NCE_ENABLED_ENGINES` | `str` | `*` | Comma-separated list of enabled plugin engine slugs (`*` or `all` enables all discovered engines). |
+| `NCE_ENGINE_TYPE_FILTER` | `str` | `""` | Optional comma-separated filter of plugin engine `types` (`core-domain`, `erp-crm`, `infra-iot`, `observability`, `portal`). |
+| `NCE_ENGINE_CATEGORY_FILTER` | `str` | `""` | Optional comma-separated filter of plugin engine `categories`. |
 | `NCE_A2A_JWT_AUDIENCE` | `str` | `nce_a2a` (dev) / `""` (prod) | Audience override for the A2A server. **Required in production** (`NCE_ENV=prod`) to prevent cross-service replay attacks. |
 
 ---
@@ -216,6 +224,8 @@ All provider keys default to `""`. The provider factory logs a warning if a requ
 | `BRIDGE_WEBHOOK_BASE_URL` | `str` | `""` | Public HTTPS base URL for inbound webhook delivery subscriptions. |
 | `NCE_WEBHOOK_TRUST_PROXY` | `bool` | `false` | When `true`, webhook rate limiters trust `X-Forwarded-For` from reverse proxies. |
 | `WEBHOOK_MAX_BODY_BYTES` | `int` | `1048576` | Maximum allowed webhook request payload size in bytes (1 MB). |
+| `NCE_MAX_HTTP_BODY_BYTES` | `int` | `10485760` (10 MB) | Maximum HTTP request body size enforced by `BoundedBodyMiddleware` across `admin_server`, `a2a_server`, and `mcp_http_gateway` (returns HTTP `413` on overflow). |
+| `NCE_SSRF_ALLOWLIST_HOSTS` | `str` | `""` | Comma-separated hostname allowlist permitted for outbound cognitive/webhook/bridge HTTP calls when targeting internal/loopback hosts. |
 | `WEBHOOK_RATE_LIMIT` | `int` | `120` | Maximum webhook requests allowed per IP within the webhook rate period (minimum `1`). |
 | `WEBHOOK_RATE_PERIOD_SECONDS` | `int` | `60` | Webhook rate limiting window in seconds (minimum `1`). |
 | `WEBHOOK_DEDUP_TTL_SECONDS` | `int` | `86400` | Redis TTL in seconds for webhook delivery deduplication keys (minimum `60`). |
@@ -435,7 +445,43 @@ SMTP sends via port 587 using STARTTLS (`aiosmtplib`). Host is configured progra
 | `NCE_AGREEMENTS_OCR_AUTOGREEN_THRESHOLD` | `int` | `90` | OCR confidence percentage at or above which extracted fields are auto-approved (range 1–100). |
 | `NCE_AGREEMENTS_OCR_REVIEW_THRESHOLD` | `int` | `70` | OCR confidence percentage below which fields are routed to manual review (range 1–100). |
 | `NCE_SYSTEM_DESIGN_RECALL_TOP_K` | `int` | `5` | Number of historical design/project memories recalled per design proposal call (minimum `1`). |
-| `NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED` | `bool` | `false` | When `true`, discounts proposal recall scores using margin and support-ticket pressure data from the project ledger. |
+| `NCE_SYSTEM_DESIGN_OUTCOME_WEIGHTING_ENABLED` | `bool` | `true` | When `true`, discounts proposal recall scores using margin and support-ticket pressure data from the project ledger. |
+| `NCE_INVENTORY_STOCK_WATCHER_INTERVAL_MINUTES` | `int` | `1440` | Interval in minutes between inventory stock watcher scans across namespaces (minimum `5`). |
+| `NCE_INVENTORY_DEAD_STOCK_DAYS` | `int` | `180` | Days of `inventory_transactions` inactivity before a positive-quantity item is flagged as dead stock (minimum `1`). |
+| `NCE_INVENTORY_LOW_STOCK_ALERT_ENABLED` | `bool` | `false` | Safety interlock for dispatching human-facing low-stock alerts from the inventory stock watcher. |
+| `NCE_ASSETS_ENABLED` | `bool` | `true` | Master activation switch for the Assets vertical module (`assets`). |
+| `NCE_ASSETS_WARRANTY_WARN_DAYS` | `int` | `30` | Days before warranty expiry at which the assets watcher raises a warning (minimum `1`). |
+| `NCE_ASSETS_EOL_WARN_DAYS` | `int` | `90` | Days before End-of-Life (EOL) at which the assets watcher raises a warning (minimum `1`). |
+| `NCE_ASSETS_WARRANTY_EOL_WATCHER_INTERVAL_MINUTES` | `int` | `1440` | Interval in minutes between asset warranty and EOL watcher scans (minimum `5`). |
+| `NCE_ASSETS_NETBOX_FUZZY_THRESHOLD` | `float` | `0.85` | Minimum `SequenceMatcher` ratio to accept a fuzzy device name match during NetBox asset reconciliation (minimum `0.5`). |
+| `NCE_FX_TTL_SECONDS` | `int` | `21600` (6h) | Cache TTL in seconds for Norges Bank FX exchange rate lookups (minimum `60`). |
+| `NCE_FX_TIMEOUT_SECONDS` | `float` | `10.0` | HTTP timeout in seconds for Norges Bank FX API requests (minimum `1.0`). |
+| `NCE_WEATHER_TTL_SECONDS` | `int` | `1800` (30m) | Cache TTL in seconds for MET Norway weather forecast lookups (minimum `60`). |
+| `NCE_WEATHER_TIMEOUT_SECONDS` | `float` | `8.0` | HTTP timeout in seconds for MET Norway weather API requests (minimum `1.0`). |
+| `NCE_SUPPORT_AUTONOMY_DISPATCH_CEILING` | `float` | `0.0` | Maximum estimated dispatch cost approved autonomously for field-tech dispatch without human confirmation (`0.0` requires confirmation for all dispatches). |
+| `NCE_SUPPORT_AUTONOMY_AUTOCLOSE_CONFIDENCE` | `float` | `0.95` | Minimum AI confidence required for autonomous support ticket auto-close without human confirmation. |
+| `NCE_HR_ENABLED` | `bool` | `true` | Master activation switch for the HR vertical module (`hr`). |
+| `NCE_HR_SIMPLOYER_URL` | `str` | `""` | Base URL for Simployer HR API integration. |
+| `NCE_HR_SIMPLOYER_TOKEN` | `str` | `""` | Bearer token for Simployer HR API (`NCE_HR_SIMPLOYER_TOKEN_FILE` supported via `secret_env`). |
+| `NCE_HR_CERT_EXPIRY_WARN_DAYS` | `int` | `90` | Days before certification expiry to trigger HR compliance warnings (minimum `1`). |
+| `NCE_HR_CAPACITY_HORIZON_DAYS` | `int` | `30` | Planning horizon in days for HR capacity and availability calculations (minimum `1`). |
+| `NCE_HR_SICK_LEAVE_PATTERN_THRESHOLD` | `int` | `3` | Objective absence frequency threshold for flagging operational capacity risk (minimum `1`). |
+| `NCE_HR_COACH_ENABLED` | `bool` | `true` | Enables private coaching memory isolation (`agent_id='hr_private_coach'`). |
+| `NCE_HR_SYNC_INTERVAL_MINUTES` | `int` | `60` | Interval in minutes between HR system synchronization ticks (minimum `1`). |
+| `NCE_HR_RANKING_DISABLED` | `bool` | `true` (hard-pinned) | EU AI Act Article 5 compliance interlock: hard-pinned `True` (employee ranking and emotion inference strictly prohibited). |
+| `NCE_RESOURCES_ENABLED` | `bool` | `true` | Master activation switch for the Staff & Resources vertical module (`resources`). |
+| `NCE_RESOURCES_AUTONOMY_ALLOCATION_CEILING` | `float` | `50000.0` | Maximum allocation value approved autonomously by the C2 governor for resource assignments (minimum `0.0`). |
+| `NCE_RESOURCES_CALENDAR_SYNC_ENABLED` | `bool` | `false` | Enables bidirectional calendar synchronization for resource booking. |
+| `NCE_RESOURCES_TRAVEL_PROVIDER` | `str` | `internal_plan` | Travel booking provider adapter identifier (`internal_plan`). |
+| `NCE_RESOURCES_TRAVEL_MAX_AUTO_SPEND` | `float` | `10000.0` | Maximum travel spend approved autonomously without human confirmation (minimum `0.0`). |
+| `NCE_BUSINESS_INSIGHTS_ENABLED` | `bool` | `false` | Master activation switch for the Business Insights vertical module (`business_insights`). |
+| `NCE_BUSINESS_INSIGHTS_BRIEF_CRON` | `str` | `0 7 * * 1-5` | Cron schedule expression for generating executive business briefs. |
+| `NCE_BUSINESS_INSIGHTS_KPI_SNAPSHOT_INTERVAL_MINUTES` | `int` | `60` | Interval in minutes between cross-domain KPI snapshot aggregations (minimum `5`). |
+| `NCE_BUSINESS_INSIGHTS_SCENARIO_MONTE_CARLO_ITERATIONS` | `int` | `1000` | Number of Monte Carlo simulation iterations for scenario modeling (minimum `10`). |
+| `NCE_BUSINESS_INSIGHTS_EXEC_ROLE` | `str` | `executive` | Role identifier required for full executive business insights access. |
+| `NCE_BUSINESS_INSIGHTS_BOARD_ROLE` | `str` | `board` | Role identifier for board-level read-only business insights access. |
+| `NCE_BUSINESS_INSIGHTS_BOARD_SCOPE_READONLY` | `bool` | `true` | Enforces read-only scope for board-role principals in Business Insights. |
+| `NCE_BUSINESS_INSIGHTS_THIRD_PARTY_EGRESS_ENABLED` | `bool` | `false` | Safety interlock controlling whether Business Insights payloads may egress to third-party LLM providers. |
 
 ### 19f. Chain Integrity Verification
 

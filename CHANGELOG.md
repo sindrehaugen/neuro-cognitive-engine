@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.5.2] - 2026-11-17
+
+### Performance
+- **Post-Burn-In Sub-50ms LLM-Loop Optimization (`nce/mcp_http_gateway.py`, `nce/plugins.py`, `nce/semantic_search.py`, `nce/orchestrator.py`):**
+  - Added `O(1)` cached gateway tool catalog (`_ALL_GATEWAY_TOOLS_CACHE`), tokenized keyword/BM25 ranking with `limit` cap in `discover_tools_handler()`, and `_compact_input_schema()` stripping redundant auth properties (`mcp_api_key`, `admin_api_key`) from compact schemas.
+  - Added bounded 30-second TTL verified-token cache (`_VERIFIED_TOKEN_CACHE`, `invalidate_verified_token_cache()`) eliminating per-request DB round-trips on active `/mcp` sessions.
+  - Added in-memory plugin descriptor & RLS table caches (`_DESCRIPTOR_CACHE`, `_TENANT_RLS_CACHE`, `_GLOBAL_TABLES_CACHE`) in `nce/plugins.py`, invalidated automatically on `load_plugins(force_reload=True)`.
+  - Added bounded `_SALIENCE_RING_BUFFER` (`maxlen=4096`) in `nce/semantic_search.py` coalescing concurrent read-side salience reinforcements into single `reinforce_batch` transactions, and enabled `statement_cache_size=256` on `asyncpg.create_pool`.
+  - Added `scripts/profile_llm_agent_loop.py` and `docs/benchmarks/PERF_REPORT_v3.5.2.md` certifying 10-agent concurrent 5-tool chained LLM reasoning loops at 100k rows.
+
+### Documentation & Tooling
+- **100% Configuration & Documentation Truth Parity (`README.md`, `.env.example`, `docs/configuration_reference.md`, `docs/plugin_development.md`, `scripts/check_docs_integrity.py`):**
+  - Documented all 209 `NCE_*` configuration variables across `.env.example` and `docs/configuration_reference.md` (`0` missing keys).
+  - Authored `docs/plugin_development.md` covering `NCEPlugin`, `PluginCapabilities`, namespace-prefixed migrations, and progressive `/mcp` `compact` routing.
+  - Added `scripts/check_docs_integrity.py` enforcing zero broken links, 100% `NCE_*` config parity, version/tool-count alignment, and strict brand-wall hygiene.
+
+---
+
 ## [3.5.1] - 2026-11-17
 
 ### Performance
