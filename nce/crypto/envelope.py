@@ -932,6 +932,9 @@ async def crypto_shred_subject(
     sorted_dek_ids = sorted(shredded_dek_ids)
 
     # Evict local cache and publish invalidations
+    from nce.envelope import clear_unwrapped_dek_cache
+
+    clear_unwrapped_dek_cache()
     for did in sorted_dek_ids:
         active_mgr.evict_local_cache(did)
 

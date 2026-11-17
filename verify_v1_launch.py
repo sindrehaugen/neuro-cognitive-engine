@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NCE v3.5.0 launch verification.
+NCE v3.5.1 launch verification.
 
 Checks (in order):
   1. Admin REST ``GET /api/health`` — Postgres, Mongo, Redis up (HMAC auth).

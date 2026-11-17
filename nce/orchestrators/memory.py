@@ -529,11 +529,12 @@ class MemoryOrchestrator(OrchestratorBase):
                     target_oid = inserted_result.inserted_id
                 else:
                     target_oid = inserted_mongo_id
+                rollback_timeout = 0.25 if inserted_result is None else 2.5
                 await asyncio.wait_for(
                     collection.delete_one(
                         {"_id": target_oid, "namespace_id": str(payload.namespace_id)}
                     ),
-                    timeout=5.0,
+                    timeout=rollback_timeout,
                 )
                 log.info("[ROLLBACK] Mongo doc %s removed.", inserted_mongo_id)
             except Exception as mongo_exc:
@@ -1799,6 +1800,9 @@ class MemoryOrchestrator(OrchestratorBase):
                 #    Carries refs + counts + key-id ONLY — never any content,
                 #    entity string, summary, or PII.  A content-free digest binds
                 #    the receipt to the destroyed artifacts without revealing them.
+                from nce.envelope import clear_unwrapped_dek_cache
+
+                clear_unwrapped_dek_cache()
                 shred_facts = {
                     "memory_id": str(mem_uuid),
                     "payload_ref": payload_ref or "",

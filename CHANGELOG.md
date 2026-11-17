@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.5.1] - 2026-11-17
+
+### Performance
+- **100k-Row Hot-Path Latency Optimization (`nce/envelope.py`, `nce/semantic_search.py`, `nce/embeddings.py`, `nce/db_utils.py`, `nce/graph_query.py`, `nce/working_memory.py`):**
+  - Added bounded TTL LRU cache (`_UNWRAPPED_DEK_CACHE`, `maxsize=512, ttl=300s`) with in-place `bytearray` zeroing on eviction/clear (`shred_memory`, `forget_memory`, `crypto_shred_subject`), eliminating the `~246 ms` per-call Argon2id KDF unwrap tax (`semantic_search` p50 `336.26 ms -> 24.46 ms`, `as_of` p50 `1231.25 ms -> 25.06 ms`, `compile_working_memory` p50 `651.32 ms -> 26.70 ms`, `graph_search` live p50 `108.73 ms -> 21.00 ms`).
+  - Fixed `::vector` -> `::halfvec(768)` cast alignment in `nce/semantic_search.py` and `nce/graph_query.py`, replaced `COALESCE(m.search_tsv, m.content_fts) @@ ...` sequential scan with direct `m.search_tsv @@ ...` `Bitmap Index Scan` (`13.57 ms -> 0.61 ms`), and rewrote `kg_edges` trigram `ILIKE` to use expression index `idx_kg_edges_combined_trgm` (`0.23 ms`).
+  - Added bounded TTL LRU query-embedding cache (`_embed_query_cache`) in `nce/embeddings.py` and combined `set_config` round-trips in `scoped_pg_session` (`nce/db_utils.py`).
+- **Migration `038` (`nce/migrations/038_v351_hotpath_rls_and_indexes.sql`, `nce/schema.sql`):** Marked `get_nce_namespace()`, `get_nce_external_scope()`, and `nce_decayed_score()` `STABLE PARALLEL SAFE`, wrapped RLS policy predicates in `(SELECT get_nce_namespace())` `InitPlan`, and added `idx_kg_edges_combined_trgm`, `idx_memories_ns_payload_ref_active`, `idx_memories_search_tsv_active`, and `idx_saga_log_recovery_needed`.
+- **Sub-3s Mongo Fail-Fast & Saga Concurrency (`nce/_client_factory.py`, `nce/orchestrators/memory.py`, `nce/cron.py`):** Tightened Motor default timeouts to `2000ms`, bounded inline rollback wait when `insert_one` times out (`10.1s -> 2.36s` failover to `state='recovery_needed'`), and added `FOR UPDATE SKIP LOCKED` to `_saga_recovery_tick` queries.
+
+### Fixed
+- **Schema Drift & Cross-Repo Migration Seam (`scripts/check_schema_drift.py`, `tests/unit/test_v351_hotpath_and_seam.py`):** Reconciled `check_schema_drift.py` table reporting (`33` `schema.sql` tables + `10` migration-created tables = `43` Core SQL tables) and verified disjoint ledger keys between Core `037`/`038` and plugin `nce_verticals:037_bom_line_priced.sql`.
+
+---
+
 ## [3.5.0] - 2026-11-17
 
 ### Security

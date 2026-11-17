@@ -316,8 +316,11 @@ async def test_bridge_handlers_require_namespace_and_use_scoped_session() -> Non
         raw = await bridge_mcp_handlers.list_bridges(engine, {"user_id": "u1"})
         assert json.loads(raw) == {"bridges": []}
         assert lf.call_args.kwargs["namespace_id"] == ns_uuid
-        conn.execute.assert_any_await(
-            "SELECT set_config('nce.namespace_id', $1, true)", str(ns_uuid)
+        assert any(
+            len(c.args) >= 2
+            and "set_config('nce.namespace_id', $1, true)" in str(c.args[0])
+            and c.args[1] == str(ns_uuid)
+            for c in conn.execute.await_args_list
         )
 
 
@@ -439,7 +442,7 @@ async def test_mcp_gateway_session_hardening_and_version(monkeypatch: pytest.Mon
 
         hz = client.get("/healthz")
         assert hz.status_code == 200
-        assert hz.json()["version"] == "3.5.0"
+        assert hz.json()["version"] == "3.5.1"
 
         # Invalid bearer returns generic Unauthorized
         r_bad = client.post(
@@ -450,14 +453,14 @@ async def test_mcp_gateway_session_hardening_and_version(monkeypatch: pytest.Mon
         assert r_bad.status_code == 401
         assert r_bad.json() == {"error": "Unauthorized"}
 
-        # Initialize returns 3.5.0 and binds session
+        # Initialize returns 3.5.1 and binds session
         r_init = client.post(
             "/mcp",
             headers={"Authorization": "Bearer nce_test_tok_s5"},
             json={"jsonrpc": "2.0", "id": 1, "method": "initialize"},
         )
         assert r_init.status_code == 200
-        assert r_init.json()["result"]["serverInfo"]["version"] == "3.5.0"
+        assert r_init.json()["result"]["serverInfo"]["version"] == "3.5.1"
         sid = r_init.headers["mcp-session-id"]
         assert _GATEWAY_SESSIONS[sid].token_sha256 == tok_sha
         assert _GATEWAY_SESSIONS[sid].expires_at > time.time()

@@ -62,10 +62,7 @@ async def _fetch_kg_neighborhood(
                 FROM kg_edges e
                 WHERE e.namespace_id = $1
                   AND ($2::timestamptz IS NULL OR e.created_at <= $2::timestamptz)
-                  AND (
-                      e.subject_label ILIKE '%' || $3 || '%'
-                      OR e.object_label ILIKE '%' || $3 || '%'
-                  )
+                  AND ((e.subject_label || ' ' || e.object_label) ILIKE '%' || $3 || '%')
                 UNION ALL
                 SELECT 
                     next_e.id,

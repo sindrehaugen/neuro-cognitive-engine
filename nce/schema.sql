@@ -192,6 +192,10 @@ CREATE INDEX IF NOT EXISTS idx_memories_derived_from_gin
 CREATE INDEX IF NOT EXISTS idx_memories_ns_agent_recent
     ON memories (namespace_id, agent_id, created_at DESC)
     WHERE valid_to IS NULL AND memory_type = 'episodic';
+CREATE INDEX IF NOT EXISTS idx_memories_ns_payload_ref_active
+    ON memories (namespace_id, payload_ref) WHERE valid_to IS NULL;
+CREATE INDEX IF NOT EXISTS idx_memories_search_tsv_active
+    ON memories USING GIN (search_tsv) WHERE valid_to IS NULL;
 
 -- payload_ref CHECK constraint — enforce MongoDB ObjectId hex format (24 hex chars)
 DO $$
@@ -403,6 +407,9 @@ CREATE INDEX IF NOT EXISTS idx_kg_edges_subj_trgm
     ON kg_edges USING GIN (subject_label gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_kg_edges_obj_trgm
     ON kg_edges USING GIN (object_label gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_combined_trgm
+    ON kg_edges USING GIN (((subject_label || ' ' || object_label)) gin_trgm_ops)
+    WHERE payload_ref IS NOT NULL;
 
 -- --- Phase 0.3: PII Redactions Vault ---
 CREATE TABLE IF NOT EXISTS pii_redactions (
@@ -722,7 +729,7 @@ BEGIN
             RAISE EXCEPTION 'nce.namespace_id is not a valid UUID: %', val;
     END;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 -- C3 external-principal scope accessor (migration 028).
 -- Returns the nil UUID (deny-sentinel) when nce.external_scope_id is unset/empty,
@@ -744,7 +751,7 @@ BEGIN
             RETURN '00000000-0000-0000-0000-000000000000'::uuid;
     END;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 COMMENT ON FUNCTION get_nce_external_scope() IS
 'C3 external-principal RLS accessor. Returns session external_scope_id or nil-UUID
@@ -758,12 +765,12 @@ DROP POLICY IF EXISTS tenant_isolation_policy ON replay_runs;
 CREATE POLICY tenant_isolation_policy ON replay_runs
     FOR ALL TO nce_app
     USING (
-        (source_namespace_id IS NOT NULL AND source_namespace_id = get_nce_namespace())
-        OR (target_namespace_id IS NOT NULL AND target_namespace_id = get_nce_namespace())
+        (source_namespace_id IS NOT NULL AND source_namespace_id = (SELECT get_nce_namespace()))
+        OR (target_namespace_id IS NOT NULL AND target_namespace_id = (SELECT get_nce_namespace()))
     )
     WITH CHECK (
         source_namespace_id IS NOT NULL
-        AND source_namespace_id = get_nce_namespace()
+        AND source_namespace_id = (SELECT get_nce_namespace())
     );
 
 
@@ -906,7 +913,7 @@ BEGIN
     exponent := LEAST(decay_constant * delta_t, MAX_EXP);
     RETURN s_last * EXP(-exponent);
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 DO $$
 BEGIN
@@ -1195,8 +1202,8 @@ DROP POLICY IF EXISTS namespace_isolation_policy ON outbox_events;
 DROP POLICY IF EXISTS tenant_isolation_policy ON outbox_events;
 CREATE POLICY tenant_isolation_policy ON outbox_events
     FOR ALL TO nce_app
-    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
-    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+    USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()));
 
 DO $$
 BEGIN
@@ -1246,6 +1253,10 @@ CREATE INDEX IF NOT EXISTS idx_saga_state_created
     ON saga_execution_log (state, created_at)
     WHERE state IN ('started', 'pg_committed', 'recovery_needed');
 
+CREATE INDEX IF NOT EXISTS idx_saga_log_recovery_needed
+    ON saga_execution_log (created_at)
+    WHERE state = 'recovery_needed';
+
 -- Cascade-target lookup for namespace deletion. See migration 062.
 CREATE INDEX IF NOT EXISTS idx_saga_execution_log_namespace_id
     ON saga_execution_log (namespace_id);
@@ -1257,8 +1268,8 @@ DROP POLICY IF EXISTS namespace_isolation_policy ON saga_execution_log;
 DROP POLICY IF EXISTS tenant_isolation_policy ON saga_execution_log;
 CREATE POLICY tenant_isolation_policy ON saga_execution_log
     FOR ALL TO nce_app
-    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
-    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+    USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()));
 
 DO $$
 BEGIN
@@ -1395,7 +1406,7 @@ ALTER TABLE topology_graph ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS topology_graph_tenant_isolation ON topology_graph;
 CREATE POLICY topology_graph_tenant_isolation ON topology_graph
     FOR ALL
-    USING (namespace_id = get_nce_namespace());
+    USING (namespace_id = (SELECT get_nce_namespace()));
 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON topology_graph TO nce_gc;
 
@@ -1474,13 +1485,13 @@ ALTER TABLE procedural_heuristics FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation_policy ON procedural_heuristics;
 CREATE POLICY tenant_isolation_policy ON procedural_heuristics
     FOR ALL TO nce_app
-    USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())
-    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace());
+    USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()));
 GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_gc;
 
 -- --- Row Level Security (Phase 0.1 Hardening) ---
--- Applied after all tenant tables exist. Policies use get_nce_namespace() (fail-fast).
+-- Applied after all tenant tables exist. Policies use (SELECT get_nce_namespace()) (fail-fast + InitPlan).
 -- kg_node_embeddings remain global (no namespace_id). kg_nodes/kg_edges are tenant-scoped.
 
 -- Backfill nullable namespace_id on tables that gained the column after first deploy.
@@ -1540,8 +1551,8 @@ BEGIN
         EXECUTE format(
             'CREATE POLICY tenant_isolation_policy ON public.%I '
             'FOR ALL TO nce_app '
-            'USING (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace()) '
-            'WITH CHECK (namespace_id IS NOT NULL AND namespace_id = get_nce_namespace())',
+            'USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace())) '
+            'WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))',
             t
         );
         EXECUTE format('REVOKE ALL ON TABLE public.%I FROM nce_app', t);
@@ -1567,10 +1578,10 @@ DROP POLICY IF EXISTS tenant_isolation_policy ON a2a_grants;
 CREATE POLICY tenant_isolation_policy ON a2a_grants
     FOR ALL TO nce_app
     USING (
-        owner_namespace_id = get_nce_namespace()
-        OR target_namespace_id = get_nce_namespace()
+        owner_namespace_id = (SELECT get_nce_namespace())
+        OR target_namespace_id = (SELECT get_nce_namespace())
     )
-    WITH CHECK (owner_namespace_id = get_nce_namespace());
+    WITH CHECK (owner_namespace_id = (SELECT get_nce_namespace()));
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE a2a_grants TO nce_app;
 
 -- =============================================================================

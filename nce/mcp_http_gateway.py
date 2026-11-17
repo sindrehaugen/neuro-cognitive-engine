@@ -929,7 +929,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
             {
                 "status": "ok",
                 "service": "mcp-gateway",
-                "version": "3.5.0",
+                "version": "3.5.1",
             }
         )
 
@@ -1096,7 +1096,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     },
                     "serverInfo": {
                         "name": "nce-memory-gateway",
-                        "version": "3.5.0",
+                        "version": "3.5.1",
                     },
                 },
             }

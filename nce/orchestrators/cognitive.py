@@ -126,6 +126,9 @@ class CognitiveOrchestrator(OrchestratorBase):
                     params={"memory_id": memory_id},
                     result_summary={"status": "success"},
                 )
+        from nce.envelope import clear_unwrapped_dek_cache
+
+        clear_unwrapped_dek_cache()
         return {"status": "success", "forgotten": True}
 
     # ------------------------------------------------------------------

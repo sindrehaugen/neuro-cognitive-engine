@@ -50,8 +50,8 @@ def test_client_factory_redis_motor_minio_defaults() -> None:
     kw = motor_timeout_kwargs(serverSelectionTimeoutMS=2000)
     assert kw == {
         "serverSelectionTimeoutMS": 2000,
-        "connectTimeoutMS": 5000,
-        "socketTimeoutMS": 5000,
+        "connectTimeoutMS": 2000,
+        "socketTimeoutMS": 2000,
     }
 
     fake_minio_cls = MagicMock()

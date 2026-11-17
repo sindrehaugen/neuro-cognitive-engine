@@ -205,6 +205,10 @@ CREATE INDEX IF NOT EXISTS idx_memories_derived_from_gin
 CREATE INDEX IF NOT EXISTS idx_memories_ns_agent_recent
     ON memories (namespace_id, agent_id, created_at DESC)
     WHERE valid_to IS NULL AND memory_type = 'episodic';
+CREATE INDEX IF NOT EXISTS idx_memories_ns_payload_ref_active
+    ON memories (namespace_id, payload_ref) WHERE valid_to IS NULL;
+CREATE INDEX IF NOT EXISTS idx_memories_search_tsv_active
+    ON memories USING GIN (search_tsv) WHERE valid_to IS NULL;
 
 -- payload_ref CHECK constraint — enforce MongoDB ObjectId hex format (24 hex chars)
 DO $$
@@ -400,6 +404,9 @@ CREATE INDEX IF NOT EXISTS idx_kg_edges_subj_trgm
     ON kg_edges USING GIN (subject_label gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_kg_edges_obj_trgm
     ON kg_edges USING GIN (object_label gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_combined_trgm
+    ON kg_edges USING GIN (((subject_label || ' ' || object_label)) gin_trgm_ops)
+    WHERE payload_ref IS NOT NULL;
 
 -- --- Phase 0.3: PII Redactions Vault ---
 CREATE TABLE IF NOT EXISTS pii_redactions (
@@ -719,7 +726,7 @@ BEGIN
             RAISE EXCEPTION 'nce.namespace_id is not a valid UUID: %', val;
     END;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 -- C3 external-principal scope accessor (migration 028).
 -- Returns the nil UUID (deny-sentinel) when nce.external_scope_id is unset/empty,
@@ -741,7 +748,7 @@ BEGIN
             RETURN '00000000-0000-0000-0000-000000000000'::uuid;
     END;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 
 CREATE INDEX IF NOT EXISTS idx_event_log_ns_time ON event_log (namespace_id, occurred_at);
@@ -871,7 +878,7 @@ BEGIN
     exponent := LEAST(decay_constant * delta_t, MAX_EXP);
     RETURN s_last * EXP(-exponent);
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION acquire_event_log_worm_lock(p_namespace_id UUID)
 RETURNS void
@@ -1170,6 +1177,10 @@ CREATE INDEX IF NOT EXISTS idx_saga_state_created
     ON saga_execution_log (state, created_at)
     WHERE state IN ('started', 'pg_committed', 'recovery_needed');
 
+CREATE INDEX IF NOT EXISTS idx_saga_log_recovery_needed
+    ON saga_execution_log (created_at)
+    WHERE state = 'recovery_needed';
+
 -- Cascade-target lookup for namespace deletion. See migration 062.
 CREATE INDEX IF NOT EXISTS idx_saga_execution_log_namespace_id
     ON saga_execution_log (namespace_id);
@@ -1352,7 +1363,7 @@ END;
 $$;
 
 -- --- Row Level Security (Phase 0.1 Hardening) ---
--- Applied after all tenant tables exist. Policies use get_nce_namespace() (fail-fast).
+-- Applied after all tenant tables exist. Policies use (SELECT get_nce_namespace()) (fail-fast + InitPlan).
 -- kg_node_embeddings remain global (no namespace_id). kg_nodes/kg_edges are tenant-scoped.
 
 -- Backfill nullable namespace_id on tables that gained the column after first deploy.
