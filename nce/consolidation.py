@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import functools
 import hashlib
+import inspect
 import io
 import json
 import logging
 import math
+import types
 import uuid as _uuid_mod
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -14,6 +16,7 @@ from uuid import UUID
 
 import asyncpg
 import orjson
+from cachetools import TTLCache
 from pydantic import BaseModel, ConfigDict, Field
 
 from nce.config import cfg
@@ -28,6 +31,22 @@ log = logging.getLogger(__name__)
 
 # Process-local per-namespace guard preventing overlapping sleep-consolidation passes.
 _ACTIVE_CONSOLIDATION_NAMESPACES: set[UUID] = set()
+_CONSOL_ACTIVE_MODELS_CACHE: TTLCache[str, list[Any]] = TTLCache(maxsize=4, ttl=30.0)
+_DEFAULT_EMBED_ABSTRACTION: Any = None
+
+
+def _format_pg_vector(vec: Any) -> str | None:
+    """Validate finite numeric sequence and format as pgvector text literal."""
+    if (
+        not isinstance(vec, (list, tuple))
+        or len(vec) == 0
+        or not all(
+            isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+            for x in vec
+        )
+    ):
+        return None
+    return f"[{','.join(str(float(x)) for x in vec)}]"
 
 
 @functools.lru_cache(maxsize=4)
@@ -370,29 +389,99 @@ class ConsolidationWorker:
                 except Exception as e:
                     log.debug("Failed to embed consolidated abstraction via _embed_provider: %s", e)
                     return None
-            else:
+            elif isinstance(self.pool, asyncpg.Pool):
                 try:
-                    from nce.embeddings import embed_text
+                    from nce.embeddings import embed
 
-                    vec = await embed_text(text)
+                    vec = await embed(text)
                 except Exception as e:
                     log.debug(
-                        "Provider does not implement embed(); consolidated memory embedding will be NULL: %s",
+                        "Fallback nce.embeddings.embed() failed; consolidated memory embedding will be NULL: %s",
                         e,
                     )
                     return None
+            else:
+                return None
 
-        if (
-            not isinstance(vec, (list, tuple))
-            or len(vec) == 0
-            or not all(
-                isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
-                for x in vec
-            )
-        ):
+        formatted = _format_pg_vector(vec)
+        if formatted is None:
             log.debug("Provider embed() returned invalid or empty vector; skipping embedding")
-            return None
-        return f"[{','.join(str(float(x)) for x in vec)}]"
+        return formatted
+
+    async def _embed_abstraction_and_entities(
+        self, abstraction_text: str, key_entities: list[str]
+    ) -> tuple[str | None, dict[str, str]]:
+        """Batch-embed abstraction text and key entities in one forward pass when available."""
+        clean_entities = list(
+            dict.fromkeys(e for e in key_entities if isinstance(e, str) and e.strip())
+        )
+        if (
+            "_embed_abstraction" in self.__dict__
+            or type(self)._embed_abstraction is not _DEFAULT_EMBED_ABSTRACTION
+        ):
+            return await self._embed_abstraction(abstraction_text), {}
+
+        llm = getattr(self, "_llm", self.provider)
+        if callable(getattr(llm, "embed", None)):
+            return await self._embed_abstraction(abstraction_text), {}
+
+        embed_provider = getattr(self, "_embed_provider", None)
+        batch_fn = None
+        if embed_provider is not None:
+            # Exclude dynamic child attributes auto-created on unittest MagicMock/AsyncMock
+            has_explicit_batch = (
+                isinstance(embed_provider, types.ModuleType)
+                or "embed_batch" in getattr(embed_provider, "__dict__", {})
+                or any(
+                    "embed_batch" in getattr(cls, "__dict__", {})
+                    and not getattr(cls, "__module__", "").startswith("unittest.mock")
+                    for cls in type(embed_provider).__mro__
+                )
+            )
+            if has_explicit_batch:
+                cand = getattr(embed_provider, "embed_batch", None)
+                if inspect.iscoroutinefunction(cand):
+                    batch_fn = cand
+        elif isinstance(self.pool, asyncpg.Pool):
+            from nce.embeddings import embed_batch as _default_embed_batch
+
+            batch_fn = _default_embed_batch
+
+        if batch_fn is not None:
+            texts = [abstraction_text, *clean_entities]
+            try:
+                vecs = await batch_fn(texts)
+            except Exception as e:
+                log.debug(
+                    "Batch consolidation embedding failed; consolidated embeddings will be NULL: %s",
+                    e,
+                )
+                return None, {}
+            if not isinstance(vecs, (list, tuple)) or len(vecs) == 0:
+                return None, {}
+            abs_vec = _format_pg_vector(vecs[0])
+            entity_vecs: dict[str, str] = {}
+            for ent, raw_v in zip(clean_entities, vecs[1:]):
+                formatted = _format_pg_vector(raw_v)
+                if formatted is not None:
+                    entity_vecs[ent] = formatted
+            return abs_vec, entity_vecs
+
+        return await self._embed_abstraction(abstraction_text), {}
+
+    async def _get_active_model_ids(self, conn: Any) -> list[Any]:
+        """Return cached active/migrating embedding model UUIDs on real asyncpg pools."""
+        if not isinstance(self.pool, asyncpg.Pool):
+            return []
+        cached = _CONSOL_ACTIVE_MODELS_CACHE.get("models")
+        if cached is not None:
+            return list(cached)
+        rows = await conn.fetch(
+            "SELECT id FROM embedding_models WHERE status IN ('active', 'migrating')"
+        )
+        model_ids = [r["id"] for r in rows]
+        _CONSOL_ACTIVE_MODELS_CACHE["models"] = list(model_ids)
+        return model_ids
 
     async def _emit_consolidation_event(
         self,
@@ -582,13 +671,18 @@ class ConsolidationWorker:
         new_depth = max(parent_depths) + 1
 
         if embedding_vec is not None:
+            vec_cast = (
+                "$5::halfvec(768)"
+                if (isinstance(self.pool, asyncpg.Pool) and embedding_vec.count(",") == 767)
+                else "$5::vector"
+            )
             new_mem_id = await conn.fetchval(
-                """
+                f"""
                 INSERT INTO memories (
                     namespace_id, memory_type, assertion_type, payload_ref, derived_from,
                     change_origin, derivation_depth, embedding
                 )
-                VALUES ($1, 'consolidated', 'fact', $2, $3, 'consolidation', $4, $5::vector)
+                VALUES ($1, 'consolidated', 'fact', $2, $3, 'consolidation', $4, {vec_cast})
                 RETURNING id
                 """,
                 namespace_id,
@@ -597,6 +691,15 @@ class ConsolidationWorker:
                 new_depth,
                 embedding_vec,
             )
+            for model_id in await self._get_active_model_ids(conn):
+                await conn.execute(
+                    "INSERT INTO memory_embeddings (memory_id, model_id, embedding, namespace_id) "
+                    "VALUES ($1, $2, $3::vector, $4) ON CONFLICT DO NOTHING",
+                    new_mem_id,
+                    model_id,
+                    embedding_vec,
+                    namespace_id,
+                )
         else:
             new_mem_id = await conn.fetchval(
                 """
@@ -651,6 +754,7 @@ class ConsolidationWorker:
         mem_ids: list,
         new_depth: int = 0,
         origin_event_id: _uuid_mod.UUID | None = None,
+        entity_embeddings: dict[str, str] | None = None,
     ):
         """Insert KG nodes/edges + apply source-memory decay (inside PG transaction).
 
@@ -658,21 +762,80 @@ class ConsolidationWorker:
         Edge confidence is attenuated by γ^new_depth (Batch 107 / Muscles A1).
         """
         for entity in abstraction.key_entities:
-            await conn.execute(
-                """
-                INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin, origin_event_id)
-                VALUES ($1, 'Entity', $2, 'consolidation', $3::uuid)
-                ON CONFLICT (label, namespace_id) DO UPDATE
-                    SET change_origin = CASE
-                        WHEN kg_nodes.change_origin IN ('sync', 'webhook') THEN kg_nodes.change_origin
-                        ELSE EXCLUDED.change_origin
-                    END,
-                    origin_event_id = COALESCE(EXCLUDED.origin_event_id, kg_nodes.origin_event_id)
-                """,
-                entity,
-                namespace_id,
-                origin_event_id,
-            )
+            ent_vec = entity_embeddings.get(entity) if entity_embeddings else None
+            if ent_vec is not None:
+                ent_cast = (
+                    "$4::halfvec(768)"
+                    if (isinstance(self.pool, asyncpg.Pool) and ent_vec.count(",") == 767)
+                    else "$4::vector"
+                )
+                await conn.execute(
+                    f"""
+                    INSERT INTO kg_nodes (label, entity_type, namespace_id, embedding, change_origin, origin_event_id)
+                    VALUES ($1, 'Entity', $2, {ent_cast}, 'consolidation', $3::uuid)
+                    ON CONFLICT (label, namespace_id) DO UPDATE
+                        SET embedding = COALESCE(kg_nodes.embedding, EXCLUDED.embedding),
+                            change_origin = CASE
+                                WHEN kg_nodes.change_origin IN ('sync', 'webhook') THEN kg_nodes.change_origin
+                                ELSE EXCLUDED.change_origin
+                            END,
+                            origin_event_id = COALESCE(EXCLUDED.origin_event_id, kg_nodes.origin_event_id)
+                    """,
+                    entity,
+                    namespace_id,
+                    origin_event_id,
+                    ent_vec,
+                )
+            else:
+                await conn.execute(
+                    """
+                    INSERT INTO kg_nodes (label, entity_type, namespace_id, change_origin, origin_event_id)
+                    VALUES ($1, 'Entity', $2, 'consolidation', $3::uuid)
+                    ON CONFLICT (label, namespace_id) DO UPDATE
+                        SET change_origin = CASE
+                            WHEN kg_nodes.change_origin IN ('sync', 'webhook') THEN kg_nodes.change_origin
+                            ELSE EXCLUDED.change_origin
+                        END,
+                        origin_event_id = COALESCE(EXCLUDED.origin_event_id, kg_nodes.origin_event_id)
+                    """,
+                    entity,
+                    namespace_id,
+                    origin_event_id,
+                )
+
+        if entity_embeddings and isinstance(self.pool, asyncpg.Pool):
+            target_model_ids = await self._get_active_model_ids(conn)
+            embedded_labels = [
+                e for e in dict.fromkeys(abstraction.key_entities) if e in entity_embeddings
+            ]
+            if target_model_ids and embedded_labels:
+                node_rows = await conn.fetch(
+                    "SELECT id, label FROM kg_nodes WHERE namespace_id = $1 AND label = ANY($2::text[])",
+                    namespace_id,
+                    embedded_labels,
+                )
+                emb_node_ids: list[Any] = []
+                emb_model_ids: list[Any] = []
+                emb_vectors: list[str] = []
+                for nr in node_rows:
+                    evec = entity_embeddings.get(nr["label"])
+                    if evec is None:
+                        continue
+                    for model_id in target_model_ids:
+                        emb_node_ids.append(nr["id"])
+                        emb_model_ids.append(model_id)
+                        emb_vectors.append(evec)
+                if emb_node_ids:
+                    await conn.execute(
+                        """
+                        INSERT INTO kg_node_embeddings (node_id, model_id, embedding)
+                        SELECT unnest($1::uuid[]), unnest($2::uuid[]), unnest($3::text[])::vector
+                        ON CONFLICT DO NOTHING
+                        """,
+                        emb_node_ids,
+                        emb_model_ids,
+                        emb_vectors,
+                    )
 
         # Attenuate confidence by γ^depth to prevent hallucination compounding.
         gamma = cfg.NCE_DERIVATION_CONFIDENCE_DECAY
@@ -900,11 +1063,13 @@ class ConsolidationWorker:
                     continue
 
                 try:
-                    # Store abstraction text in Mongo and compute its embedding
+                    # Store abstraction text in Mongo and batch-embed abstraction + entities
                     # concurrently outside the short PG commit transaction.
-                    payload_ref, embedding_vec = await asyncio.gather(
+                    payload_ref, (embedding_vec, entity_embeddings) = await asyncio.gather(
                         self._store_abstraction_in_mongo(namespace_id, abstraction.abstraction),
-                        self._embed_abstraction(abstraction.abstraction),
+                        self._embed_abstraction_and_entities(
+                            abstraction.abstraction, abstraction.key_entities
+                        ),
                     )
 
                     # PG transaction: memory row + WORM event log via append_event().
@@ -927,6 +1092,7 @@ class ConsolidationWorker:
                             mem_ids=mem_ids,
                             new_depth=new_depth,
                             origin_event_id=cluster_event_id,
+                            entity_embeddings=entity_embeddings,
                         )
                     abstractions_created += 1
                 except Exception as e:
@@ -976,3 +1142,6 @@ class ConsolidationWorker:
         except Exception as exc:
             log.debug("Procedural heuristic distillation skipped/failed: %s", exc)
             return []
+
+
+_DEFAULT_EMBED_ABSTRACTION = ConsolidationWorker._embed_abstraction

@@ -105,6 +105,7 @@ async def _consolidation_tick(pool: asyncpg.Pool, mongo_client: Any | None = Non
         log.debug("Skipping sleep_consolidation — lock held by another instance")
         return
     try:
+        from nce import embeddings as _embeddings
         from nce.consolidation import ConsolidationWorker
         from nce.providers import get_provider
 
@@ -125,7 +126,12 @@ async def _consolidation_tick(pool: asyncpg.Pool, mongo_client: Any | None = Non
                 meta = json.loads(raw_meta)
             try:
                 provider = get_provider(meta or {})
-                worker = ConsolidationWorker(pool, provider, mongo_client=mongo_client)
+                worker = ConsolidationWorker(
+                    pool,
+                    provider,
+                    mongo_client=mongo_client,
+                    embed_provider=_embeddings,
+                )
                 await worker.run_consolidation(ns_id)
                 log.info("consolidation tick completed for namespace %s", ns_id)
             except _CRON_TICK_ERRORS as exc:

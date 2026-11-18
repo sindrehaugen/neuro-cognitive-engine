@@ -163,6 +163,7 @@ class TemporalOrchestrator(OrchestratorBase):
         self, namespace_id: str, since_timestamp: datetime | None = None
     ):
         """[Phase 1.2] Trigger a sleep-consolidation run."""
+        from nce import embeddings as _embeddings
         from nce.consolidation import ConsolidationWorker
         from nce.providers import get_provider
 
@@ -179,6 +180,7 @@ class TemporalOrchestrator(OrchestratorBase):
             self.pg_pool,
             provider,
             mongo_client=self.mongo_client,
+            embed_provider=_embeddings,
         )
 
         create_tracked_task(

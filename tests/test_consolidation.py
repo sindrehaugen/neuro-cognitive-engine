@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -311,3 +312,173 @@ def test_consolidation_records_pending_contradictions():
         assert entry["cluster_label"] == 0
 
     asyncio.run(_run())
+
+
+def test_consolidation_cron_and_temporal_wire_embeddings_di(monkeypatch: pytest.MonkeyPatch):
+    """Both cron sleep_consolidation and TemporalOrchestrator pass embed_provider=nce.embeddings."""
+    from nce import embeddings as _embeddings
+    from nce.cron import _consolidation_tick
+    from nce.orchestrators.temporal import TemporalOrchestrator
+
+    ns = uuid4()
+    seen_calls: list[dict[str, Any]] = []
+
+    class _RecordingWorker:
+        def __init__(self, pool, provider, **kwargs: Any) -> None:
+            seen_calls.append({"pool": pool, "provider": provider, "kwargs": kwargs})
+
+        async def run_consolidation(self, _ns: UUID, **_kwargs: Any) -> None:
+            return None
+
+    cron_conn = MagicMock()
+    cron_conn.fetch = AsyncMock(
+        return_value=[{"id": ns, "metadata": {"consolidation": {"enabled": True}}}]
+    )
+
+    @asynccontextmanager
+    async def _fake_unmanaged(_pool: Any, **_kwargs: Any):
+        yield cron_conn
+
+    temporal_conn = MagicMock()
+    temporal_conn.fetchrow = AsyncMock(return_value={"metadata": json.dumps({"consolidation": {}})})
+
+    @asynccontextmanager
+    async def _fake_acquire(**_kwargs: Any):
+        yield temporal_conn
+
+    temporal_pool = MagicMock()
+    temporal_pool.acquire = _fake_acquire
+
+    async def _run() -> None:
+        with (
+            patch("nce.cron.acquire_cron_lock", AsyncMock(return_value=MagicMock())),
+            patch("nce.cron.release_cron_lock", AsyncMock()),
+            patch("nce.cron.unmanaged_pg_connection", _fake_unmanaged),
+            patch("nce.providers.get_provider", return_value=MagicMock()),
+            patch("nce.consolidation.ConsolidationWorker", _RecordingWorker),
+            patch("nce.orchestrators.temporal.create_tracked_task") as mock_track,
+        ):
+            await _consolidation_tick(MagicMock(), mongo_client=MagicMock())
+            orch = TemporalOrchestrator(temporal_pool, MagicMock(), semantic_search_fn=AsyncMock())
+            await orch.trigger_consolidation(str(ns))
+            assert mock_track.call_count == 1
+            coro = mock_track.call_args.args[0]
+            if asyncio.iscoroutine(coro):
+                coro.close()
+
+    asyncio.run(_run())
+
+    assert len(seen_calls) == 2
+    assert seen_calls[0]["kwargs"].get("embed_provider") is _embeddings
+    assert seen_calls[1]["kwargs"].get("embed_provider") is _embeddings
+
+
+def test_consolidation_batch_embeds_abstraction_and_entities_with_coalesce_update(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Explicit embed_provider.embed_batch embeds abstraction + entities in one pass."""
+    ns = uuid4()
+    mid_a, mid_b = uuid4(), uuid4()
+    rows = [
+        {"id": mid_a, "payload_ref": "ref-a", "embedding": json.dumps([0.1, 0.2, 0.3])},
+        {"id": mid_b, "payload_ref": "ref-b", "embedding": json.dumps([0.1, 0.2, 0.3])},
+    ]
+    _patch_clustering_and_events(monkeypatch, rows)
+
+    conn = _FakeConn(namespace_id=ns, memory_rows=rows)
+    provider = _StubProvider(_sample_abstraction([mid_a, mid_b]), embed_fn=None)
+    batch_mock = AsyncMock(return_value=[[0.1, 0.2, 0.3], [0.7, 0.8, 0.9]])
+    batch_provider = MagicMock()
+    batch_provider.embed_batch = batch_mock
+
+    async def _run() -> None:
+        worker = ConsolidationWorker(
+            _FakePool(conn),  # type: ignore[arg-type]
+            provider,
+            embed_provider=batch_provider,
+        )
+        await worker.run_consolidation(ns)
+
+    asyncio.run(_run())
+
+    batch_mock.assert_awaited_once_with(["Synthesized semantic fact.", "NodeA"])
+    assert len(conn.memory_inserts) == 1
+    assert conn.memory_inserts[0][1][4] == "[0.1,0.2,0.3]"
+
+    kg_inserts = [e for e in conn.executes if "insert into kg_nodes" in e[0].lower()]
+    assert len(kg_inserts) == 1
+    sql_kg, args_kg = kg_inserts[0]
+    assert "COALESCE(kg_nodes.embedding, EXCLUDED.embedding)" in sql_kg
+    assert args_kg[0] == "NodeA"
+    assert args_kg[3] == "[0.7,0.8,0.9]"
+
+
+def test_consolidation_real_pool_fallback_halfvec_and_dual_write(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """On real asyncpg.Pool, falls back to nce.embeddings, casts halfvec(768), and dual-writes active models."""
+    import asyncpg
+
+    from nce import embeddings as _embeddings
+    from nce.consolidation import _CONSOL_ACTIVE_MODELS_CACHE
+
+    _CONSOL_ACTIVE_MODELS_CACHE.clear()
+    ns = uuid4()
+    mid_a, mid_b = uuid4(), uuid4()
+    model_id = uuid4()
+    node_id = uuid4()
+    vec768 = [0.001] * 768
+    rows = [
+        {"id": mid_a, "payload_ref": "ref-a", "embedding": json.dumps(vec768)},
+        {"id": mid_b, "payload_ref": "ref-b", "embedding": json.dumps(vec768)},
+    ]
+    _patch_clustering_and_events(monkeypatch, rows)
+
+    class _RealPoolConn(_FakeConn):
+        async def fetch(self, query: str, *args: Any) -> list:
+            q = query.lower()
+            if "from embedding_models" in q:
+                return [{"id": model_id}]
+            if "from kg_nodes" in q and "any(" in q:
+                return [{"id": node_id, "label": "NodeA"}]
+            return await super().fetch(query, *args)
+
+    conn = _RealPoolConn(namespace_id=ns, memory_rows=rows)
+    provider = _StubProvider(_sample_abstraction([mid_a, mid_b]), embed_fn=None)
+
+    monkeypatch.setattr(asyncpg, "Pool", _FakePool)
+    single_mock = AsyncMock(return_value=vec768)
+    batch_mock = AsyncMock(return_value=[vec768, vec768])
+
+    async def _run() -> None:
+        with (
+            patch.object(_embeddings, "embed", single_mock),
+            patch.object(_embeddings, "embed_batch", batch_mock),
+        ):
+            worker = ConsolidationWorker(_FakePool(conn), provider)  # type: ignore[arg-type]
+            single_vec = await worker._embed_abstraction("single text")
+            assert single_vec is not None and single_vec.count(",") == 767
+            await worker.run_consolidation(ns)
+
+    try:
+        asyncio.run(_run())
+    finally:
+        _CONSOL_ACTIVE_MODELS_CACHE.clear()
+
+    single_mock.assert_awaited_once_with("single text")
+    batch_mock.assert_awaited_once_with(["Synthesized semantic fact.", "NodeA"])
+
+    assert "$5::halfvec(768)" in conn.memory_inserts[0][0]
+    kg_sqls = [e[0] for e in conn.executes if "insert into kg_nodes " in e[0].lower()]
+    assert len(kg_sqls) == 1
+    assert "$4::halfvec(768)" in kg_sqls[0]
+
+    mem_emb_execs = [e for e in conn.executes if "insert into memory_embeddings" in e[0].lower()]
+    assert len(mem_emb_execs) == 1
+    assert mem_emb_execs[0][1][1] == model_id
+
+    kg_emb_execs = [e for e in conn.executes if "insert into kg_node_embeddings" in e[0].lower()]
+    assert len(kg_emb_execs) == 1
+    assert "namespace_id" not in kg_emb_execs[0][0].lower()
+    assert kg_emb_execs[0][1][0] == [node_id]
+    assert kg_emb_execs[0][1][1] == [model_id]
