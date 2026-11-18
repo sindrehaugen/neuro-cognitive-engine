@@ -479,6 +479,7 @@ def test_consolidation_real_pool_fallback_halfvec_and_dual_write(
 
     kg_emb_execs = [e for e in conn.executes if "insert into kg_node_embeddings" in e[0].lower()]
     assert len(kg_emb_execs) == 1
-    assert "namespace_id" not in kg_emb_execs[0][0].lower()
+    assert "namespace_id" in kg_emb_execs[0][0].lower()
     assert kg_emb_execs[0][1][0] == [node_id]
     assert kg_emb_execs[0][1][1] == [model_id]
+    assert kg_emb_execs[0][1][3] == ns

@@ -1,9 +1,9 @@
 """Unit regression tests for v3.4.3 Pure-Core RLS decoupling & namespace plugin hooks.
 
-Covers Wave 1 Items #1 and #9:
-  1. ``EXPECTED_TENANT_RLS_TABLES`` (35) + ``EXPECTED_SPECIAL_RLS_TABLES`` (1) equal
-     the exact 36 Pure-Core forced-RLS tables (``schema.sql`` + Core migrations
-     ``001``..``036``), ``EXPECTED_GLOBAL_TABLES`` equals the exact 5 Pure-Core
+Covers Wave 1 Items #1 and #9 (updated for Migration 040):
+  1. ``EXPECTED_TENANT_RLS_TABLES`` (37) + ``EXPECTED_SPECIAL_RLS_TABLES`` (1) equal
+     the exact 38 Pure-Core forced-RLS tables (``schema.sql`` + Core migrations
+     ``001``..``040``), ``EXPECTED_GLOBAL_TABLES`` equals the exact 3 Pure-Core
      global tables, and zero ``037+`` vertical tables remain in Core's static catalog
      or ``scripts/apply_integration_schema.py``.
   2. ``PluginCapabilities``, ``get_all_plugin_tenant_rls_tables()`` (explicit
@@ -55,11 +55,13 @@ PURE_CORE_NAMESPACE_ID_TABLES: frozenset[str] = frozenset(
         "memories",
         "kg_nodes",
         "kg_edges",
+        "kg_node_embeddings",
         "pii_redactions",
         "memory_salience",
         "contradictions",
         "snapshots",
         "event_log",
+        "event_sequences",
         "resource_quotas",
         "outbox_events",
         "saga_execution_log",
@@ -92,9 +94,7 @@ PURE_CORE_NAMESPACE_ID_TABLES: frozenset[str] = frozenset(
 PURE_CORE_GLOBAL_TABLES: frozenset[str] = frozenset(
     {
         "embedding_models",
-        "kg_node_embeddings",
         "reembedding_runs",
-        "event_sequences",
         "applied_migrations",
     }
 )
@@ -144,12 +144,12 @@ class _AsyncCtx:
 
 
 def test_pure_core_expected_rls_tables_exact_36_forced_and_5_global() -> None:
-    """Core static RLS sets must contain strictly the 36 Pure-Core forced-RLS tables + 5 global."""
+    """Core static RLS sets must contain strictly the 38 Pure-Core forced-RLS tables + 3 global."""
     expected_tenant = {tbl: "namespace_id" for tbl in PURE_CORE_NAMESPACE_ID_TABLES}
     expected_tenant["replay_runs"] = "source_namespace_id"
 
-    assert len(PURE_CORE_NAMESPACE_ID_TABLES) == 34
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 35
+    assert len(PURE_CORE_NAMESPACE_ID_TABLES) == 36
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 37
     assert EXPECTED_TENANT_RLS_TABLES == expected_tenant
 
     assert EXPECTED_SPECIAL_RLS_TABLES == {
@@ -158,10 +158,10 @@ def test_pure_core_expected_rls_tables_exact_36_forced_and_5_global() -> None:
     assert set(EXPECTED_TENANT_RLS_TABLES).isdisjoint(EXPECTED_SPECIAL_RLS_TABLES)
 
     all_forced_core = set(EXPECTED_TENANT_RLS_TABLES) | set(EXPECTED_SPECIAL_RLS_TABLES)
-    assert len(all_forced_core) == 36
+    assert len(all_forced_core) == 38
 
     assert EXPECTED_GLOBAL_TABLES == PURE_CORE_GLOBAL_TABLES
-    assert len(EXPECTED_GLOBAL_TABLES) == 5
+    assert len(EXPECTED_GLOBAL_TABLES) == 3
     assert EXPECTED_GLOBAL_TABLES.isdisjoint(all_forced_core)
 
     # Zero 037+ vertical tables in Core static catalog sets.
@@ -443,10 +443,13 @@ def _build_pure_core_catalog_rows() -> list[dict[str, Any]]:
 def _make_catalog_mock_conn(
     catalog_rows: list[dict[str, Any]],
     policy_map: dict[str, list[dict[str, str]]] | None = None,
+    partition_rows: list[dict[str, Any]] | None = None,
 ) -> AsyncMock:
     conn = AsyncMock()
 
     async def _fetch(sql: str, *args: Any) -> list[dict[str, Any]]:
+        if "c.relispartition = true" in sql:
+            return partition_rows or []
         if "FROM pg_class c" in sql:
             return catalog_rows
         if "FROM   pg_policies" in sql or "FROM pg_policies" in sql:
@@ -500,6 +503,55 @@ async def test_verify_rls_catalog_consistency_pure_core_passes_and_enforces_repl
     ]
     with pytest.raises(RuntimeError, match="a2a_grants: FORCE ROW LEVEL SECURITY is not enabled"):
         await verify_rls_catalog_consistency(_make_catalog_mock_conn(broken_a2a))
+
+
+@pytest.mark.asyncio
+async def test_verify_rls_catalog_consistency_enforces_child_partition_rls_and_policies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tenant child partitions missing RLS, FORCE RLS, or policies fail closed."""
+    monkeypatch.setattr(plugins_mod, "_DISCOVERED_PLUGINS", {})
+    rows = _build_pure_core_catalog_rows()
+
+    healthy_parts = [
+        {
+            "partition_name": "kg_nodes_0",
+            "parent_name": "kg_nodes",
+            "rls_enabled": True,
+            "force_rls_enabled": True,
+            "policy_count": 1,
+        }
+    ]
+    await verify_rls_catalog_consistency(
+        _make_catalog_mock_conn(rows, partition_rows=healthy_parts),
+        require_plugin_tables=True,
+    )
+
+    with pytest.raises(RuntimeError, match="kg_nodes_0.*RLS is not enabled on child partition"):
+        await verify_rls_catalog_consistency(
+            _make_catalog_mock_conn(
+                rows,
+                partition_rows=[{**healthy_parts[0], "rls_enabled": False}],
+            )
+        )
+
+    with pytest.raises(
+        RuntimeError, match="kg_nodes_0.*FORCE ROW LEVEL SECURITY is not enabled on child partition"
+    ):
+        await verify_rls_catalog_consistency(
+            _make_catalog_mock_conn(
+                rows,
+                partition_rows=[{**healthy_parts[0], "force_rls_enabled": False}],
+            )
+        )
+
+    with pytest.raises(RuntimeError, match="kg_nodes_0.*no RLS policies found on child partition"):
+        await verify_rls_catalog_consistency(
+            _make_catalog_mock_conn(
+                rows,
+                partition_rows=[{**healthy_parts[0], "policy_count": 0}],
+            )
+        )
 
 
 @pytest.mark.asyncio

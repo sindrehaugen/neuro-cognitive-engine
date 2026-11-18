@@ -143,6 +143,34 @@ def load_plugins(*, force_reload: bool = False) -> dict[str, NCEPlugin]:
     return plugins
 
 
+def _iter_effective_plugins() -> list[tuple[str, NCEPlugin]]:
+    """Return active plugins with umbrella sub-plugins deduplicated."""
+    loaded = load_plugins()
+    umbrella_modules: set[str] = set()
+    for plugin in loaded.values():
+        sub_plugins = getattr(plugin, "sub_plugins", None)
+        if sub_plugins:
+            for sub in sub_plugins:
+                umbrella_modules.add(type(sub).__module__)
+
+    seen_umbrellas: set[tuple[str, str]] = set()
+    effective: list[tuple[str, NCEPlugin]] = []
+    for plugin_id, plugin in loaded.items():
+        cls = type(plugin)
+        sub_plugins = getattr(plugin, "sub_plugins", None)
+        if sub_plugins:
+            key = (cls.__module__, cls.__qualname__)
+            if key in seen_umbrellas:
+                continue
+            seen_umbrellas.add(key)
+            effective.append((plugin_id, plugin))
+            continue
+        if cls.__module__ in umbrella_modules:
+            continue
+        effective.append((plugin_id, plugin))
+    return effective
+
+
 _DEFAULT_LOAD_PLUGINS = load_plugins
 
 
@@ -159,7 +187,7 @@ def register_all_plugin_tools(registry: Any) -> None:
     """Invoke register_tools on all discovered plugins."""
     if _plugins_disabled_by_env_fastpath():
         return
-    for plugin_id, plugin in load_plugins().items():
+    for plugin_id, plugin in _iter_effective_plugins():
         try:
             plugin.register_tools(registry)
             log.info("Registered tools from plugin: %s", plugin_id)
@@ -171,7 +199,7 @@ def register_all_plugin_routes(app: Any) -> None:
     """Invoke register_routes on all discovered plugins."""
     if _plugins_disabled_by_env_fastpath():
         return
-    for plugin_id, plugin in load_plugins().items():
+    for plugin_id, plugin in _iter_effective_plugins():
         try:
             plugin.register_routes(app)
             log.info("Registered routes from plugin: %s", plugin_id)
@@ -183,7 +211,7 @@ def register_all_plugin_workers(worker_registry: Any) -> None:
     """Invoke register_workers on all discovered plugins."""
     if _plugins_disabled_by_env_fastpath():
         return
-    for plugin_id, plugin in load_plugins().items():
+    for plugin_id, plugin in _iter_effective_plugins():
         try:
             plugin.register_workers(worker_registry)
             log.info("Registered workers from plugin: %s", plugin_id)
@@ -195,7 +223,7 @@ def register_all_plugin_cognitive_hooks(cognitive_engine: Any) -> None:
     """Invoke register_cognitive_hooks on all discovered plugins."""
     if _plugins_disabled_by_env_fastpath():
         return
-    for plugin_id, plugin in load_plugins().items():
+    for plugin_id, plugin in _iter_effective_plugins():
         try:
             plugin.register_cognitive_hooks(cognitive_engine)
             log.info("Registered cognitive hooks from plugin: %s", plugin_id)

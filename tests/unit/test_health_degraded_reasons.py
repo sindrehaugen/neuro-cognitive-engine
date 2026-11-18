@@ -129,7 +129,12 @@ def test_integrity_and_liveness_failures_are_blocking(reason: str) -> None:
 
 @pytest.mark.parametrize(
     "reason",
-    ["rls_role_posture", "rls_role_posture_probe_failed", "embeddings_backend_unreachable"],
+    [
+        "rls_role_posture",
+        "rls_role_posture_probe_failed",
+        "embeddings_backend_unreachable",
+        "cognitive_stub_active",
+    ],
 )
 def test_posture_and_capability_warnings_are_not_blocking(reason: str) -> None:
     """Report these loudly; do not restart the stack over them.

@@ -37,6 +37,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from nce.health_probe import (
+    SingleflightReadinessCache,
+    build_liveness_payload,
+    probe_engine_readiness,
+)
 from nce.http_body_limit import BoundedBodyMiddleware
 
 logger = logging.getLogger("nce.mcp_http_gateway")
@@ -1233,15 +1238,27 @@ def _check_session_rate_limit(session: MCPGatewaySession) -> bool:
 
 def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlette:
     """Construct and configure the Starlette ASGI application for the /mcp gateway."""
+    readiness_cache = SingleflightReadinessCache(ttl_seconds=5.0)
 
     async def healthz_endpoint(request: Request) -> JSONResponse:
-        return JSONResponse(
-            {
-                "status": "ok",
-                "service": "mcp-gateway",
-                "version": "3.5.2",
-            }
-        )
+        """Fast in-memory liveness probe (< 3 ms, zero DB/Redis calls)."""
+        payload, status_code = build_liveness_payload("mcp-gateway", version="3.5.3")
+        return JSONResponse(payload, status_code=status_code)
+
+    async def readyz_endpoint(request: Request) -> JSONResponse:
+        """Singleflight readiness probe cached for 5.0s using pooled datastore checks."""
+        require_connected = getattr(request.app.state, "gateway_require_connected", False)
+
+        async def _probe():
+            return await probe_engine_readiness(
+                engine,
+                service="mcp-gateway",
+                version="3.5.3",
+                require_connected=bool(require_connected),
+            )
+
+        payload, status_code = await readiness_cache.get_or_probe(_probe)
+        return JSONResponse(payload, status_code=status_code)
 
     async def _resolve_session(
         request: Request,
@@ -1419,7 +1436,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     },
                     "serverInfo": {
                         "name": "nce-memory-gateway",
-                        "version": "3.5.2",
+                        "version": "3.5.3",
                     },
                 },
             }
@@ -2030,6 +2047,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
 
     routes = [
         Route("/healthz", healthz_endpoint, methods=["GET"]),
+        Route("/readyz", readyz_endpoint, methods=["GET"]),
         Route("/mcp", mcp_post_endpoint, methods=["POST"]),
         Route("/mcp", mcp_get_endpoint, methods=["GET"]),
         Route("/mcp", mcp_delete_endpoint, methods=["DELETE"]),

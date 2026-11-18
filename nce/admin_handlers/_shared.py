@@ -9,10 +9,12 @@ import math
 import os
 import sys
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
+import asyncpg  # type: ignore[import-untyped]
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
 from nce import admin_state
@@ -53,6 +55,7 @@ from nce.admin_routes import (
 from nce.auth import set_namespace_context, validate_agent_id
 from nce.background_task_manager import create_tracked_task
 from nce.config import cfg
+from nce.db_utils import POOL_ACQUIRE_TIMEOUT, scoped_pg_session
 from nce.event_log import verify_merkle_chain
 from nce.mcp_args import bump_cache_generation
 from nce.notifications import dispatcher
@@ -62,6 +65,30 @@ from nce.temporal import parse_as_of
 
 UTC = timezone.utc
 logger = logging.getLogger("nce-admin")
+
+
+def fleet_pg_pool(engine: Any) -> Any:
+    """Return ``engine.pg_fleet_pool`` when explicitly configured, else ``engine.pg_pool``."""
+    fleet_pool = getattr(engine, "__dict__", {}).get("pg_fleet_pool")
+    if fleet_pool is not None:
+        return fleet_pool
+    return engine.pg_pool
+
+
+@asynccontextmanager
+async def maybe_scoped_pg_conn(
+    pool: Any,
+    namespace_id: uuid.UUID | str,
+    *,
+    timeout: float = POOL_ACQUIRE_TIMEOUT,
+) -> AsyncIterator[Any]:
+    """Acquire an RLS-scoped Postgres connection on real asyncpg pools (mock-safe)."""
+    if isinstance(pool, asyncpg.Pool):
+        async with scoped_pg_session(pool, namespace_id) as conn:
+            yield conn
+        return
+    async with pool.acquire(timeout=timeout) as conn:
+        yield conn
 
 
 # ---------------------------------------------------------------------------

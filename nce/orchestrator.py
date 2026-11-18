@@ -158,6 +158,8 @@ class NCEEngine(OrchestratorBase):
         self.mongo_client = None
         self.pg_pool = None
         self.pg_read_pool = None
+        self.pg_fleet_pool = None
+        self._startup_migration_pool = None
         self.redis_client = None
         self.redis_sync_client = None
         self.minio_client = None  # New Quad-Stack MinIO property
@@ -175,6 +177,12 @@ class NCEEngine(OrchestratorBase):
 
         self.modules: EngineRegistry = populate_engine_modules(self)
 
+    @property
+    def _ddl_pool(self):
+        """Return the transient migration pool during connect() when set, else ``pg_pool``."""
+        mig_pool = getattr(self, "_startup_migration_pool", None)
+        return mig_pool if mig_pool is not None else self.pg_pool
+
     async def connect(self, run_startup_checks: bool = True):
         from nce._client_factory import (
             make_async_redis,
@@ -188,17 +196,37 @@ class NCEEngine(OrchestratorBase):
             cfg.MONGO_URI,
             **motor_timeout_kwargs(),
         )
-        self.pg_pool = await asyncpg.create_pool(
-            cfg.PG_DSN,
-            min_size=cfg.PG_MIN_POOL,
-            max_size=cfg.PG_MAX_POOL,
-            command_timeout=30,
-            statement_cache_size=256,
-            server_settings={
-                "lock_timeout": "10s",
-                "idle_in_transaction_session_timeout": "60s",
-            },
-        )
+
+        async def _open_app_pool():
+            return await asyncpg.create_pool(
+                cfg.PG_DSN,
+                min_size=cfg.PG_MIN_POOL,
+                max_size=cfg.PG_MAX_POOL,
+                command_timeout=30,
+                statement_cache_size=256,
+                server_settings={
+                    "lock_timeout": "10s",
+                    "idle_in_transaction_session_timeout": "60s",
+                },
+            )
+
+        mig_dsn = (getattr(cfg, "NCE_MIGRATION_PG_DSN", "") or "").strip()
+        use_mig_pool = bool(run_startup_checks and mig_dsn and mig_dsn != cfg.PG_DSN)
+        if use_mig_pool:
+            self._startup_migration_pool = await asyncpg.create_pool(
+                mig_dsn,
+                min_size=1,
+                max_size=2,
+                command_timeout=120,
+                statement_cache_size=256,
+                server_settings={
+                    "lock_timeout": "120s",
+                    "idle_in_transaction_session_timeout": "120s",
+                },
+            )
+        else:
+            self.pg_pool = await _open_app_pool()
+
         self.redis_client = make_async_redis(
             cfg.REDIS_URL,
             max_connections=cfg.REDIS_MAX_CONNECTIONS,
@@ -223,25 +251,55 @@ class NCEEngine(OrchestratorBase):
             )
 
         if run_startup_checks:
-            await self._init_pg_schema()
-            await self._apply_pg_migrations()
-            await self._apply_plugin_pg_migrations()
-            # Verification is cheap and read-only; seeding is expensive and mutating.
-            # Validate first so a drifted deployment fails in ~1 s instead of paying
-            # the full seed cost and *then* refusing to start.  Seeding depends only
-            # on schema + migrations having run, not on verification order.
-            # Before the enforcement checks, not after: version skew is what makes
-            # those checks fail, and their error text reads like a code bug. Naming
-            # the skew first turns 13 lines of "add to EXPECTED_TENANT_RLS_TABLES"
-            # into "this image is older than this database".
-            await self._verify_schema_version()
-            await self._ensure_initial_signing_key()
-            await self._verify_master_key_matches_data()
-            await self._verify_worm_enforcement()
-            await self._verify_rls_enforcement()
-            await self._seed_node_ownership_all()
-            await self._check_global_legacy_warning()
-            await self._init_mongo_indexes()
+            try:
+                await self._init_pg_schema()
+                await self._apply_pg_migrations()
+                await self._apply_plugin_pg_migrations()
+                if self.pg_pool is None:
+                    self.pg_pool = await _open_app_pool()
+                # Verification is cheap and read-only; seeding is expensive and mutating.
+                # Validate first so a drifted deployment fails in ~1 s instead of paying
+                # the full seed cost and *then* refusing to start.  Seeding depends only
+                # on schema + migrations having run, not on verification order.
+                # Before the enforcement checks, not after: version skew is what makes
+                # those checks fail, and their error text reads like a code bug. Naming
+                # the skew first turns 13 lines of "add to EXPECTED_TENANT_RLS_TABLES"
+                # into "this image is older than this database".
+                await self._verify_schema_version()
+                await self._ensure_initial_signing_key()
+                await self._verify_master_key_matches_data()
+                await self._verify_worm_enforcement()
+                await self._verify_rls_enforcement()
+                await self._seed_node_ownership_all()
+                await self._check_global_legacy_warning()
+                await self._init_mongo_indexes()
+            finally:
+                if self._startup_migration_pool is not None:
+                    try:
+                        await asyncio.wait_for(self._startup_migration_pool.close(), timeout=10.0)
+                    except asyncio.TimeoutError:
+                        log.warning(
+                            "Migration PG pool.close() timed out after 10s; terminating pool."
+                        )
+                        self._startup_migration_pool.terminate()
+                    finally:
+                        self._startup_migration_pool = None
+
+        if getattr(cfg, "NCE_ENABLE_FLEET_POOL", False):
+            from nce.db_utils import resolve_worker_dsn, worker_dsn_is_segregated
+
+            if worker_dsn_is_segregated():
+                self.pg_fleet_pool = await asyncpg.create_pool(
+                    resolve_worker_dsn(),
+                    min_size=1,
+                    max_size=min(4, max(1, cfg.PG_MAX_POOL)),
+                    command_timeout=30,
+                    statement_cache_size=256,
+                    server_settings={
+                        "lock_timeout": "10s",
+                        "idle_in_transaction_session_timeout": "60s",
+                    },
+                )
 
         # Initialize MinIO
         self.minio_client = make_minio(
@@ -310,6 +368,13 @@ class NCEEngine(OrchestratorBase):
 
         log.info("NCEEngine connected (Now Quad-Stack with MinIO).")
 
+        if run_startup_checks and cfg.NCE_COGNITIVE_BASE_URL and not cfg.NCE_BACKEND:
+            try:
+                await _embeddings.assert_cognitive_not_stub_in_prod()
+            except Exception:
+                await self.disconnect()
+                raise
+
     async def disconnect(self):
         from nce.background_task_manager import _registry
 
@@ -325,13 +390,22 @@ class NCEEngine(OrchestratorBase):
 
         if self.mongo_client:
             self.mongo_client.close()
-        for pool in (self.pg_pool, self.pg_read_pool):
+        for pool in (
+            self._startup_migration_pool,
+            self.pg_fleet_pool,
+            self.pg_pool,
+            self.pg_read_pool,
+        ):
             if pool:
                 try:
                     await asyncio.wait_for(pool.close(), timeout=10.0)
                 except asyncio.TimeoutError:
                     log.warning("PG pool.close() timed out after 10s; terminating pool.")
                     pool.terminate()
+        self._startup_migration_pool = None
+        self.pg_fleet_pool = None
+        self.pg_pool = None
+        self.pg_read_pool = None
         if self.redis_client:
             await self.redis_client.aclose()
         if self.redis_sync_client:
@@ -503,7 +577,7 @@ class NCEEngine(OrchestratorBase):
         runtime_path = _RUNTIME_PATH
 
         is_fresh = True
-        async with self.pg_pool.acquire(timeout=10.0) as conn:
+        async with self._ddl_pool.acquire(timeout=120.0) as conn:
             async with conn.transaction():
                 await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
 
@@ -534,7 +608,7 @@ class NCEEngine(OrchestratorBase):
             # (e.g. support_ticket_actions, economy_billing_runs) exist before
             # schema_runtime.sql enables RLS, policies, and grants on them.
             await self._apply_pg_migrations()
-            async with self.pg_pool.acquire(timeout=10.0) as conn:
+            async with self._ddl_pool.acquire(timeout=120.0) as conn:
                 async with conn.transaction():
                     await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
                     await conn.execute(runtime_path.read_text(encoding="utf-8"))
@@ -546,7 +620,7 @@ class NCEEngine(OrchestratorBase):
         )
 
         if cfg.NCE_APP_PASSWORD:
-            async with self.pg_pool.acquire(timeout=10.0) as conn:
+            async with self._ddl_pool.acquire(timeout=120.0) as conn:
                 async with conn.transaction():
                     # Same advisory lock as the schema batch above, which itself
                     # CREATE/ALTER ROLEs nce_app. Without it, one process running
@@ -566,6 +640,26 @@ class NCEEngine(OrchestratorBase):
                         "$$;"
                     )
             log.debug("[PG] nce_app login password dynamically updated from configuration")
+
+        gc_password = (getattr(cfg, "NCE_GC_PASSWORD", "") or "").strip()
+        if gc_password and gc_password != "nce_gc_secret":
+            async with self._ddl_pool.acquire(timeout=120.0) as conn:
+                async with conn.transaction():
+                    await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
+                    await conn.execute(
+                        "SELECT set_config('nce.temp_gc_password', $1, true)",
+                        gc_password,
+                    )
+                    await conn.execute(
+                        "DO $$\n"
+                        "BEGIN\n"
+                        "    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc') THEN\n"
+                        "        EXECUTE format('ALTER ROLE nce_gc WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS PASSWORD %L', current_setting('nce.temp_gc_password'));\n"
+                        "    END IF;\n"
+                        "END\n"
+                        "$$;"
+                    )
+            log.debug("[PG] nce_gc login password dynamically updated from configuration")
 
     async def _apply_pg_migrations(self) -> None:
         """Apply SQL files from nce/migrations/ in lexical order, once each.
@@ -604,7 +698,7 @@ class NCEEngine(OrchestratorBase):
         ledger_ok = True
         applied: dict[str, str] = {}
         try:
-            async with self.pg_pool.acquire(timeout=60.0) as conn:
+            async with self._ddl_pool.acquire(timeout=120.0) as conn:
                 async with conn.transaction():
                     await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
                     await ensure_ledger(conn)
@@ -625,9 +719,14 @@ class NCEEngine(OrchestratorBase):
                     "[PG] migration %s changed since it was applied — re-applying",
                     path.name,
                 )
-            async with self.pg_pool.acquire(timeout=60.0) as conn:
+            async with self._ddl_pool.acquire(timeout=120.0) as conn:
                 async with conn.transaction():
                     await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
+                    if ledger_ok and "citus" not in path.name:
+                        fresh_applied = await applied_checksums(conn)
+                        if should_skip(path.name, checksum, fresh_applied):
+                            skipped += 1
+                            continue
                     if "citus" in path.name:
                         citus_available = await conn.fetchval(
                             "SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name = 'citus')"
@@ -681,6 +780,7 @@ class NCEEngine(OrchestratorBase):
         try:
             from nce.migration_ledger import (
                 applied_checksums,
+                ensure_ledger,
                 migration_checksum,
                 record_applied,
                 should_skip,
@@ -689,29 +789,55 @@ class NCEEngine(OrchestratorBase):
                 get_all_plugin_migration_dirs,
                 register_all_plugin_cognitive_hooks,
             )
+        except ImportError as exc:
+            log.debug("[PG] plugin migration / hook registration unavailable: %s", exc)
+            return
 
-            register_all_plugin_cognitive_hooks(self)
-            plugin_dirs = get_all_plugin_migration_dirs()
-            if not plugin_dirs:
-                return
-            async with self.pg_pool.acquire(timeout=60.0) as conn:
-                applied = await applied_checksums(conn)
-            for plugin_scope, p_dir in plugin_dirs.items():
-                if not p_dir or not p_dir.is_dir():
+        register_all_plugin_cognitive_hooks(self)
+        plugin_dirs = get_all_plugin_migration_dirs()
+        if not plugin_dirs:
+            return
+        async with self._ddl_pool.acquire(timeout=120.0) as conn:
+            async with conn.transaction():
+                await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
+                await ensure_ledger(conn)
+            applied = await applied_checksums(conn)
+        applied_count = 0
+        for plugin_scope, p_dir in plugin_dirs.items():
+            if not p_dir or not p_dir.is_dir():
+                continue
+            for p_path in sorted(p_dir.glob("*.sql")):
+                scoped_name = f"{plugin_scope}:{p_path.name}"
+                p_sql = p_path.read_text(encoding="utf-8")
+                p_checksum = migration_checksum(p_sql)
+                if should_skip(scoped_name, p_checksum, applied):
                     continue
-                for p_path in sorted(p_dir.glob("*.sql")):
-                    scoped_name = f"{plugin_scope}:{p_path.name}"
-                    p_sql = p_path.read_text(encoding="utf-8")
-                    p_checksum = migration_checksum(p_sql)
-                    if should_skip(scoped_name, p_checksum, applied):
-                        continue
-                    async with self.pg_pool.acquire(timeout=60.0) as conn:
+                try:
+                    async with self._ddl_pool.acquire(timeout=120.0) as conn:
                         async with conn.transaction():
                             await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
+                            fresh_applied = await applied_checksums(conn)
+                            if should_skip(scoped_name, p_checksum, fresh_applied):
+                                continue
                             await conn.execute(p_sql)
                             await record_applied(conn, scoped_name, p_checksum)
-        except Exception as exc:
-            log.debug("[PG] plugin migration / hook registration skipped: %s", exc)
+                            applied_count += 1
+                except Exception as exc:
+                    log.error(
+                        "[PG] plugin migration %s failed: %s",
+                        scoped_name,
+                        exc,
+                        exc_info=True,
+                    )
+                    raise
+        if applied_count > 0:
+            async with self._ddl_pool.acquire(timeout=120.0) as conn:
+                async with conn.transaction():
+                    await conn.execute(_ADVISORY_LOCK_SQL, SCHEMA_ADVISORY_LOCK_ID)
+                    await conn.execute(
+                        "SELECT CASE WHEN to_regprocedure('public.nce_sync_runtime_role_grants()') IS NOT NULL "
+                        "THEN nce_sync_runtime_role_grants() END"
+                    )
 
     async def _verify_schema_version(self) -> None:
         """Report (and in production, refuse) an image older than its database.
@@ -790,11 +916,13 @@ class NCEEngine(OrchestratorBase):
         if len(raw_mk.encode("utf-8")) < 32:
             return
 
+        from nce.signing import fetch_signing_key_count
+
         try:
             async with self.pg_pool.acquire(timeout=10.0) as conn:
                 async with conn.transaction():
                     await conn.execute("SELECT pg_advisory_xact_lock(78636501)")
-                    total_keys = await conn.fetchval("SELECT COUNT(*) FROM signing_keys")
+                    total_keys = await fetch_signing_key_count(conn)
                     if int(total_keys or 0) == 0:
                         from nce.signing import rotate_key
 
@@ -846,6 +974,7 @@ class NCEEngine(OrchestratorBase):
             NoActiveSigningKeyError,
             SigningKeyDecryptionError,
             decrypt_signing_key,
+            fetch_active_signing_key_row,
             master_key_fingerprint,
             require_master_key,
         )
@@ -863,13 +992,7 @@ class NCEEngine(OrchestratorBase):
                     fingerprint,
                 )
                 async with self.pg_pool.acquire(timeout=10.0) as conn:
-                    row = await conn.fetchrow("""
-                        SELECT key_id, encrypted_key
-                        FROM   signing_keys
-                        WHERE  status = 'active'
-                        ORDER  BY created_at DESC
-                        LIMIT  1
-                        """)
+                    row = await fetch_active_signing_key_row(conn)
                 if row is None:
                     raise NoActiveSigningKeyError("no active row in signing_keys")
                 key_id = row["key_id"]
@@ -955,7 +1078,7 @@ class NCEEngine(OrchestratorBase):
         )
 
         try:
-            async with self.pg_pool.acquire(timeout=10.0) as conn:
+            async with self._ddl_pool.acquire(timeout=10.0) as conn:
                 inserted = await seed_node_ownership_all_namespaces(conn)
             if inserted:
                 log.info("[ownership-seed] seeded %d row(s) across all namespaces", inserted)
@@ -1063,11 +1186,20 @@ class NCEEngine(OrchestratorBase):
         age_days = (now_dt - created_dt).days if created_dt else 0
 
         try:
-            async with self.pg_pool.acquire(timeout=10.0) as conn:
-                count = await conn.fetchval(
-                    "SELECT count(*) FROM kg_nodes WHERE namespace_id = $1::uuid",
-                    ns_id,
-                )
+            if isinstance(self.pg_pool, asyncpg.Pool):
+                from nce.db_utils import scoped_pg_session
+
+                async with scoped_pg_session(self.pg_pool, ns_id) as conn:
+                    count = await conn.fetchval(
+                        "SELECT count(*) FROM kg_nodes WHERE namespace_id = $1::uuid",
+                        ns_id,
+                    )
+            else:
+                async with self.pg_pool.acquire(timeout=10.0) as conn:
+                    count = await conn.fetchval(
+                        "SELECT count(*) FROM kg_nodes WHERE namespace_id = $1::uuid",
+                        ns_id,
+                    )
         except _HEALTH_PROBE_ERRORS:
             log.warning(
                 "[legacy-warn] Could not query kg_nodes for _global_legacy "
@@ -1290,18 +1422,13 @@ class NCEEngine(OrchestratorBase):
                 from nce.signing import (
                     SigningKeyDecryptionError,
                     decrypt_signing_key,
+                    fetch_active_signing_key_row,
                     master_key_fingerprint,
                     require_master_key,
                 )
 
                 async with self.pg_pool.acquire(timeout=10.0) as conn:
-                    row = await conn.fetchrow("""
-                        SELECT encrypted_key
-                        FROM   signing_keys
-                        WHERE  status = 'active'
-                        ORDER  BY created_at DESC
-                        LIMIT  1
-                    """)
+                    row = await fetch_active_signing_key_row(conn)
                     if row is None:
                         health["security"]["signing_key_decryption"] = "no_active_key"
                         _degrade(health, "signing_key_absent", blocking=True)
@@ -1511,7 +1638,15 @@ class NCEEngine(OrchestratorBase):
 
                 def _get_queue_lengths():
                     lengths = {}
-                    for name in ("default", "high_priority", "batch_processing"):
+                    for name in (
+                        "nce-critical",
+                        "nce-default",
+                        "nce-bulk",
+                        "high_priority",
+                        "batch_processing",
+                        "diag_ingest",
+                        "default",
+                    ):
                         q = Queue(name, connection=self.redis_sync_client)
                         lengths[name] = len(q)
                     return lengths
@@ -1525,19 +1660,54 @@ class NCEEngine(OrchestratorBase):
         # 5. Cognitive / Embeddings
         import httpx
 
-        from nce.embeddings import cognitive_health_check_url, get_backend
+        from nce.embeddings import CognitiveRemoteBackend, cognitive_health_check_url, get_backend
 
         try:
             backend = get_backend()
             health["cognitive"]["backend_type"] = type(backend).__name__
 
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                url = cognitive_health_check_url()
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    health["cognitive"]["engine"] = "up"
-                else:
-                    health["cognitive"]["engine"] = f"down ({resp.status_code})"
+            if isinstance(backend, CognitiveRemoteBackend) or (
+                bool((cfg.NCE_COGNITIVE_BASE_URL or "").strip())
+                and not bool((cfg.NCE_BACKEND or "").strip())
+            ):
+                async with httpx.AsyncClient(timeout=2.0) as client:
+                    url = cognitive_health_check_url()
+                    resp = await client.get(url)
+                    if resp.status_code == 200:
+                        cog_payload: dict[str, Any] = {}
+                        try:
+                            parsed = resp.json()
+                            if isinstance(parsed, dict):
+                                cog_payload = parsed
+                        except Exception:
+                            cog_payload = {}
+
+                        reported_engine = str(cog_payload.get("engine") or "").strip()
+                        if cog_payload.get("model"):
+                            health["cognitive"]["model"] = cog_payload["model"]
+                        if cog_payload.get("dim") is not None:
+                            health["cognitive"]["dim"] = cog_payload["dim"]
+
+                        if reported_engine.lower() == "stub":
+                            health["cognitive"]["status"] = "stub"
+                            health["cognitive"]["engine"] = "stub"
+                            if not getattr(cfg, "NCE_ALLOW_COGNITIVE_STUB", False):
+                                _degrade(
+                                    health,
+                                    "cognitive_stub_active",
+                                    blocking=bool(cfg.IS_PROD),
+                                )
+                        else:
+                            health["cognitive"]["status"] = "up"
+                            health["cognitive"]["engine"] = reported_engine or "up"
+                    else:
+                        health["cognitive"]["status"] = "down"
+                        health["cognitive"]["engine"] = f"down ({resp.status_code})"
+            else:
+                health["cognitive"]["status"] = "up"
+                health["cognitive"]["engine"] = getattr(
+                    backend, "model_name", type(backend).__name__
+                )
         except (
             *_HEALTH_PROBE_ERRORS,
             httpx.HTTPError,

@@ -30,18 +30,21 @@ except Exception as exc:
 
 @asynccontextmanager
 async def _gateway_lifespan(_app: Any):
-    if engine is not None and getattr(engine, "pg_pool", None) is None:
+    if engine is None:
+        raise RuntimeError("MCP Gateway failed to initialize NCEEngine")
+    if getattr(engine, "pg_pool", None) is None:
         await engine.connect()
         logger.info("MCP Gateway connected NCEEngine.")
     try:
         yield
     finally:
-        if engine is not None and getattr(engine, "pg_pool", None) is not None:
+        if getattr(engine, "pg_pool", None) is not None:
             await engine.disconnect()
             logger.info("MCP Gateway disconnected NCEEngine.")
 
 
 app = create_mcp_gateway_app(engine=engine, lifespan=_gateway_lifespan)
+app.state.gateway_require_connected = True
 
 __all__ = ["app", "engine"]
 

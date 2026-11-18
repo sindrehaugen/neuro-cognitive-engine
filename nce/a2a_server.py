@@ -64,6 +64,11 @@ from nce.auth import NamespaceContext
 from nce.config import cfg
 from nce.correlation import correlation_id_var
 from nce.db_utils import set_external_scope
+from nce.health_probe import (
+    SingleflightReadinessCache,
+    build_liveness_payload,
+    probe_engine_readiness,
+)
 from nce.http_body_limit import BoundedBodyMiddleware
 from nce.jwt_auth import JWTAuthMiddleware
 from nce.models import GraphSearchRequest
@@ -963,8 +968,35 @@ async def _dispatch_skill(
 
 
 # ---------------------------------------------------------------------------
-# Health route
+# Health routes (/healthz fast liveness, /readyz cached readiness, /health deep)
 # ---------------------------------------------------------------------------
+
+_A2A_READINESS_CACHE = SingleflightReadinessCache(ttl_seconds=5.0)
+
+
+async def get_healthz(request: Request) -> JSONResponse:
+    """Fast in-memory liveness probe (< 3 ms, zero DB/Redis/crypto calls)."""
+    payload, status_code = build_liveness_payload(
+        "a2a",
+        shutting_down=_is_shutting_down(),
+        version="3.5.3",
+    )
+    return JSONResponse(payload, status_code=status_code)
+
+
+async def get_readyz(request: Request) -> JSONResponse:
+    """Singleflight readiness probe cached for 5.0s using pooled datastore checks."""
+
+    async def _probe():
+        return await probe_engine_readiness(
+            _engine,
+            service="a2a",
+            shutting_down=_is_shutting_down(),
+            version="3.5.3",
+        )
+
+    payload, status_code = await _A2A_READINESS_CACHE.get_or_probe(_probe)
+    return JSONResponse(payload, status_code=status_code)
 
 
 async def get_health(request: Request) -> JSONResponse:
@@ -1068,7 +1100,8 @@ app = Starlette(
     ],
     routes=[
         Route("/health", endpoint=get_health, methods=["GET"]),
-        Route("/healthz", endpoint=get_health, methods=["GET"]),
+        Route("/healthz", endpoint=get_healthz, methods=["GET"]),
+        Route("/readyz", endpoint=get_readyz, methods=["GET"]),
         Route("/.well-known/agent-card", endpoint=get_agent_card, methods=["GET"]),
         Route("/tasks/send", endpoint=tasks_send, methods=["POST"]),
         Route("/tasks/{task_id}", endpoint=tasks_get, methods=["GET"]),

@@ -168,3 +168,10 @@ build/linux/dist/
 
 # Compiled Go binaries
 go/*.exe
+
+# External vertical packages must never live untracked inside Core
+/nce_verticals/
+
+# Local mTLS private keys & certificates
+deploy/certs/
+

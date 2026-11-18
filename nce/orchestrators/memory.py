@@ -352,13 +352,14 @@ class MemoryOrchestrator(OrchestratorBase):
                 if emb_node_ids:
                     await conn.execute(
                         """
-                        INSERT INTO kg_node_embeddings (node_id, model_id, embedding)
-                        SELECT unnest($1::uuid[]), unnest($2::uuid[]), unnest($3::text[])::vector
+                        INSERT INTO kg_node_embeddings (node_id, model_id, embedding, namespace_id)
+                        SELECT unnest($1::uuid[]), unnest($2::uuid[]), unnest($3::text[])::vector, $4::uuid
                         ON CONFLICT DO NOTHING
                         """,
                         emb_node_ids,
                         emb_model_ids,
                         emb_vectors,
+                        payload.namespace_id,
                     )
 
         # ── Batch-insert kg_edges ────────────────────────────────────────
@@ -1669,10 +1670,9 @@ class MemoryOrchestrator(OrchestratorBase):
 
                 # Fallback only when legacy row has direct memories.signature without event_log
                 if row["signature"] is not None and row["signature_key_id"] is not None:
-                    sk = await ev_conn.fetchrow(
-                        "SELECT encrypted_key, key_id FROM signing_keys WHERE key_id = $1",
-                        row["signature_key_id"],
-                    )
+                    from nce.signing import fetch_signing_key_row_by_id
+
+                    sk = await fetch_signing_key_row_by_id(ev_conn, row["signature_key_id"])
                     if sk is None:
                         return {
                             "valid": False,

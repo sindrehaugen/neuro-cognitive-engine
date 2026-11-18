@@ -95,10 +95,12 @@ async def test_the_original_row_triggers_survive(pg_pool, table: str) -> None:
             FROM   pg_trigger t
             JOIN   pg_class   c ON c.oid = t.tgrelid
             WHERE  c.relname = $1
+              AND  t.tgname = $2
               AND  NOT t.tgisinternal
               AND  (t.tgtype & 32) = 0
             """,
             table,
+            f"trg_{table}_worm",
         )
 
     assert row is not None, f"{table} lost its row-level WORM trigger"

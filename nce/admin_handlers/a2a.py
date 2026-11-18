@@ -50,7 +50,7 @@ async def api_a2a_create_grant(request):
         return admin_error_response("Bad request parameters", exc, status_code=422)
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, ns_id) as conn:
             resp = await create_grant(conn, caller_ctx, req)
     except Exception as exc:
         return admin_error_response("Failed to create grant", exc, status_code=500)
@@ -109,7 +109,7 @@ async def api_a2a_revoke_grant(request):
         return admin_error_response("Bad request parameters", exc, status_code=422)
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, ns_id) as conn:
             revoked = await revoke_grant(conn, grant_id, caller_ctx)
     except Exception as exc:
         return admin_error_response("Revoke failed", exc, status_code=500)
@@ -163,7 +163,7 @@ async def api_a2a_list_grants(request):
     caller_ctx = NamespaceContext(namespace_id=ns_id, agent_id=agent_id_val)
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, ns_id) as conn:
             grants = await list_grants(conn, caller_ctx, include_inactive=include_inactive)
     except Exception as exc:
         return admin_error_response("List grants failed", exc, status_code=500)

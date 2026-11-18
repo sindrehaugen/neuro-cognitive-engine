@@ -77,14 +77,12 @@ def _load_compose_services() -> dict[str, dict[str, Any]]:
 
 
 def _container_side_ports(service_cfg: dict[str, Any]) -> set[str]:
-    """The CONTAINER-side port of every 'ports' entry (the right-hand side of
-    HOST:CONTAINER, or IP:HOST:CONTAINER) -- always a literal in this file,
-    never env-templated, which is what makes it safe to compare against a
-    Caddy reverse_proxy target's port without any interpolation logic."""
-    ports = service_cfg.get("ports") or []
+    """The CONTAINER-side port of every ``ports`` or ``expose`` entry."""
     result = set()
-    for mapping in ports:
-        result.add(str(mapping).split(":")[-1])
+    for mapping in service_cfg.get("ports") or []:
+        result.add(str(mapping).split(":")[-1].split("/")[0])
+    for exposed in service_cfg.get("expose") or []:
+        result.add(str(exposed).split("/")[0])
     return result
 
 
@@ -293,6 +291,19 @@ def test_customer_portal_confinement_comment_is_true() -> None:
             f"but {key!r} is {env[key]!r}, not blank. The comment and the "
             "environment block have diverged."
         )
+
+
+def test_only_caddy_publishes_host_ports_by_default() -> None:
+    """Only Caddy publishes host ports in the non-profile base compose stack."""
+    services = _load_compose_services()
+    publishing = [
+        name
+        for name, cfg in services.items()
+        if not cfg.get("profiles") and (cfg.get("ports") or [])
+    ]
+    assert publishing == ["caddy"], (
+        f"Expected only ['caddy'] to bind host ports in {_COMPOSE_FILE.name}, got {publishing}"
+    )
 
 
 def test_caddyfile_csp_permits_admin_ui_assets_and_routes_a2a() -> None:

@@ -100,7 +100,7 @@ async def api_admin_events(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             count_row = await conn.fetchrow(count_sql, *args)
             rows = await conn.fetch(items_sql, *args, limit, offset)
     except Exception as exc:
@@ -179,7 +179,7 @@ async def api_admin_events_summary(request):
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             total_row = await conn.fetchrow(
                 f"SELECT COUNT(*)::bigint AS total, MAX(occurred_at) AS latest FROM event_log {where_sql}",
                 *args,
@@ -233,7 +233,7 @@ async def api_admin_verify_chain(request):
         return JSONResponse({"error": "namespace_id required"}, status_code=422)
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, namespace_id) as conn:
             result = await verify_merkle_chain(conn, namespace_id=namespace_id)
     except Exception as exc:
         return admin_error_response(
@@ -305,7 +305,7 @@ async def api_admin_a2a_grants(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             count_row = await conn.fetchrow(count_sql, *args)
             rows = await conn.fetch(items_sql, *args, limit, offset)
     except Exception as exc:
@@ -360,7 +360,7 @@ async def api_admin_a2a_grants_summary(request):
     )
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             rows = await conn.fetch(
                 f"SELECT status, COUNT(*)::bigint AS c FROM a2a_grants {where_sql} GROUP BY status",
                 *args,
@@ -462,7 +462,7 @@ async def api_admin_quotas(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             count_row = await conn.fetchrow(count_sql, *args)
             sums_row = await conn.fetchrow(sums_sql, *args)
             rows = await conn.fetch(items_sql, *args, limit, offset)
@@ -528,7 +528,7 @@ async def api_admin_quotas_summary(request):
     args: list[object] = [namespace_id] if namespace_id else []
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             top_rows = await conn.fetch(
                 f"""
                 SELECT namespace_id, resource_type, used_amount, limit_amount
@@ -851,13 +851,14 @@ async def api_admin_dlq_list(request):
         return admin_validation_error(exc, status_code=422)
 
     try:
+        dlq_pool = fleet_pg_pool(admin_state.engine)
         total = await count_dead_letters(
-            admin_state.engine.pg_pool,
+            dlq_pool,
             task_name=task_name,
             status=dlq_status,
         )
         entries = await list_dead_letters(
-            admin_state.engine.pg_pool,
+            dlq_pool,
             task_name=task_name,
             status=dlq_status,
             limit=limit,
@@ -888,7 +889,7 @@ async def api_admin_dlq_replay(request):
 
     dlq_id = request.path_params["dlq_id"]
     try:
-        result = await replay_dead_letter(admin_state.engine.pg_pool, dlq_id)
+        result = await replay_dead_letter(fleet_pg_pool(admin_state.engine), dlq_id)
     except ValueError as exc:
         return admin_validation_error(exc, status_code=404)
     except Exception as exc:
@@ -909,7 +910,7 @@ async def api_admin_dlq_purge(request):
 
     dlq_id = request.path_params["dlq_id"]
     try:
-        await purge_dead_letter(admin_state.engine.pg_pool, dlq_id)
+        await purge_dead_letter(fleet_pg_pool(admin_state.engine), dlq_id)
     except ValueError as exc:
         return admin_validation_error(exc, status_code=404)
     except Exception as exc:
@@ -1464,7 +1465,7 @@ async def api_admin_pii_redactions_list(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             total_row = await conn.fetchrow(count_sql, namespace_id)
             rows = await conn.fetch(items_sql, namespace_id, limit, offset)
     except Exception as exc:
@@ -1521,7 +1522,7 @@ async def api_admin_security_event_seq_gaps(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, namespace_id) as conn:
             min_seq = await conn.fetchval(
                 "SELECT MIN(event_seq)::bigint FROM event_log WHERE namespace_id = $1",
                 namespace_id,
@@ -1586,7 +1587,7 @@ async def api_admin_security_verify_memory_sample(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             mem_rows = await conn.fetch(sample_sql, namespace_id, sample_size)
     except Exception as exc:
         return admin_error_response(
@@ -1926,7 +1927,7 @@ async def api_admin_salience_map(request):
         return JSONResponse({"error": hl_err}, status_code=422)
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, ns) as conn:
             points = await fetch_salience_map_points(
                 conn,
                 namespace_id=ns,
@@ -1971,7 +1972,7 @@ async def api_admin_llm_payload(request):
     try:
         from nce import salience as _salience
 
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, ns) as conn:
             uri, uri_err = await fetch_event_llm_payload_uri(conn, namespace_id=ns, event_id=evt)
         if uri_err:
             return JSONResponse({"error": uri_err}, status_code=404)
@@ -2006,7 +2007,7 @@ async def api_admin_fleet_overview(request):
         return JSONResponse({"error": hl_err}, status_code=422)
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             rls = await fetch_pg_rls_snapshot(conn)
             items, total = await fetch_fleet_overview_page(
                 conn,
@@ -2042,7 +2043,7 @@ async def api_admin_contradictions_recent(request):
         return JSONResponse({"error": "Invalid limit"}, status_code=422)
     limit = max(1, min(limit, 50))
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             items = await fetch_recent_open_contradictions(conn, limit=limit)
     except Exception as exc:
         return admin_error_response(
@@ -2060,7 +2061,7 @@ async def api_admin_namespace_bridges(request):
     except ValueError:
         return JSONResponse({"error": "Invalid namespace_id UUID"}, status_code=400)
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, ns_uuid) as conn:
             items = await fetch_namespace_bridge_subscriptions(conn, ns_uuid)
     except Exception as exc:
         return admin_error_response(
@@ -2148,8 +2149,9 @@ async def api_admin_bridge_renew(request):
 
     from nce.bridge_renewal import renew_dropbox, renew_gdrive, renew_sharepoint
 
+    renew_pool = fleet_pg_pool(admin_state.engine)
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with renew_pool.acquire(timeout=10.0) as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM bridge_subscriptions WHERE id = $1",
                 bridge_uuid,
@@ -2176,13 +2178,13 @@ async def api_admin_bridge_renew(request):
 
     try:
         if prov == "sharepoint":
-            await renew_sharepoint(admin_state.engine.pg_pool, row)
+            await renew_sharepoint(renew_pool, row)
             action = "renewed_sharepoint"
         elif prov == "gdrive":
-            await renew_gdrive(admin_state.engine.pg_pool, row)
+            await renew_gdrive(renew_pool, row)
             action = "renewed_gdrive"
         elif prov == "dropbox":
-            await renew_dropbox(admin_state.engine.pg_pool, row)
+            await renew_dropbox(renew_pool, row)
             action = "noop_dropbox"
         else:
             return JSONResponse(

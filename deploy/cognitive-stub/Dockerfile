@@ -4,9 +4,15 @@ WORKDIR /app
 RUN groupadd -g 10001 appuser && useradd -u 10001 -g appuser -s /sbin/nologin -M appuser
 
 COPY stub_server.py .
-RUN chown -R appuser:appuser /app
+RUN chmod 0644 /app/stub_server.py
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 USER 10001:10001
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:11435/health')"
 
 ENV COGNITIVE_PORT=11435
 ENV EMBEDDING_VECTOR_DIM=768

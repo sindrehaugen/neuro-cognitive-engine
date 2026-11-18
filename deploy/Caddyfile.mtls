@@ -1,0 +1,113 @@
+# NCE v3.5.3 — Internal mTLS Edge Proxy Configuration
+# Terminates client traffic cleanly on Caddy and authenticates upstream connections
+# to admin:8003 over mutual TLS (client cert SAN caddy.internal.nce).
+
+{
+	admin off
+	auto_https disable_redirects
+}
+
+http://:80, https://localhost:443, https://127.0.0.1:443 {
+	tls internal
+
+	header {
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		X-XSS-Protection "0"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), camera=(), microphone=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self';"
+		-Server
+	}
+
+	request_body {
+		max_size 20971520
+	}
+
+	handle /webhooks/* {
+		request_body {
+			max_size 1048576
+		}
+		reverse_proxy webhook-receiver:8080 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	@a2a_routes path /tasks/* /.well-known/agent-card
+	handle @a2a_routes {
+		reverse_proxy a2a:8004 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	@mcp_routes path /mcp /mcp/*
+	handle @mcp_routes {
+		reverse_proxy mcp-gateway:8005 {
+			flush_interval -1
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	vars portal_upstream "portal:8010"
+	vars odoo_upstream "odoo:8011"
+	vars salesforce_upstream "salesforce:8012"
+
+	handle /api/portal/* {
+		reverse_proxy {vars.portal_upstream} {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle_path /portal/* {
+		reverse_proxy {vars.portal_upstream} {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle_path /odoo/* {
+		reverse_proxy {vars.odoo_upstream} {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle_path /salesforce/* {
+		reverse_proxy {vars.salesforce_upstream} {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle /caddy-healthz {
+		respond "ok" 200
+	}
+
+	handle {
+		reverse_proxy https://admin:8003 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+			# Strip any untrusted client certificate headers before injecting verified proxy SAN.
+			header_up -X-Forwarded-Client-Cert
+			header_up -X-Client-Cert-Fingerprint
+			header_up -X-Client-Cert-CN
+			header_up X-Client-Cert-SAN caddy.internal.nce
+			transport http {
+				tls_trust_pool file /etc/nce/certs/ca.crt
+				tls_client_auth /etc/nce/certs/caddy.crt /etc/nce/certs/caddy.key
+			}
+		}
+	}
+}

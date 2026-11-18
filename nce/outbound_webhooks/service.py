@@ -58,13 +58,14 @@ def compute_webhook_signature(
     path: str,
     timestamp: int,
     body_bytes: bytes,
+    nonce: str = "",
 ) -> str:
     """Compute HMAC-SHA256 signature matching nce/auth.py canonical format.
 
-    canonical_message = METHOD\\nPATH\\nTIMESTAMP[\\nSHA256_HEX(raw_body)]
+    canonical_message = METHOD\\nPATH\\nTIMESTAMP\\nNONCE[\\nSHA256_HEX(raw_body)]
     signature = HMAC-SHA256(secret, canonical_message).hexdigest()
     """
-    parts = [method.upper(), path, str(timestamp)]
+    parts = [method.upper(), path, str(timestamp), nonce]
     if body_bytes:
         parts.append(hashlib.sha256(body_bytes).hexdigest())
     canonical = "\n".join(parts)
@@ -100,7 +101,7 @@ def sign_outbound_webhook(
     parsed = urllib.parse.urlparse(url)
     path = parsed.path or "/"
 
-    sig = compute_webhook_signature(secret, method, path, timestamp, body_bytes)
+    sig = compute_webhook_signature(secret, method, path, timestamp, body_bytes, nonce=nonce)
     return {
         "Content-Type": "application/json",
         "X-NCE-Timestamp": str(timestamp),

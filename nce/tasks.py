@@ -26,7 +26,7 @@ from nce import embeddings as _embeddings
 from nce.ast_parser import parse_file
 from nce.cache_keys import get_code_index_cache_key
 from nce.config import cfg
-from nce.db_utils import unmanaged_pg_connection
+from nce.db_utils import resolve_worker_dsn, unmanaged_pg_connection, worker_dsn_is_segregated
 from nce.dead_letter_queue import (
     _clear_attempt,
     _track_attempt,
@@ -330,7 +330,7 @@ async def _store_dlq_async(
     import asyncpg
 
     pool = await asyncpg.create_pool(
-        cfg.PG_DSN,
+        resolve_worker_dsn(),
         min_size=1,
         max_size=2,
         command_timeout=30,
@@ -825,18 +825,34 @@ async def _dispatch_d365_event(
         # Determine namespace from org ID (use default namespace if no mapping)
         org_id = entity_ctx.get("org_id", "")
         ns_id_str: str | None = None
-        async with pg_pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id FROM d365_integrations WHERE org_url ILIKE $1 AND status='ACTIVE' LIMIT 1",
-                f"%{org_id}%" if org_id else cfg.NCE_D365_ORG_URL,
-            )
-            if row:
-                # Fetch the namespace_id from d365_integrations
-                d365_row = await conn.fetchrow(
-                    "SELECT namespace_id FROM d365_integrations WHERE id = $1", row["id"]
+        if worker_dsn_is_segregated():
+            lookup_conn = await asyncpg.connect(resolve_worker_dsn(), timeout=5.0)
+            try:
+                row = await lookup_conn.fetchrow(
+                    "SELECT id FROM d365_integrations WHERE org_url ILIKE $1 AND status='ACTIVE' LIMIT 1",
+                    f"%{org_id}%" if org_id else cfg.NCE_D365_ORG_URL,
                 )
-                if d365_row:
-                    ns_id_str = str(d365_row["namespace_id"])
+                if row:
+                    d365_row = await lookup_conn.fetchrow(
+                        "SELECT namespace_id FROM d365_integrations WHERE id = $1", row["id"]
+                    )
+                    if d365_row:
+                        ns_id_str = str(d365_row["namespace_id"])
+            finally:
+                await lookup_conn.close()
+        else:
+            async with pg_pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT id FROM d365_integrations WHERE org_url ILIKE $1 AND status='ACTIVE' LIMIT 1",
+                    f"%{org_id}%" if org_id else cfg.NCE_D365_ORG_URL,
+                )
+                if row:
+                    # Fetch the namespace_id from d365_integrations
+                    d365_row = await conn.fetchrow(
+                        "SELECT namespace_id FROM d365_integrations WHERE id = $1", row["id"]
+                    )
+                    if d365_row:
+                        ns_id_str = str(d365_row["namespace_id"])
 
         if not ns_id_str:
             log.warning("[D365 Worker] No namespace mapping for org_id=%s — skipping", org_id)

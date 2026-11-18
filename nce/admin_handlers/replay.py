@@ -287,10 +287,12 @@ async def api_replay_status(request):
     except ValueError:
         return JSONResponse({"error": "run_id is not a valid UUID"}, status_code=422)
 
+    ns_param = request.query_params.get("namespace_id")
+    pool = admin_state.engine.pg_pool if ns_param else fleet_pg_pool(admin_state.engine)
     try:
         from nce.replay import ReplayRunNotFoundError, get_run_status
 
-        status = await get_run_status(pool=admin_state.engine.pg_pool, run_id=run_id)
+        status = await get_run_status(pool=pool, run_id=run_id, namespace_id=ns_param)
         return JSONResponse(status)
     except ReplayRunNotFoundError as exc:
         return admin_validation_error(exc, status_code=404)
@@ -312,11 +314,13 @@ async def api_event_provenance(request):
     except ValueError:
         return JSONResponse({"error": "memory_id is not a valid UUID"}, status_code=422)
 
+    ns_param = request.query_params.get("namespace_id")
+    pool = admin_state.engine.pg_pool if ns_param else fleet_pg_pool(admin_state.engine)
     try:
         from nce.replay import get_event_provenance
 
         provenance = await get_event_provenance(
-            pool=admin_state.engine.pg_pool, memory_id=memory_id
+            pool=pool, memory_id=memory_id, namespace_id=ns_param
         )
         return JSONResponse(provenance)
     except Exception as exc:

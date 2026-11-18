@@ -18,6 +18,7 @@ SettingsStore (R3). See deploy/README.md "Secrets management (production)".
 
 from __future__ import annotations
 
+import os
 import secrets
 from collections.abc import Callable
 from pathlib import Path
@@ -27,6 +28,7 @@ BASE_ENV = ROOT / "deploy" / "compose.stack.env"
 EXAMPLE_ENV = ROOT / "deploy" / "compose.stack.env.example"
 GENERATED = ROOT / "deploy" / "compose.stack.env.generated"
 SECRETS_DIR = ROOT / "deploy" / "secrets"
+_IMPORT_SECRETS_DIR = SECRETS_DIR
 
 # Secrets this script may NEVER rotate once a value exists anywhere, and the
 # Docker-secret file that is authoritative for each.
@@ -96,6 +98,15 @@ KEY_SPECS: list[tuple[str, Callable[[str], bool]]] = [
             or "change" in v.lower()
             or "replace_me" in v.lower()
             or v == "nce_app_secret"
+        ),
+    ),
+    (
+        "NCE_GC_PASSWORD",
+        lambda v: (
+            _weak(v, min_len=8)
+            or "change" in v.lower()
+            or "replace_me" in v.lower()
+            or v == "nce_gc_secret"
         ),
     ),
     (
@@ -179,18 +190,40 @@ def _fingerprint(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
 
 
+def _effective_secrets_dir() -> Path:
+    """Resolve the secrets directory, honoring test overrides of either ROOT or SECRETS_DIR."""
+    if SECRETS_DIR != _IMPORT_SECRETS_DIR:
+        return SECRETS_DIR
+    return ROOT / "deploy" / "secrets"
+
+
+def _restrict_file_mode(path: Path) -> None:
+    """Best-effort 0600 permissions for secret files (no-op on unsupported filesystems)."""
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 def _gen_for_key(key: str) -> str:
     if key == "NCE_ADMIN_PASSWORD":
         raw_pass = secrets.token_urlsafe(18)
         hashed_pass = _hash_pbkdf2(raw_pass)
+        quiet = (
+            os.environ.get("CI", "").lower() == "true"
+            or os.environ.get("NCE_QUIET_BOOTSTRAP", "").strip() == "1"
+        )
         print("=" * 60)
         print(" NCE ADMINISTRATOR PASSWORD GENERATED ")
-        print(f" Plaintext Password:  {raw_pass}")
+        if not quiet:
+            print(f" Plaintext Password:  {raw_pass}")
+        else:
+            print(" Plaintext output suppressed (CI / NCE_QUIET_BOOTSTRAP=1).")
         print(" Keep this password secure! It will NOT be written to disk in plaintext.")
         print(" Only the PBKDF2 hash is written to deploy/compose.stack.env.generated.")
         print("=" * 60)
         return hashed_pass
-    if key == "NCE_APP_PASSWORD":
+    if key in ("NCE_APP_PASSWORD", "NCE_GC_PASSWORD"):
         return secrets.token_urlsafe(16)
     return secrets.token_hex(32)
 
@@ -207,13 +240,88 @@ def _write_once_value(key: str, merged: dict[str, str]) -> str | None:
     """
     fname = WRITE_ONCE.get(key)
     if fname:
-        path = SECRETS_DIR / fname
+        path = _effective_secrets_dir() / fname
         if path.is_file():
             value = path.read_bytes().rstrip(b"\r\n").decode("utf-8").strip()
             if value:
                 return value
     existing = merged.get(key, "").strip()
     return existing or None
+
+
+def _ensure_secret_files(
+    merged: dict[str, str],
+    spec_map: dict[str, Callable[[str], bool]],
+) -> None:
+    """Persist Docker file secrets under deploy/secrets/ when absent and strong."""
+    sdir = _effective_secrets_dir()
+    sdir.mkdir(parents=True, exist_ok=True)
+    for key, fname in WRITE_ONCE.items():
+        path = sdir / fname
+        if path.is_file() and path.read_bytes().strip():
+            _restrict_file_mode(path)
+            continue
+        val = (merged.get(key) or "").strip()
+        is_weak = spec_map.get(key)
+        if not val or (is_weak is not None and is_weak(val)):
+            continue
+        path.write_bytes(val.encode("utf-8"))
+        _restrict_file_mode(path)
+        print(f"Wrote file secret {path.name} (fingerprint {_fingerprint(val)}).")
+
+
+def _ensure_compose_dotenv(effective_vals: dict[str, str] | None = None) -> None:
+    """Ensure root .env defines strong Compose interpolation passwords and synced DB role passwords."""
+    dotenv_path = ROOT / ".env"
+    existing_lines: list[str] = []
+    existing_vals: dict[str, str] = {}
+    if dotenv_path.is_file():
+        raw_text = dotenv_path.read_text(encoding="utf-8")
+        existing_lines = raw_text.splitlines()
+        existing_vals = _parse_env_text(raw_text)
+
+    required_keys = (
+        "REDIS_PASSWORD",
+        "POSTGRES_PASSWORD",
+        "MINIO_ROOT_PASSWORD",
+    )
+    additions: dict[str, str] = {}
+    for key in required_keys:
+        val = (existing_vals.get(key) or "").strip()
+        if not val or "replace_me" in val.lower() or "change" in val.lower():
+            additions[key] = secrets.token_urlsafe(24)
+
+    sync_keys = ("NCE_APP_PASSWORD", "NCE_GC_PASSWORD")
+    if effective_vals:
+        for key in sync_keys:
+            val = (effective_vals.get(key) or "").strip()
+            if val and existing_vals.get(key) != val:
+                additions[key] = val
+
+    if not additions and dotenv_path.is_file():
+        return
+
+    updated_lines: list[str] = []
+    written_keys: set[str] = set()
+    for line in existing_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            k = stripped.partition("=")[0].strip()
+            if k in additions:
+                updated_lines.append(f"{k}={additions[k]}")
+                written_keys.add(k)
+                continue
+        updated_lines.append(line)
+
+    if not existing_lines:
+        updated_lines.append("# AUTO-GENERATED Compose interpolation secrets — do not commit.")
+    for key in (*required_keys, *sync_keys):
+        if key in additions and key not in written_keys:
+            updated_lines.append(f"{key}={additions[key]}")
+
+    dotenv_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+    _restrict_file_mode(dotenv_path)
+    print(f"Updated {dotenv_path.name} with {len(additions)} Compose credential(s).")
 
 
 def _ensure_base_env() -> None:
@@ -236,6 +344,7 @@ def main() -> None:
         existing_gen = _parse_env_text(GENERATED.read_text(encoding="utf-8"))
 
     merged: dict[str, str] = {k: v for k, v in existing_gen.items() if not k.startswith("#")}
+    spec_map = dict(KEY_SPECS)
 
     # 🔴 A key is generated ONLY when the base file's value is weak AND the
     # generated file does not already hold a strong one.
@@ -278,9 +387,13 @@ def main() -> None:
             continue  # a strong generated value already exists — keep it
         merged[key] = _gen_for_key(key)
 
+    _ensure_compose_dotenv({**base_vals, **merged})
+
     if not merged:
         stub = HEADER + "\n# No weak secrets detected; nothing to generate.\n"
         GENERATED.write_text(stub, encoding="utf-8")
+        _restrict_file_mode(GENERATED)
+        _ensure_secret_files(base_vals, spec_map)
         print(f"Wrote {GENERATED} (no overrides needed).")
         return
 
@@ -289,6 +402,8 @@ def main() -> None:
         lines.append(f"{k}={merged[k]}")
     lines.append("")
     GENERATED.write_text("\n".join(lines), encoding="utf-8")
+    _restrict_file_mode(GENERATED)
+    _ensure_secret_files({**base_vals, **merged}, spec_map)
     print(f"Updated {GENERATED} with {len(merged)} secret override(s).")
 
 

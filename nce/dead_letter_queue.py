@@ -329,27 +329,35 @@ async def store_dead_letter(
     error_message = str(error_message)[:_ERROR_MESSAGE_MAX_LEN]
 
     dlq_id: str | None = None
+    insert_sql = """
+        INSERT INTO dead_letter_queue (
+            namespace_id, task_name, job_id, kwargs,
+            error_message, attempt_count, status, error_fingerprint
+        )
+        VALUES ($1, $2, $3, $4::jsonb, $5, $6, 'pending', $7)
+        RETURNING id
+    """
+    insert_args = (
+        ns,
+        task_name,
+        job_id,
+        json.dumps(sanitized, default=str, sort_keys=True),
+        error_message,
+        attempt_count,
+        error_fingerprint,
+    )
     try:
+        import asyncpg  # type: ignore[import-untyped]
+
+        from nce.auth import set_namespace_context
+
         async with pg_pool.acquire(timeout=10.0) as conn:
-            dlq_id = str(
-                await conn.fetchval(
-                    """
-                    INSERT INTO dead_letter_queue (
-                        namespace_id, task_name, job_id, kwargs,
-                        error_message, attempt_count, status, error_fingerprint
-                    )
-                    VALUES ($1, $2, $3, $4::jsonb, $5, $6, 'pending', $7)
-                    RETURNING id
-                    """,
-                    ns,
-                    task_name,
-                    job_id,
-                    json.dumps(sanitized, default=str, sort_keys=True),
-                    error_message,
-                    attempt_count,
-                    error_fingerprint,
-                )
-            )
+            if ns is not None and isinstance(pg_pool, asyncpg.Pool):
+                async with conn.transaction():
+                    await set_namespace_context(conn, ns)
+                    dlq_id = str(await conn.fetchval(insert_sql, *insert_args))
+            else:
+                dlq_id = str(await conn.fetchval(insert_sql, *insert_args))
 
         TASK_DLQ_TOTAL.labels(task_name=task_name).inc()
 

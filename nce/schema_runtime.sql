@@ -38,61 +38,9 @@ BEGIN
         ALTER ROLE nce_app WITH LOGIN;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc') THEN
-        CREATE ROLE nce_gc BYPASSRLS NOLOGIN;
+        CREATE ROLE nce_gc WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS PASSWORD 'nce_gc_secret';
     ELSE
-        ALTER ROLE nce_gc BYPASSRLS NOLOGIN;
-    END IF;
-END $$;
-
--- --- Knowledge-graph nodes (partitioned by HASH) ---
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'kg_nodes' AND c.relkind = 'r' AND c.relispartition = false AND NOT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = c.oid)) THEN
-        ALTER TABLE kg_nodes RENAME TO kg_nodes_old;
-    END IF;
-END $$;
-
--- --- Knowledge-graph edges (partitioned by HASH) ---
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'kg_edges' AND c.relkind = 'r' AND c.relispartition = false AND NOT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = c.oid)) THEN
-        ALTER TABLE kg_edges RENAME TO kg_edges_old;
-    END IF;
-END $$;
-
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        GRANT SELECT, INSERT, UPDATE, DELETE ON kg_node_embeddings TO nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON kg_node_embeddings_0 TO nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON kg_node_embeddings_1 TO nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON kg_node_embeddings_2 TO nce_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON kg_node_embeddings_3 TO nce_app;
-        
-        GRANT DELETE ON pii_redactions TO nce_app;
-        IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'pii_redactions_default') THEN
-            GRANT DELETE ON pii_redactions_default TO nce_app;
-        END IF;
-    END IF;
-END $$;
-
-DO $$
-BEGIN
-    REVOKE ALL ON snapshots FROM PUBLIC;
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        GRANT SELECT, INSERT, UPDATE, DELETE ON snapshots TO nce_app;
-    ELSE
-        RAISE NOTICE 'nce_app role not found — snapshot GRANTs skipped (create role or run migrations)';
-    END IF;
-END $$;
-
-DO $$
-BEGIN
-    REVOKE ALL ON replay_runs FROM PUBLIC;
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
-        GRANT SELECT, INSERT, UPDATE, DELETE ON replay_runs TO nce_app;
-    ELSE
-        RAISE NOTICE 'nce_app role not found — replay_runs GRANTs skipped';
+        ALTER ROLE nce_gc WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
     END IF;
 END $$;
 
@@ -140,6 +88,52 @@ COMMENT ON FUNCTION get_nce_external_scope() IS
 'C3 external-principal RLS accessor. Returns session external_scope_id or nil-UUID
 deny-sentinel when unset. Use in external_isolation_policy USING expressions.';
 
+-- --- Knowledge-graph nodes (partitioned by HASH) ---
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'kg_nodes' AND c.relkind = 'r' AND c.relispartition = false AND NOT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = c.oid)) THEN
+        ALTER TABLE kg_nodes RENAME TO kg_nodes_old;
+    END IF;
+END $$;
+
+-- --- Knowledge-graph edges (partitioned by HASH) ---
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'kg_edges' AND c.relkind = 'r' AND c.relispartition = false AND NOT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = c.oid)) THEN
+        ALTER TABLE kg_edges RENAME TO kg_edges_old;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        GRANT DELETE ON pii_redactions TO nce_app;
+        IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'pii_redactions_default') THEN
+            GRANT DELETE ON pii_redactions_default TO nce_app;
+        END IF;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    REVOKE ALL ON snapshots FROM PUBLIC;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON snapshots TO nce_app;
+    ELSE
+        RAISE NOTICE 'nce_app role not found — snapshot GRANTs skipped (create role or run migrations)';
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    REVOKE ALL ON replay_runs FROM PUBLIC;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON replay_runs TO nce_app;
+    ELSE
+        RAISE NOTICE 'nce_app role not found — replay_runs GRANTs skipped';
+    END IF;
+END $$;
+
 ALTER TABLE replay_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE replay_runs FORCE ROW LEVEL SECURITY;
 
@@ -160,6 +154,8 @@ CREATE POLICY tenant_isolation_policy ON replay_runs
 CREATE OR REPLACE FUNCTION nce_ensure_event_log_monthly_partitions(p_months_ahead int DEFAULT 3)
 RETURNS void
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $fn$
 DECLARE
     m int;
@@ -215,12 +211,43 @@ BEGIN
                     p_end
                 );
             END IF;
+
+            EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', p_name);
+            EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', p_name);
+            EXECUTE format('DROP POLICY IF EXISTS namespace_isolation_policy ON public.%I', p_name);
+            EXECUTE format('DROP POLICY IF EXISTS tenant_isolation_policy ON public.%I', p_name);
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+                EXECUTE format(
+                    'CREATE POLICY tenant_isolation_policy ON public.%I '
+                    'FOR ALL TO nce_app '
+                    'USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace())) '
+                    'WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))',
+                    p_name
+                );
+                EXECUTE format('REVOKE ALL ON TABLE public.%I FROM nce_app', p_name);
+                EXECUTE format('GRANT SELECT, INSERT ON TABLE public.%I TO nce_app', p_name);
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc') THEN
+                EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.%I FROM nce_gc', p_name);
+            END IF;
+            EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.%I FROM PUBLIC', p_name);
         END IF;
     END LOOP;
 END;
 $fn$;
 
 SELECT nce_ensure_event_log_monthly_partitions(3);
+
+DO $$
+BEGIN
+    REVOKE ALL ON FUNCTION nce_ensure_event_log_monthly_partitions(int) FROM PUBLIC;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        GRANT EXECUTE ON FUNCTION nce_ensure_event_log_monthly_partitions(int) TO nce_app;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc') THEN
+        GRANT EXECUTE ON FUNCTION nce_ensure_event_log_monthly_partitions(int) TO nce_gc;
+    END IF;
+END $$;
 
 DO $$
 BEGIN
@@ -544,9 +571,6 @@ CREATE POLICY tenant_isolation_policy ON procedural_heuristics
 GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_gc;
 
--- FIX-055: kg_node_embeddings are global (not namespace-scoped).
-ALTER TABLE kg_node_embeddings DISABLE ROW LEVEL SECURITY;
-
 DO $$
 DECLARE
     t text;
@@ -554,11 +578,13 @@ DECLARE
         'memories',
         'kg_nodes',
         'kg_edges',
+        'kg_node_embeddings',
         'pii_redactions',
         'memory_salience',
         'contradictions',
         'snapshots',
         'event_log',
+        'event_sequences',
         'resource_quotas',
         'consolidation_runs',
         'bridge_subscriptions',
@@ -591,6 +617,11 @@ BEGIN
         IF t IN ('event_log', 'event_parents') THEN
             EXECUTE format(
                 'GRANT SELECT, INSERT ON TABLE public.%I TO nce_app',
+                t
+            );
+        ELSIF t = 'event_sequences' THEN
+            EXECUTE format(
+                'GRANT SELECT, INSERT, UPDATE ON TABLE public.%I TO nce_app',
                 t
             );
         ELSE
@@ -630,3 +661,378 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE a2a_grants TO nce_app;
 -- topology_graph_tenant_isolation (from migration 010) whereas the loop creates
 -- tenant_isolation_policy; folding would silently rename that policy.
 ALTER TABLE topology_graph FORCE ROW LEVEL SECURITY;
+
+-- =============================================================================
+-- Three-role runtime privilege separation helpers & least-privilege grants
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION nce_lookup_active_bridge_subscription(
+    p_provider text,
+    p_subscription_id text
+)
+RETURNS SETOF public.bridge_subscriptions
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+    IF p_subscription_id IS NULL OR btrim(p_subscription_id) = '' THEN
+        RETURN;
+    END IF;
+    RETURN QUERY
+    SELECT *
+    FROM public.bridge_subscriptions
+    WHERE provider = p_provider
+      AND status = 'ACTIVE'
+      AND subscription_id = p_subscription_id
+    LIMIT 1;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION nce_resolve_signing_session_namespace(p_session_id text)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+    ns_id uuid;
+BEGIN
+    IF p_session_id IS NULL OR btrim(p_session_id) = '' THEN
+        RETURN NULL;
+    END IF;
+    IF to_regclass('public.sales_read_model') IS NULL THEN
+        RETURN NULL;
+    END IF;
+    EXECUTE $q$
+        SELECT namespace_id
+        FROM public.sales_read_model
+        WHERE entity = 'quotes'
+          AND (manual->>'signing_session_id' = $1 OR source_json->>'signing_session_id' = $1)
+        LIMIT 1
+    $q$
+    INTO ns_id
+    USING p_session_id;
+    RETURN ns_id;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION nce_count_signing_keys()
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+    cnt bigint;
+BEGIN
+    SELECT count(*)::bigint INTO cnt FROM public.signing_keys;
+    RETURN COALESCE(cnt, 0);
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION nce_get_active_signing_key()
+RETURNS TABLE(key_id text, encrypted_key bytea)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+    RETURN QUERY
+    SELECT sk.key_id, sk.encrypted_key
+    FROM public.signing_keys sk
+    WHERE sk.status = 'active'
+    ORDER BY sk.created_at DESC
+    LIMIT 1;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION nce_get_signing_key_by_id(p_key_id text)
+RETURNS TABLE(key_id text, encrypted_key bytea)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+    IF p_key_id IS NULL OR btrim(p_key_id) = '' THEN
+        RETURN;
+    END IF;
+    RETURN QUERY
+    SELECT sk.key_id, sk.encrypted_key
+    FROM public.signing_keys sk
+    WHERE sk.key_id = p_key_id
+    LIMIT 1;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION nce_get_signing_keys_status()
+RETURNS TABLE(
+    active_key_id text,
+    active_created_at timestamptz,
+    status_counts jsonb,
+    latest_retired_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+    v_active_id text;
+    v_active_created timestamptz;
+    v_counts jsonb;
+    v_latest_retired timestamptz;
+BEGIN
+    SELECT sk.key_id, sk.created_at
+    INTO v_active_id, v_active_created
+    FROM public.signing_keys sk
+    WHERE sk.status = 'active'
+    ORDER BY sk.created_at DESC
+    LIMIT 1;
+
+    SELECT COALESCE(jsonb_object_agg(s.status, s.cnt), '{}'::jsonb)
+    INTO v_counts
+    FROM (
+        SELECT status, count(*)::bigint AS cnt
+        FROM public.signing_keys
+        GROUP BY status
+    ) s;
+
+    SELECT max(retired_at)
+    INTO v_latest_retired
+    FROM public.signing_keys
+    WHERE status = 'retired';
+
+    RETURN QUERY SELECT v_active_id, v_active_created, v_counts, v_latest_retired;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION nce_rotate_signing_key(p_key_id text, p_encrypted_key bytea)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+    IF p_key_id IS NULL OR btrim(p_key_id) = '' THEN
+        RAISE EXCEPTION 'p_key_id must not be empty';
+    END IF;
+    IF p_encrypted_key IS NULL OR octet_length(p_encrypted_key) = 0 THEN
+        RAISE EXCEPTION 'p_encrypted_key must not be empty';
+    END IF;
+
+    UPDATE public.signing_keys
+    SET status = 'retired',
+        retired_at = now()
+    WHERE status = 'active';
+
+    INSERT INTO public.signing_keys (key_id, encrypted_key, status)
+    VALUES (p_key_id, p_encrypted_key, 'active');
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION nce_enforce_partition_rls_and_worm()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+    app_exists boolean := EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app');
+    gc_exists boolean := EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc');
+    part record;
+    ns_col text;
+BEGIN
+    FOR part IN
+        SELECT
+            c.relname AS part_name,
+            p.relname AS parent_name,
+            EXISTS (
+                SELECT 1 FROM pg_attribute a
+                WHERE a.attrelid = c.oid AND a.attname = 'namespace_id' AND NOT a.attisdropped
+            ) AS has_ns_id,
+            EXISTS (
+                SELECT 1 FROM pg_attribute a
+                WHERE a.attrelid = c.oid AND a.attname = 'source_namespace_id' AND NOT a.attisdropped
+            ) AS has_src_ns_id
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_inherits i ON i.inhrelid = c.oid
+        JOIN pg_class p ON p.oid = i.inhparent
+        WHERE n.nspname = 'public'
+          AND c.relkind IN ('r', 'p')
+          AND c.relispartition
+          AND p.relrowsecurity
+        ORDER BY c.relname
+    LOOP
+        IF part.has_ns_id THEN
+            ns_col := 'namespace_id';
+        ELSIF part.has_src_ns_id THEN
+            ns_col := 'source_namespace_id';
+        ELSE
+            CONTINUE;
+        END IF;
+
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', part.part_name);
+        EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', part.part_name);
+        EXECUTE format('DROP POLICY IF EXISTS namespace_isolation_policy ON public.%I', part.part_name);
+        EXECUTE format('DROP POLICY IF EXISTS tenant_isolation_policy ON public.%I', part.part_name);
+
+        IF app_exists THEN
+            EXECUTE format(
+                'CREATE POLICY tenant_isolation_policy ON public.%I '
+                'FOR ALL TO nce_app '
+                'USING (%I IS NOT NULL AND %I = (SELECT get_nce_namespace())) '
+                'WITH CHECK (%I IS NOT NULL AND %I = (SELECT get_nce_namespace()))',
+                part.part_name,
+                ns_col,
+                ns_col,
+                ns_col,
+                ns_col
+            );
+        END IF;
+
+        IF part.parent_name = 'event_log' THEN
+            EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.%I FROM PUBLIC', part.part_name);
+            IF app_exists THEN
+                EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.%I FROM nce_app', part.part_name);
+            END IF;
+            IF gc_exists THEN
+                EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.%I FROM nce_gc', part.part_name);
+            END IF;
+        END IF;
+    END LOOP;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION nce_sync_runtime_role_grants()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+    app_exists boolean := EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app');
+    gc_exists boolean := EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc');
+    r record;
+    w text;
+    worm_tables text[] := ARRAY[
+        'event_log',
+        'event_parents',
+        'audit_log',
+        'economy_postings',
+        'entra_id_audit_log',
+        'sales_signed_baselines',
+        'support_ticket_actions',
+        'telemetry_samples',
+        'divergence_log',
+        'd365_sync_runs',
+        'inventory_transactions',
+        'product_enrichment_log',
+        'product_match_feedback'
+    ];
+BEGIN
+    IF app_exists THEN
+        GRANT USAGE ON SCHEMA public TO nce_app;
+        IF to_regclass('public.namespaces') IS NOT NULL THEN
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.namespaces TO nce_app;
+        END IF;
+        IF to_regclass('public.embedding_models') IS NOT NULL THEN
+            GRANT SELECT, INSERT, UPDATE ON TABLE public.embedding_models TO nce_app;
+        END IF;
+        IF to_regclass('public.applied_migrations') IS NOT NULL THEN
+            GRANT SELECT ON TABLE public.applied_migrations TO nce_app;
+        END IF;
+        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nce_app;
+    END IF;
+
+    IF gc_exists THEN
+        GRANT USAGE ON SCHEMA public TO nce_gc;
+        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nce_gc;
+        GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO nce_gc;
+
+        FOR r IN
+            SELECT c.relname
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public'
+              AND c.relkind IN ('r', 'p')
+              AND NOT c.relispartition
+              AND c.relname <> 'signing_keys'
+            ORDER BY c.relname
+        LOOP
+            EXECUTE format('GRANT SELECT ON TABLE public.%I TO nce_gc', r.relname);
+            IF app_exists THEN
+                IF has_table_privilege('nce_app', format('public.%I', r.relname), 'INSERT') THEN
+                    EXECUTE format('GRANT INSERT ON TABLE public.%I TO nce_gc', r.relname);
+                ELSE
+                    EXECUTE format('REVOKE INSERT ON TABLE public.%I FROM nce_gc', r.relname);
+                END IF;
+                IF has_table_privilege('nce_app', format('public.%I', r.relname), 'UPDATE') THEN
+                    EXECUTE format('GRANT UPDATE ON TABLE public.%I TO nce_gc', r.relname);
+                ELSE
+                    EXECUTE format('REVOKE UPDATE ON TABLE public.%I FROM nce_gc', r.relname);
+                END IF;
+                IF has_table_privilege('nce_app', format('public.%I', r.relname), 'DELETE') THEN
+                    EXECUTE format('GRANT DELETE ON TABLE public.%I TO nce_gc', r.relname);
+                ELSE
+                    EXECUTE format('REVOKE DELETE ON TABLE public.%I FROM nce_gc', r.relname);
+                END IF;
+            END IF;
+        END LOOP;
+
+        FOREACH w IN ARRAY worm_tables
+        LOOP
+            IF to_regclass(format('public.%I', w)) IS NOT NULL THEN
+                EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.%I FROM nce_gc', w);
+            END IF;
+        END LOOP;
+    END IF;
+
+    IF to_regclass('public.signing_keys') IS NOT NULL THEN
+        REVOKE ALL ON TABLE public.signing_keys FROM PUBLIC;
+        IF app_exists THEN
+            REVOKE ALL ON TABLE public.signing_keys FROM nce_app;
+        END IF;
+        IF gc_exists THEN
+            REVOKE ALL ON TABLE public.signing_keys FROM nce_gc;
+        END IF;
+    END IF;
+
+    PERFORM nce_enforce_partition_rls_and_worm();
+
+    REVOKE ALL ON FUNCTION nce_ensure_event_log_monthly_partitions(int) FROM PUBLIC;
+    REVOKE ALL ON FUNCTION nce_lookup_active_bridge_subscription(text, text) FROM PUBLIC;
+    REVOKE ALL ON FUNCTION nce_resolve_signing_session_namespace(text) FROM PUBLIC;
+    REVOKE ALL ON FUNCTION nce_count_signing_keys() FROM PUBLIC;
+    REVOKE ALL ON FUNCTION nce_get_active_signing_key() FROM PUBLIC;
+    REVOKE ALL ON FUNCTION nce_get_signing_key_by_id(text) FROM PUBLIC;
+    REVOKE ALL ON FUNCTION nce_get_signing_keys_status() FROM PUBLIC;
+    REVOKE ALL ON FUNCTION nce_rotate_signing_key(text, bytea) FROM PUBLIC;
+    REVOKE ALL ON FUNCTION nce_enforce_partition_rls_and_worm() FROM PUBLIC;
+    REVOKE ALL ON FUNCTION nce_sync_runtime_role_grants() FROM PUBLIC;
+    IF app_exists THEN
+        GRANT EXECUTE ON FUNCTION nce_ensure_event_log_monthly_partitions(int) TO nce_app;
+        GRANT EXECUTE ON FUNCTION nce_lookup_active_bridge_subscription(text, text) TO nce_app;
+        GRANT EXECUTE ON FUNCTION nce_resolve_signing_session_namespace(text) TO nce_app;
+        GRANT EXECUTE ON FUNCTION nce_count_signing_keys() TO nce_app;
+        GRANT EXECUTE ON FUNCTION nce_get_active_signing_key() TO nce_app;
+        GRANT EXECUTE ON FUNCTION nce_get_signing_key_by_id(text) TO nce_app;
+        GRANT EXECUTE ON FUNCTION nce_get_signing_keys_status() TO nce_app;
+        GRANT EXECUTE ON FUNCTION nce_rotate_signing_key(text, bytea) TO nce_app;
+        REVOKE ALL ON FUNCTION nce_enforce_partition_rls_and_worm() FROM nce_app;
+        REVOKE ALL ON FUNCTION nce_sync_runtime_role_grants() FROM nce_app;
+    END IF;
+    IF gc_exists THEN
+        GRANT EXECUTE ON FUNCTION nce_ensure_event_log_monthly_partitions(int) TO nce_gc;
+        GRANT EXECUTE ON FUNCTION nce_lookup_active_bridge_subscription(text, text) TO nce_gc;
+        GRANT EXECUTE ON FUNCTION nce_resolve_signing_session_namespace(text) TO nce_gc;
+        GRANT EXECUTE ON FUNCTION nce_count_signing_keys() TO nce_gc;
+        GRANT EXECUTE ON FUNCTION nce_get_active_signing_key() TO nce_gc;
+        GRANT EXECUTE ON FUNCTION nce_get_signing_key_by_id(text) TO nce_gc;
+        GRANT EXECUTE ON FUNCTION nce_get_signing_keys_status() TO nce_gc;
+        GRANT EXECUTE ON FUNCTION nce_rotate_signing_key(text, bytea) TO nce_gc;
+        REVOKE ALL ON FUNCTION nce_enforce_partition_rls_and_worm() FROM nce_gc;
+        REVOKE ALL ON FUNCTION nce_sync_runtime_role_grants() FROM nce_gc;
+    END IF;
+END;
+$fn$;
+
+SELECT nce_sync_runtime_role_grants();

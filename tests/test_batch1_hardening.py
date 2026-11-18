@@ -75,6 +75,7 @@ async def test_init_pg_schema_special_character_password():
     # We patch NCE_APP_PASSWORD in the config and mock the path to schema.sql
     with (
         patch("nce.config.cfg.NCE_APP_PASSWORD", special_password),
+        patch("nce.config.cfg.NCE_GC_PASSWORD", "nce_gc_secret"),
         patch("pathlib.Path.read_text", return_value="-- mock schema ddl"),
     ):
         await engine._init_pg_schema()

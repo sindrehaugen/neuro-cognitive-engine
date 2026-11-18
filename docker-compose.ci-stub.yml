@@ -1,0 +1,47 @@
+# NCE v3.5.3 — Opt-in CI / lightweight structural smoke overlay using cognitive-stub.
+#
+# The default docker-compose.yml builds the real CPU all-mpnet-base-v2 + spaCy
+# cognitive service (deploy/cognitive-service). Use this overlay ONLY in CI runners or
+# resource-constrained structural smoke tests where real vector semantics are not needed:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ci-stub.yml up -d --build
+
+services:
+  cognitive:
+    image: nce-cognitive-stub:3.5.3
+    build:
+      context: ./deploy/cognitive-stub
+      dockerfile: Dockerfile
+    environment:
+      COGNITIVE_PORT: "11435"
+      EMBEDDING_VECTOR_DIM: "${EMBEDDING_VECTOR_DIM:-768}"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:11435/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  worker:
+    environment:
+      NCE_ALLOW_COGNITIVE_STUB: "true"
+
+  cron:
+    environment:
+      NCE_ALLOW_COGNITIVE_STUB: "true"
+
+  admin:
+    environment:
+      NCE_ALLOW_COGNITIVE_STUB: "true"
+
+  a2a:
+    environment:
+      NCE_ALLOW_COGNITIVE_STUB: "true"
+
+  mcp-gateway:
+    environment:
+      NCE_ALLOW_COGNITIVE_STUB: "true"
+
+  webhook-receiver:
+    environment:
+      NCE_ALLOW_COGNITIVE_STUB: "true"

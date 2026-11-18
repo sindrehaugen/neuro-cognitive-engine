@@ -4,7 +4,7 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.5.2-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-3.5.3-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -204,7 +204,7 @@ NCE `v3.5.2` is engineered so the memory substrate is never the bottleneck durin
 | **Full 5-Tool Chained LLM Reasoning Turn** | `~1,515 ms` | `~148 ms` | **`116.94 ms` (`p50`)** | 30s verified-token cache + 2s Redis session sync + coalesced salience ring buffer |
 | **Mongo-Pause Saga Failover (`store_memory`)** | `10.10 s` | `2.36 s` | **`2.38 s` (`< 3.0s`)** | `2000ms` Motor timeouts + bounded inline rollback + `SKIP LOCKED` recovery |
 
-Full benchmark methodology and `EXPLAIN (ANALYZE, BUFFERS)` plans: [docs/benchmarks/PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md).
+Full benchmark methodology and `EXPLAIN (ANALYZE, BUFFERS)` plans: [docs/benchmarks/PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · Live `v3.5.3` hardening & readiness report: [docs/benchmarks/HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md).
 
 ---
 
@@ -403,7 +403,7 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 | Integrations | [service_integrations.md](docs/service_integrations.md) · [bridge_setup_guide.md](docs/bridge_setup_guide.md) · [a2a.md](docs/a2a.md) |
 | Edge | [airgapped_deployment.md](docs/airgapped_deployment.md) · [vram_monitoring.md](docs/vram_monitoring.md) |
 | Plugins & Verticals | [plugin_development.md](docs/plugin_development.md) · [shared-core/overview.md](docs/shared-core/overview.md) · [nce-vertical-engines](https://github.com/sindrehaugen/nce-vertical-engines) |
-| Benchmarks | [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) |
+| Benchmarks | [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · [HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) |
 | Design decisions | [adr/](docs/adr/) |
 
 ---
@@ -420,5 +420,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-NCE — Neuro-Cognitive Engine · v3.5.2 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
+NCE — Neuro-Cognitive Engine · v3.5.3 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
 

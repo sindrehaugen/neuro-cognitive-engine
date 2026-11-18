@@ -26,8 +26,10 @@ def bypass_lifespan():
     app.router.lifespan_context = original_lifespan
 
 
-def _make_signature(key: str, method: str, path: str, timestamp: int, body: bytes = b"") -> str:
-    parts = [method.upper(), path, str(timestamp)]
+def _make_signature(
+    key: str, method: str, path: str, timestamp: int, body: bytes = b"", nonce: str = ""
+) -> str:
+    parts = [method.upper(), path, str(timestamp), nonce]
     if body:
         parts.append(hashlib.sha256(body).hexdigest())
     canonical = "\n".join(parts)
@@ -36,9 +38,11 @@ def _make_signature(key: str, method: str, path: str, timestamp: int, body: byte
 
 def _valid_headers(key: str, method: str, path: str, body: bytes = b"") -> dict[str, str]:
     ts = int(time.time())
-    sig = _make_signature(key, method, path, ts, body)
+    nonce = uuid.uuid4().hex
+    sig = _make_signature(key, method, path, ts, body, nonce=nonce)
     return {
         "X-NCE-Timestamp": str(ts),
+        "X-NCE-Nonce": nonce,
         "Authorization": f"HMAC-SHA256 {sig}",
     }
 

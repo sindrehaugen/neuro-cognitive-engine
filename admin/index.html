@@ -4227,22 +4227,23 @@
         bodyStr = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
       }
       const ts = Math.floor(Date.now() / 1000);
-      let canonical = `${method}\n${pathname}\n${ts}`;
+      const headers = { ...(options.headers || {}) };
+      const existingNonceKey = Object.keys(headers).find((k) => k.toLowerCase() === 'x-nce-nonce');
+      const nonce = existingNonceKey
+        ? String(headers[existingNonceKey]).trim()
+        : ((typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+            ? crypto.randomUUID()
+            : `${ts}-${Math.random().toString(16).slice(2).padEnd(16, '0')}`);
+      headers['X-NCE-Nonce'] = nonce;
+      let canonical = `${method}\n${pathname}\n${ts}\n${nonce}`;
       if (bodyStr) {
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(bodyStr));
         const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
         canonical += '\n' + hex;
       }
       const sig = await hmacSha256Hex(secret, canonical);
-      const headers = { ...(options.headers || {}) };
-      headers['X-TriMCP-Timestamp'] = String(ts);
+      headers['X-NCE-Timestamp'] = String(ts);
       headers['Authorization'] = 'HMAC-SHA256 ' + sig;
-      const hasNonce = Object.keys(headers).some((k) => k.toLowerCase() === 'x-nce-nonce');
-      if (!hasNonce) {
-        headers['X-NCE-Nonce'] = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
-          ? crypto.randomUUID()
-          : `${ts}-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`;
-      }
       if (bodyStr) {
         const hasCt = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
         if (!hasCt) headers['Content-Type'] = 'application/json';

@@ -9,6 +9,7 @@ from nce import admin_state
 from nce.admin_handlers._shared import (
     admin_error_response,
     admin_validation_error,
+    fleet_pg_pool,
     parse_optional_uuid,
 )
 from nce.models import ActorTrustOut, ApprovalQueueItemOut
@@ -42,7 +43,7 @@ async def api_admin_actor_trust(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             rows = await conn.fetch(query, *args)
     except Exception as exc:
         return admin_error_response("Failed to query actor trust", exc, status_code=500)
@@ -91,7 +92,7 @@ async def api_admin_approval_queue_list(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             rows = await conn.fetch(query, *args)
     except Exception as exc:
         return admin_error_response("Failed to query approval queue", exc, status_code=500)
@@ -130,7 +131,7 @@ async def api_admin_approval_queue_get(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             row = await conn.fetchrow(query, item_id)
     except Exception as exc:
         return admin_error_response("Failed to fetch approval queue item", exc, status_code=500)
@@ -176,7 +177,7 @@ async def api_admin_approval_queue_approve(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             async with conn.transaction():
                 row = await conn.fetchrow(fetch_query, item_id)
                 if not row:
@@ -280,7 +281,7 @@ async def api_admin_approval_queue_reject(request):
     """
 
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             async with conn.transaction():
                 row = await conn.fetchrow(fetch_query, item_id)
                 if not row:

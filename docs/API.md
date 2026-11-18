@@ -107,6 +107,7 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | POST | `/api/search` | `api_search` |
 | POST | `/api/snapshot/export` | `api_snapshot_export` |
 | GET | `/healthz` | `get_healthz` |
+| GET | `/readyz` | `get_readyz` |
 | GET | `/styles.css` | `serve_styles` |
 
 ## MCP tools (agent surface)
@@ -187,4 +188,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `validate_migration` |  |  |  | yes |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 98 REST endpoints, 71 MCP tools._
+_Totals: 99 REST endpoints, 71 MCP tools._

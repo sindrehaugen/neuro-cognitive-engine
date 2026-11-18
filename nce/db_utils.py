@@ -166,11 +166,9 @@ def assert_namespace_filter(sql: str, params: list | tuple, namespace_id: str | 
     it checks that (a) the rendered SQL mentions ``namespace_id`` and (b) the
     caller's ``namespace_id`` value actually appears in the bind-parameter list.
 
-    NOTE: ``kg_node_embeddings`` is intentionally *not* checked here because it
-    is global by design — KG node embeddings represent cross-namespace graph
-    topology and carry no tenant column.  Any query against ``kg_node_embeddings``
-    is correctly unrestricted; the asymmetry is deliberate and documented in
-    schema.sql (FIX-055) and ``nce/event_log.py`` (``EXPECTED_GLOBAL_TABLES``).
+    NOTE: ``kg_node_embeddings`` carries ``namespace_id`` and enforced RLS at
+    the PostgreSQL layer (migration 040); ``assert_namespace_filter`` remains
+    focused on ``memory_embeddings`` join predicates.
 
     Raises:
         AssertionError: when the SQL text does not contain ``namespace_id`` or

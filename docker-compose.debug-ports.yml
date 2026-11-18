@@ -1,0 +1,73 @@
+# NCE v3.5.3 — Opt-in loopback port overlay for local debugging and integration testing.
+#
+# The base docker-compose.yml intentionally isolates internal services onto nce_data
+# (internal: true) and binds host ports ONLY on Caddy (:8082/:8443).
+# Layer this overlay when running host-side pytest integration suites or inspecting
+# datastores/services directly over 127.0.0.1 without altering NCE_ENV or mounts:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.debug-ports.yml up -d
+#
+# Attaches port-mapped services to nce_edge alongside nce_data so Docker Engine
+# permits 127.0.0.1 host port forwarding temporarily. Restore Caddy-only edge ingress with:
+#   docker compose -f docker-compose.yml up -d --remove-orphans
+
+services:
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - nce_edge
+      - nce_data
+
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - nce_edge
+      - nce_data
+
+  mongodb:
+    ports:
+      - "127.0.0.1:27017:27017"
+    networks:
+      - nce_edge
+      - nce_data
+
+  minio:
+    ports:
+      - "127.0.0.1:9002:9000"
+      - "127.0.0.1:9003:9001"
+    networks:
+      - nce_edge
+      - nce_data
+
+  cognitive:
+    ports:
+      - "127.0.0.1:11435:11435"
+    networks:
+      - nce_edge
+      - nce_data
+
+  admin:
+    ports:
+      - "127.0.0.1:8003:8003"
+
+  a2a:
+    ports:
+      - "127.0.0.1:8004:8004"
+
+  mcp-gateway:
+    ports:
+      - "127.0.0.1:8005:8005"
+
+  webhook-receiver:
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  jaeger:
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4318:4318"
+    networks:
+      - nce_edge
+      - nce_data

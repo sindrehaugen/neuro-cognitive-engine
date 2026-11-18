@@ -917,6 +917,7 @@ async def test_wave2_item16_signing_key_bootstrap_and_verify_v1_launch_nonce(
     assert "X-NCE-Nonce" in h1 and len(h1["X-NCE-Nonce"]) == 32
     assert h1["X-NCE-Nonce"] != h2["X-NCE-Nonce"]
     assert h1["Authorization"].startswith("HMAC-SHA256 ")
+    assert h1["Authorization"] != h2["Authorization"]
 
 
 # =============================================================================

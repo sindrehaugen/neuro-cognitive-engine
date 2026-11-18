@@ -1,4 +1,4 @@
-# NCE v3.5.1 — Local Development docker-compose override template.
+# NCE v3.5.3 — Local Development docker-compose override template.
 #
 # Copy this file to 'docker-compose.override.yml' in the project root to enable
 # developer-friendly customizations for local development (single-replica CPU defaults,
@@ -7,9 +7,13 @@
 #   cp docker-compose.override.example.yml docker-compose.override.yml
 #   make up   # or: python scripts/bootstrap-compose-secrets.py && docker compose up -d
 #
-# Default host ports from docker-compose.yml:
+# For integration tests without changing replicas, bind mounts, or NCE_ENV, use:
+#   docker compose -f docker-compose.yml -f docker-compose.debug-ports.yml up -d
+#
+# Default host loopback ports published by this override:
 #   5432 Postgres · 27017 MongoDB · 6379 Redis · 9002 MinIO S3 · 9003 MinIO Console
-#   8003 admin · 8004 a2a · 8005 mcp-gateway · 8080 webhook-receiver · 8082/8443 Caddy
+#   11435 Cognitive · 16686 Jaeger UI · 8003 admin · 8004 a2a · 8005 mcp-gateway
+#   8080 webhook-receiver · 8082/8443 Caddy (always active in base compose)
 
 services:
   # 1. Single-Replica Local Development Worker Override
@@ -29,19 +33,31 @@ services:
   postgres:
     ports:
       - "127.0.0.1:5432:5432"
+    networks:
+      - nce_edge
+      - nce_data
 
   mongodb:
     ports:
       - "127.0.0.1:27017:27017"
+    networks:
+      - nce_edge
+      - nce_data
 
   redis:
     ports:
       - "127.0.0.1:6379:6379"
+    networks:
+      - nce_edge
+      - nce_data
 
   minio:
     ports:
       - "127.0.0.1:9002:9000" # MinIO S3 API Endpoint
       - "127.0.0.1:9003:9001" # MinIO Web Console UI
+    networks:
+      - nce_edge
+      - nce_data
 
   # 3. Mount Local Codebase & Single-Worker Dev Overrides Across Application Surfaces
   mcp-gateway:
@@ -92,3 +108,19 @@ services:
     environment:
       NCE_ENV: dev
       LOG_LEVEL: DEBUG
+
+  cognitive:
+    ports:
+      - "127.0.0.1:11435:11435"
+    networks:
+      - nce_edge
+      - nce_data
+
+  jaeger:
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4318:4318"
+    networks:
+      - nce_edge
+      - nce_data
+

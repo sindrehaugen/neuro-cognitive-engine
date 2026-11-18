@@ -144,6 +144,7 @@ def test_three_header_hmac_signing_contract():
             timestamp=fixed_ts,
             body_bytes=body_bytes,
             provided_sig=sig,
+            nonce=fixed_nonce,
         )
         is True
     )
@@ -158,22 +159,26 @@ def test_hmac_tamper_rejection():
 
     headers = sign_outbound_webhook(secret, "POST", url, body, timestamp=ts)
     sig = headers["Authorization"].partition(" ")[2]
+    nonce = headers["X-NCE-Nonce"]
     path = "/webhook"
 
     # Valid
-    assert verify_hmac(secret, "POST", path, ts, body, sig) is True
+    assert verify_hmac(secret, "POST", path, ts, body, sig, nonce=nonce) is True
 
     # Tampered body
-    assert verify_hmac(secret, "POST", path, ts, b'{"msg":"tampered"}', sig) is False
+    assert verify_hmac(secret, "POST", path, ts, b'{"msg":"tampered"}', sig, nonce=nonce) is False
 
     # Tampered timestamp
-    assert verify_hmac(secret, "POST", path, ts + 10, body, sig) is False
+    assert verify_hmac(secret, "POST", path, ts + 10, body, sig, nonce=nonce) is False
 
     # Tampered path
-    assert verify_hmac(secret, "POST", "/other-path", ts, body, sig) is False
+    assert verify_hmac(secret, "POST", "/other-path", ts, body, sig, nonce=nonce) is False
+
+    # Tampered nonce
+    assert verify_hmac(secret, "POST", path, ts, body, sig, nonce="other-nonce-123456") is False
 
     # Wrong secret
-    assert verify_hmac("wrong-secret", "POST", path, ts, body, sig) is False
+    assert verify_hmac("wrong-secret", "POST", path, ts, body, sig, nonce=nonce) is False
 
 
 # ---------------------------------------------------------------------------
@@ -579,10 +584,11 @@ async def test_outbox_relay_webhook_delivery_gate(monkeypatch):
     assert auth_hdr.startswith("HMAC-SHA256 ")
     sig = auth_hdr.partition(" ")[2]
     ts = int(req1.headers["x-nce-timestamp"])
+    nonce = req1.headers["x-nce-nonce"]
 
     # Verify HMAC signature on received request
     path = urllib.parse.urlparse(target_url).path
-    assert verify_hmac(secret, "POST", path, ts, req1.content, sig) is True
+    assert verify_hmac(secret, "POST", path, ts, req1.content, sig, nonce=nonce) is True
 
     # Pass 2: Relay restart simulation (redelivery of same event_id)
     # The event was already inserted into processed_outbox_events in Pass 1.

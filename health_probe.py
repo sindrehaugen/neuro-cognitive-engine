@@ -1,9 +1,10 @@
 """
 NCE Internal Health Probe
 Verifies connectivity to all required backends (Redis, PG, Mongo)
-and checks embedding model readiness.
+and checks embedding model readiness, or supports fast ``--liveness`` mode.
 """
 
+import argparse
 import asyncio
 import logging
 import sys
@@ -78,6 +79,16 @@ async def probe():
                 if resp.status_code != 200:
                     print(f"Cognitive Engine Unhealthy: {resp.status_code}")
                     return False
+                try:
+                    data = resp.json() or {}
+                    if str(data.get("engine", "")).strip().lower() == "stub":
+                        if cfg.ENVIRONMENT in {"prod", "production"} and not getattr(
+                            cfg, "NCE_ALLOW_COGNITIVE_STUB", False
+                        ):
+                            print("Cognitive Engine is running STUB in production")
+                            return False
+                except Exception:
+                    pass
         except Exception as e:
             # Don't fail the whole probe if LLM is optional/down during boot,
             # but log it for the container health status.
@@ -88,6 +99,27 @@ async def probe():
     return True
 
 
+async def liveness_probe() -> bool:
+    """Fast in-memory liveness check (zero network/DB round-trips)."""
+    if not cfg.NCE_MASTER_KEY or len(cfg.NCE_MASTER_KEY) < 32:
+        print("CRITICAL: NCE_MASTER_KEY is missing or too short")
+        return False
+    try:
+        cfg.validate()
+    except Exception as e:
+        print(f"Config Error: {e}")
+        return False
+    await asyncio.sleep(0)
+    return True
+
+
 if __name__ == "__main__":
-    success = asyncio.run(probe())
+    parser = argparse.ArgumentParser(description="NCE Internal Health Probe")
+    parser.add_argument(
+        "--liveness",
+        action="store_true",
+        help="Run fast in-memory config and event-loop check without DB/Redis/Mongo I/O.",
+    )
+    args = parser.parse_args()
+    success = asyncio.run(liveness_probe() if args.liveness else probe())
     sys.exit(0 if success else 1)
