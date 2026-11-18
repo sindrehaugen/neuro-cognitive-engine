@@ -525,8 +525,11 @@ async def run_internal_benchmarks(n_seq: int) -> dict[str, Any]:
                 if ddl_dsn:
                     import asyncpg
 
+                    from nce.master_key_registry import rls_visibility_problem
+
                     c = await asyncpg.connect(ddl_dsn)
                     try:
+                        await rls_visibility_problem(c)
                         await c.execute("DELETE FROM namespaces WHERE id = $1::uuid", ns_id)
                     finally:
                         await c.close()

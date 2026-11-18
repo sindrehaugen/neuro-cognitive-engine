@@ -119,6 +119,8 @@ jobs:
     - name: Docker Compose config validate
       env:
         REDIS_PASSWORD: ci-config-validate-dummy
+        NCE_APP_PASSWORD: ci-config-validate-dummy
+        NCE_GC_PASSWORD: ci-config-validate-dummy
       run: 'cp deploy/compose.stack.env.example deploy/compose.stack.env
 
         touch deploy/compose.stack.env.generated
