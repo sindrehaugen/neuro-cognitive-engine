@@ -200,7 +200,57 @@ def generate_internal_mtls_bundle(
     return paths
 
 
-def main() -> int:
+def _cert_not_before_utc(cert: x509.Certificate) -> dt.datetime:
+    val = getattr(cert, "not_valid_before_utc", None)
+    if val is not None:
+        return val
+    return cert.not_valid_before.replace(tzinfo=dt.timezone.utc)
+
+
+def _cert_not_after_utc(cert: x509.Certificate) -> dt.datetime:
+    val = getattr(cert, "not_valid_after_utc", None)
+    if val is not None:
+        return val
+    return cert.not_valid_after.replace(tzinfo=dt.timezone.utc)
+
+
+def check_internal_mtls_expiry(
+    out_dir: Path = DEFAULT_OUT_DIR,
+    *,
+    min_days: int = 14,
+) -> tuple[bool, list[str]]:
+    """Verify ``ca.crt``, ``admin.crt``, and ``caddy.crt`` exist and stay valid >= *min_days*."""
+    out_dir = Path(out_dir)
+    now = dt.datetime.now(dt.timezone.utc)
+    threshold = now + dt.timedelta(days=max(0, min_days))
+    issues: list[str] = []
+
+    for fname in ("ca.crt", "admin.crt", "caddy.crt"):
+        cert_path = out_dir / fname
+        if not cert_path.is_file():
+            issues.append(f"Missing mTLS certificate: {cert_path}")
+            continue
+        try:
+            cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
+        except Exception as exc:
+            issues.append(f"Invalid PEM certificate {cert_path}: {exc}")
+            continue
+        not_before = _cert_not_before_utc(cert)
+        not_after = _cert_not_after_utc(cert)
+        if not_before > now:
+            issues.append(
+                f"Certificate {fname} is not yet valid (not_before={not_before.isoformat()})"
+            )
+        elif not_after < threshold:
+            remaining = not_after - now
+            issues.append(
+                f"Certificate {fname} expires in {remaining.days}d (< {max(0, min_days)}d required)"
+            )
+
+    return len(issues) == 0, issues
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate internal mTLS certificates for NCE.")
     parser.add_argument(
         "--out-dir",
@@ -219,7 +269,24 @@ def main() -> int:
         default="caddy.internal.nce",
         help="DNS SAN assigned to Caddy's internal client certificate.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--check-expiry-days",
+        type=int,
+        default=None,
+        help="Verify ca.crt, admin.crt, and caddy.crt exist and remain valid for >= N days.",
+    )
+    args = parser.parse_args(argv)
+    if args.check_expiry_days is not None:
+        ok, issues = check_internal_mtls_expiry(args.out_dir, min_days=args.check_expiry_days)
+        if ok:
+            print(
+                f"OK: internal mTLS certificates in {args.out_dir} remain valid for >= {args.check_expiry_days} days."
+            )
+            return 0
+        for issue in issues:
+            print(f"ERROR: {issue}")
+        return 1
+
     paths = generate_internal_mtls_bundle(
         args.out_dir,
         validity_days=args.days,

@@ -428,6 +428,10 @@ class ReembeddingWorker:
     async def _vram_pressure_gate(self) -> None:
         """Pause-don't-poison VRAM back-pressure guard (Domain 3 / Batch 104).
 
+        When ``NCE_COGNITIVE_BASE_URL`` is configured, embeddings run in the
+        remote cognitive HTTP service, so local CUDA/torch inspection is
+        skipped to keep worker/cron RSS free of ``torch``/``libtorch``.
+
         If CUDA is unavailable this is a no-op.  When CUDA is present:
         1. Read allocated / reserved / peak bytes and emit the three gauges.
         2. If ``allocated / total < NCE_REEMBED_VRAM_HIGH_WATERMARK``, return.
@@ -435,6 +439,10 @@ class ReembeddingWorker:
            to ``NCE_REEMBED_VRAM_MAX_PRESSURE_WAITS`` times.
         4. If still saturated after all waits, raise ``VRAMPressureError``.
         """
+        cognitive_url = getattr(cfg, "NCE_COGNITIVE_BASE_URL", "")
+        if isinstance(cognitive_url, str) and cognitive_url.strip():
+            return
+
         try:
             import torch  # type: ignore[import-untyped]
         except ImportError:

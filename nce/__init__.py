@@ -18,6 +18,14 @@ The MCP stdio entrypoint (server.py) and admin server (admin_server.py) live
 at the repo root and import everything they need from here.
 """
 
+from __future__ import annotations
+
+import logging as _logging
+import os
+import re
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
 __all__ = [
     "NCEEngine",
     "MemoryPayload",
@@ -28,21 +36,36 @@ __all__ = [
     "run_gc_loop",
 ]
 
-try:
-    from importlib.metadata import PackageNotFoundError
-    from importlib.metadata import version as _pkg_version
 
-    __version__: str = _pkg_version("nce")
-except PackageNotFoundError:
-    # Package not installed in editable/development mode or metadata missing.
-    # Fallback keeps the attribute available without raising at import time.
-    __version__ = "0.0.0+dev"
+def _resolve_package_version() -> str:
+    """Resolve NCE version from source pyproject.toml or installed package metadata."""
+    pyproject_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pyproject.toml"
+    )
+    if os.path.isfile(pyproject_path):
+        try:
+            with open(pyproject_path, encoding="utf-8") as fh:
+                text = fh.read().replace("\r\n", "\n")
+            section = text.split("[project]", 1)[1].split("\n[", 1)[0]
+            match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', section)
+            if match and match.group(1).strip():
+                return match.group(1).strip()
+        except Exception:
+            pass
+
+    for dist_name in ("neuro-cognitive-engine", "nce"):
+        try:
+            return _pkg_version(dist_name)
+        except PackageNotFoundError:
+            continue
+    return "0.0.0+dev"
+
+
+__version__: str = _resolve_package_version()
 
 __author__ = "Sindre Løvlie Haugen"
 __license__ = "Proprietary"
 __homepage__ = "https://github.com/sindrehaugen/NCE"
-
-import logging as _logging
 
 _log = _logging.getLogger(__name__)
 

@@ -37,6 +37,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from nce import __version__
 from nce.health_probe import (
     SingleflightReadinessCache,
     build_liveness_payload,
@@ -1242,7 +1243,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
 
     async def healthz_endpoint(request: Request) -> JSONResponse:
         """Fast in-memory liveness probe (< 3 ms, zero DB/Redis calls)."""
-        payload, status_code = build_liveness_payload("mcp-gateway", version="3.5.3")
+        payload, status_code = build_liveness_payload("mcp-gateway", version=__version__)
         return JSONResponse(payload, status_code=status_code)
 
     async def readyz_endpoint(request: Request) -> JSONResponse:
@@ -1253,7 +1254,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
             return await probe_engine_readiness(
                 engine,
                 service="mcp-gateway",
-                version="3.5.3",
+                version=__version__,
                 require_connected=bool(require_connected),
             )
 
@@ -1436,7 +1437,7 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
                     },
                     "serverInfo": {
                         "name": "nce-memory-gateway",
-                        "version": "3.5.3",
+                        "version": __version__,
                     },
                 },
             }

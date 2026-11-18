@@ -51,6 +51,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
+from nce import __version__ as _NCE_VERSION
 from nce.a2a import (
     A2A_CODE_BAD_REQUEST,
     A2A_CODE_SCOPE_VIOLATION,
@@ -979,7 +980,7 @@ async def get_healthz(request: Request) -> JSONResponse:
     payload, status_code = build_liveness_payload(
         "a2a",
         shutting_down=_is_shutting_down(),
-        version="3.5.3",
+        version=_NCE_VERSION,
     )
     return JSONResponse(payload, status_code=status_code)
 
@@ -992,7 +993,7 @@ async def get_readyz(request: Request) -> JSONResponse:
             _engine,
             service="a2a",
             shutting_down=_is_shutting_down(),
-            version="3.5.3",
+            version=_NCE_VERSION,
         )
 
     payload, status_code = await _A2A_READINESS_CACHE.get_or_probe(_probe)

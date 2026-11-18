@@ -78,14 +78,17 @@ from jwt.exceptions import (
     MissingRequiredClaimError,
 )
 from pydantic import ValidationError
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
+from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 
 from nce.auth import NamespaceContext, jsonrpc_error_response, validate_agent_id
 from nce.config import DeploymentConfigurationError, cfg
 
 log = logging.getLogger("nce.jwt_auth")
+
+_FAST_PROBE_PATHS: frozenset[str] = frozenset(
+    {"/healthz", "/health", "/readyz", "/ready", "/.well-known/agent-card"}
+)
 
 # ---------------------------------------------------------------------------
 # JSON-RPC 2.0 error codes (JWT-specific, extends nce.auth -32001..-32004)
@@ -517,14 +520,14 @@ def decode_agent_token(
 # ---------------------------------------------------------------------------
 
 
-class JWTAuthMiddleware(BaseHTTPMiddleware):
-    """JWT Bearer token authentication middleware for agent-scoped endpoints.
+class JWTAuthMiddleware:
+    """Pure-ASGI JWT Bearer token authentication middleware for agent-scoped endpoints.
 
     Validates ``Authorization: Bearer <token>`` for all requests whose path
     starts with ``protected_prefix``.  On success, the resolved
-    ``NamespaceContext`` is attached as ``request.state.namespace_ctx`` so
-    downstream route handlers and the orchestrator write path can consume it
-    without re-parsing the token.
+    ``NamespaceContext`` is attached as ``scope["state"]["namespace_ctx"]``
+    (``request.state.namespace_ctx``) so downstream route handlers and the
+    orchestrator write path can consume it without re-parsing the token.
 
     Error contract (JSON-RPC 2.0):
       -32005  Any JWT validation failure (expired, bad signature, decode error)
@@ -558,7 +561,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         protected_prefix: str | None = None,
         expected_audience: str | None = None,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._protected_prefix: str = (
             protected_prefix if protected_prefix is not None else cfg.NCE_JWT_PREFIX
         )
@@ -574,50 +577,64 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 self._protected_prefix,
             )
 
-    async def dispatch(self, request: Request, call_next: Any) -> Any:
-        if not request.url.path.startswith(self._protected_prefix):
-            return await call_next(request)
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
 
-        auth_header = request.headers.get("authorization", "").strip()
+        path = str(scope.get("path") or "/")
+        if path in _FAST_PROBE_PATHS or not path.startswith(self._protected_prefix):
+            await self.app(scope, receive, send)
+            return
+
+        method = str(scope.get("method", "GET")).upper()
+        headers = Headers(scope=scope)
+        auth_header = headers.get("authorization", "").strip()
         if not auth_header:
             log.debug(
                 "JWT auth rejected: no Authorization header for %s %s",
-                request.method,
-                request.url.path,
+                method,
+                path,
             )
-            return _jsonrpc_error(
+            resp = _jsonrpc_error(
                 _CODE_JWT_INVALID,
                 "Authentication failed",
                 "missing_authorization_header",
             )
+            await resp(scope, receive, send)
+            return
 
         scheme, _, token_value = auth_header.partition(" ")
         if scheme.lower() != "bearer" or not token_value.strip():
             log.debug(
                 "JWT auth rejected: expected 'Bearer <token>', got scheme=%r for %s %s",
                 scheme,
-                request.method,
-                request.url.path,
+                method,
+                path,
             )
-            return _jsonrpc_error(
+            resp = _jsonrpc_error(
                 _CODE_JWT_INVALID,
                 "Authentication failed",
                 "invalid_authorization_scheme",
             )
+            await resp(scope, receive, send)
+            return
 
         token_value = token_value.strip()
         if len(token_value) > 8192:
             log.debug(
                 "JWT auth rejected: token exceeds size limit (%d bytes) for %s %s",
                 len(token_value),
-                request.method,
-                request.url.path,
+                method,
+                path,
             )
-            return _jsonrpc_error(
+            resp = _jsonrpc_error(
                 _CODE_JWT_INVALID,
                 "Authentication failed",
                 "jwt_too_large",
             )
+            await resp(scope, receive, send)
+            return
 
         try:
             namespace_ctx = decode_agent_token(
@@ -625,16 +642,18 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 audience=self._expected_audience,
             )
         except JWTDecodeError as exc:
-            return _jsonrpc_error(exc.code, exc.message, exc.reason)
+            resp = _jsonrpc_error(exc.code, exc.message, exc.reason)
+            await resp(scope, receive, send)
+            return
 
-        request.state.namespace_ctx = namespace_ctx
+        scope.setdefault("state", {})["namespace_ctx"] = namespace_ctx
         log.debug(
             "JWT auth OK: namespace=%s agent=%s path=%s",
             namespace_ctx.namespace_id,
             namespace_ctx.agent_id,
-            request.url.path,
+            path,
         )
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
 
 # ---------------------------------------------------------------------------

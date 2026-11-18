@@ -81,6 +81,8 @@ No other module calls `os.getenv()` directly.
 | `NCE_TRUST_DEFAULT` | `float` | `0.65` | No | Fallback trust score assigned to newly observed actors (Laplace prior, range 1e-6 to 1.0). |
 | `NCE_TOOL_GOVERNANCE_STALE_OK_SEC` | `int` | `30` | No | Maximum age (seconds) for serving local tool governance snapshots without querying Redis (minimum `1`). |
 | `NCE_TOOL_GOVERNANCE_STALE_HARD_SEC` | `int` | `300` | No | Hard expiry (seconds) after which governance snapshot fails closed (`GovernanceUnavailable`) rather than serving stale un-revocation data (minimum `1`). |
+| `NCE_ENTRA_TENANT_ID` | `str` | `""` | **Prod gate** | Microsoft Entra ID tenant identifier (`tid`). When non-empty in production (`NCE_ENV=prod` or `production`), `NCE_ENTRA_ENFORCE_MODE` must be `"strict"`. |
+| `NCE_ENTRA_ENFORCE_MODE` | `str` | `""` | **Prod gate** | Entra gate enforcement mode (`strict` required in production whenever `NCE_ENTRA_TENANT_ID` is non-empty; otherwise fails closed at startup with `RuntimeError`). |
 
 ---
 
@@ -198,7 +200,11 @@ All provider keys default to `""`. The provider factory logs a warning if a requ
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `NCE_COGNITIVE_BASE_URL` | `str` | `""` | Base URL for local cognitive HTTP service (e.g. `http://cognitive:11435`). Routes embeddings to `POST {base}/v1/embeddings`. |
+| `NCE_COGNITIVE_BASE_URL` | `str` | `""` | Base URL for local cognitive HTTP service (e.g. `http://cognitive:11435`). Routes embeddings to `POST {base}/v1/embeddings` and skips local PyTorch VRAM checks in workers/cron. |
+| `NCE_COGNITIVE_BACKEND` | `str` | `onnx` | Cognitive embedding service runtime backend selector (default air-gapped `onnx` in Docker Compose). |
+| `NCE_COGNITIVE_BATCH_WINDOW_MS` | `int` | `5` | Micro-batch coalescing window in milliseconds for the cognitive embedding service (minimum `0`). |
+| `NCE_COGNITIVE_MAX_BATCH_SIZE` | `int` | `32` | Maximum batch size per inference pass in the cognitive embedding service (minimum `1`). |
+| `NCE_COGNITIVE_NUM_THREADS` | `int` | `4` | ONNX Runtime / intra-op worker threads configured on the cognitive service (minimum `1`). |
 | `NCE_COGNITIVE_EMBEDDING_MODEL` | `str` | `""` | Model identifier requested from cognitive HTTP endpoint. |
 | `NCE_COGNITIVE_FALLBACK_MODEL` | `str` | `text-embedding-3-small` | Fallback embedding model used when primary cognitive backend returns 429 or times out. |
 | `NCE_COGNITIVE_API_KEY` | `str` | `""` | Optional API key for cognitive HTTP endpoint. |
@@ -612,6 +618,7 @@ Processes asynchronous background queues (`nce-tasks`), including source code AS
 - `NCE_DISABLE_MIGRATION_MCP=false` without `NCE_ALLOW_MIGRATION_MCP_IN_PROD=true`.
 - `WEBHOOK_DEDUP_FAIL_OPEN=true`.
 - `NCE_D365_ORG_URL` or `NCE_D365_WEBHOOK_SECRET` absent when `NCE_D365_ENABLED=true`.
+- `NCE_ENTRA_TENANT_ID` non-empty while `NCE_ENTRA_ENFORCE_MODE` is not `"strict"` (`assert_entra_strict_in_production()` raises `RuntimeError` at config import, `validate()`, and admin startup).
 - Server mTLS disabled without operator acknowledgement: `assert_server_mtls_or_acknowledged()` raises `MTLSNotConfiguredError` during `admin_server` and `a2a_server` boot lifespans if `NCE_ADMIN_MTLS_ENABLED=false` or `NCE_A2A_MTLS_ENABLED=false`, unless `NCE_MTLS_ACKNOWLEDGE_DISABLED=true` is set.
 
 ### Non-Halting Warnings in Development / Non-Production

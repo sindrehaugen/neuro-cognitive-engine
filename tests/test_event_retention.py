@@ -125,48 +125,38 @@ async def test_anchored_aged_partition_is_archived_and_dropped(pg_pool, make_nam
 
     # --- Setup: always drop-and-recreate so no foreign/leftover events remain. ---
     async with pg_pool.acquire() as conn:
-        try:
-            # Drop unconditionally first — ensures pristine state on re-run.
-            await conn.execute(f"DROP TABLE IF EXISTS {partition_name}")
-        except Exception as exc:
-            pytest.skip(f"Cannot drop test partition {partition_name}: {exc}")
-        try:
-            await conn.execute(
-                f"CREATE TABLE {partition_name} "
-                "PARTITION OF event_log "
-                "FOR VALUES FROM ('2017-03-01') TO ('2017-04-01')"
-            )
-        except Exception as exc:
-            pytest.skip(f"Cannot create test partition {partition_name}: {exc}")
-
-        # Insert exactly ONE event for THIS run's namespace — no other namespace
-        # will have rows in this partition, so the anchor check will trivially pass.
-        try:
-            ev_id = uuid.uuid4()
-            await conn.execute(
-                f"""
-                INSERT INTO {partition_name}
-                    (id, namespace_id, agent_id, event_type, event_seq,
-                     occurred_at, params, signature, signature_key_id, signature_version)
-                VALUES ($1, $2, 'test-agent', 'store_memory', 9999999,
-                        '2017-03-15 12:00:00+00', '{{}}', '\\x00'::bytea,
-                        'test-key', 2)
-                """,
-                ev_id,
-                ns_id,
-            )
-        except Exception as exc:
-            # Clean up before skipping so we don't leave the table behind.
-            try:
-                await conn.execute(f"DROP TABLE IF EXISTS {partition_name}")
-            except Exception:
-                pass
-            pytest.skip(f"Cannot insert into partition {partition_name}: {exc}")
+        # Drop unconditionally first — ensures pristine state on re-run.
+        await conn.execute(f"DROP TABLE IF EXISTS {partition_name}")
 
     # Anchor covers max_seq=9999999 for this (and only this) namespace.
     minio = _make_mock_minio({ns_id: 9999999})
 
     try:
+        async with pg_pool.acquire() as conn:
+            await conn.execute(
+                f"CREATE TABLE {partition_name} "
+                "PARTITION OF event_log "
+                "FOR VALUES FROM ('2017-03-01') TO ('2017-04-01')"
+            )
+
+            # Insert exactly ONE event for THIS run's namespace — no other namespace
+            # will have rows in this partition, so the anchor check will trivially pass.
+            ev_id = uuid.uuid4()
+            await conn.execute(
+                f"""
+                INSERT INTO {partition_name}
+                    (id, namespace_id, agent_id, event_type, event_seq,
+                     occurred_at, params, signature, signature_key_id,
+                     signature_version, chain_hash)
+                VALUES ($1, $2, 'test-agent', 'store_memory', 9999999,
+                        '2017-03-15 12:00:00+00', '{{}}', '\\x00'::bytea,
+                        'test-key', 2, $3)
+                """,
+                ev_id,
+                ns_id,
+                b"\x00" * 32,
+            )
+
         result = await run_partition_retention(pg_pool, minio, retention_months=1)
 
         # The partition must have been archived (manifest written) and dropped.
@@ -221,32 +211,28 @@ async def test_unanchored_aged_partition_is_kept(pg_pool, make_namespace):
             partition_name,
         )
         if exists is None:
-            try:
-                await conn.execute(
-                    f"CREATE TABLE IF NOT EXISTS {partition_name} "
-                    "PARTITION OF event_log "
-                    "FOR VALUES FROM ('2019-06-01') TO ('2019-07-01')"
-                )
-            except Exception as exc:
-                pytest.skip(f"Cannot create test partition {partition_name}: {exc}")
-
-        try:
-            ev_id = uuid.uuid4()
             await conn.execute(
-                f"""
-                INSERT INTO {partition_name}
-                    (id, namespace_id, agent_id, event_type, event_seq,
-                     occurred_at, params, signature, signature_key_id, signature_version)
-                VALUES ($1, $2, 'test-agent', 'store_memory', 8888888,
-                        '2019-06-15 12:00:00+00', '{{}}', '\\x00'::bytea,
-                        'test-key', 2)
-                ON CONFLICT DO NOTHING
-                """,
-                ev_id,
-                ns_id,
+                f"CREATE TABLE IF NOT EXISTS {partition_name} "
+                "PARTITION OF event_log "
+                "FOR VALUES FROM ('2019-06-01') TO ('2019-07-01')"
             )
-        except Exception as exc:
-            pytest.skip(f"Cannot insert into partition {partition_name}: {exc}")
+
+        ev_id = uuid.uuid4()
+        await conn.execute(
+            f"""
+            INSERT INTO {partition_name}
+                (id, namespace_id, agent_id, event_type, event_seq,
+                 occurred_at, params, signature, signature_key_id,
+                 signature_version, chain_hash)
+            VALUES ($1, $2, 'test-agent', 'store_memory', 8888888,
+                    '2019-06-15 12:00:00+00', '{{}}', '\\x00'::bytea,
+                    'test-key', 2, $3)
+            ON CONFLICT DO NOTHING
+            """,
+            ev_id,
+            ns_id,
+            b"\x00" * 32,
+        )
 
     # No anchor for this namespace → partition must be kept.
     minio = _make_mock_minio({})  # empty — no anchors

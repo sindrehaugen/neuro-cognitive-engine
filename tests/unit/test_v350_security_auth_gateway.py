@@ -464,9 +464,11 @@ async def test_mcp_gateway_session_hardening_and_version(monkeypatch: pytest.Mon
         gw_app = create_mcp_gateway_app(engine=engine)
         client = TestClient(gw_app, raise_server_exceptions=False)
 
+        from nce import __version__
+
         hz = client.get("/healthz")
         assert hz.status_code == 200
-        assert hz.json()["version"] == "3.5.3"
+        assert hz.json()["version"] == __version__
 
         # Invalid bearer returns generic Unauthorized
         r_bad = client.post(
@@ -477,14 +479,14 @@ async def test_mcp_gateway_session_hardening_and_version(monkeypatch: pytest.Mon
         assert r_bad.status_code == 401
         assert r_bad.json() == {"error": "Unauthorized"}
 
-        # Initialize returns 3.5.3 and binds session
+        # Initialize returns current package version and binds session
         r_init = client.post(
             "/mcp",
             headers={"Authorization": "Bearer nce_test_tok_s5"},
             json={"jsonrpc": "2.0", "id": 1, "method": "initialize"},
         )
         assert r_init.status_code == 200
-        assert r_init.json()["result"]["serverInfo"]["version"] == "3.5.3"
+        assert r_init.json()["result"]["serverInfo"]["version"] == __version__
         sid = r_init.headers["mcp-session-id"]
         assert _GATEWAY_SESSIONS[sid].token_sha256 == tok_sha
         assert _GATEWAY_SESSIONS[sid].expires_at > time.time()

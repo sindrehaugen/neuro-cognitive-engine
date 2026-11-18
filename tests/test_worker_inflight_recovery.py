@@ -13,6 +13,7 @@ mock was called.
 
 from __future__ import annotations
 
+import os
 import uuid
 
 import pytest
@@ -22,7 +23,7 @@ from rq import Queue
 from rq.job import Job, JobStatus
 from rq.registry import StartedJobRegistry
 
-REDIS_URL = "redis://localhost:6379/0"
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
 def _noop_job() -> str:

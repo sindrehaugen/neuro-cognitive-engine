@@ -18,9 +18,13 @@ engine = admin_state.engine
 
 if __name__ == "__main__":
     import uvicorn
-    from nce.config import assert_admin_override_not_in_production
+    from nce.config import (
+        assert_admin_override_not_in_production,
+        assert_entra_strict_in_production,
+    )
 
     assert_admin_override_not_in_production()
+    assert_entra_strict_in_production()
     uvicorn.run(
         app,
         host="0.0.0.0",

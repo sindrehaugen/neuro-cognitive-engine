@@ -7,6 +7,7 @@ Yields CodeChunk objects consumed by NCEEngine.index_code_file().
 
 from __future__ import annotations
 
+import ast
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -403,6 +404,45 @@ def _try_treesitter_parse(raw_code: str, language: str) -> list[CodeChunk] | Non
     return chunks if chunks else None
 
 
+def _parse_python_stdlib_ast(raw_code: str) -> list[CodeChunk] | None:
+    """Offline fallback parser for Python using stdlib ``ast`` when Tree-sitter cannot load."""
+    try:
+        tree = ast.parse(raw_code)
+    except SyntaxError:
+        return None
+
+    lines = raw_code.splitlines()
+    chunks: list[CodeChunk] = []
+
+    def _walk(node: ast.AST, depth: int = 0) -> None:
+        if depth > _MAX_AST_DEPTH:
+            log.warning(
+                "Stdlib AST walk exceeded depth=%d — skipping deeper nodes",
+                _MAX_AST_DEPTH,
+            )
+            return
+
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            start_line = node.lineno
+            end_line = node.end_lineno or start_line
+            node_type = "class" if isinstance(node, ast.ClassDef) else "function"
+            chunks.append(
+                CodeChunk(
+                    node_type=node_type,
+                    name=node.name,
+                    code_string="\n".join(lines[start_line - 1 : end_line]),
+                    start_line=start_line,
+                    end_line=end_line,
+                )
+            )
+
+        for child in ast.iter_child_nodes(node):
+            _walk(child, depth + 1)
+
+    _walk(tree)
+    return chunks if chunks else None
+
+
 # --- Public API ---
 
 
@@ -512,6 +552,9 @@ def parse_file(raw_code: str, language: str) -> Iterator[CodeChunk]:
         return
 
     chunks = _try_treesitter_parse(raw_code, language)
+
+    if not chunks and language == "python":
+        chunks = _parse_python_stdlib_ast(raw_code)
 
     if not chunks:
         # Tree-sitter unavailable or found no top-level symbols — use bounded

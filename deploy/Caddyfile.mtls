@@ -1,4 +1,4 @@
-# NCE v3.5.3 — Internal mTLS Edge Proxy Configuration
+# NCE v3.5.4 — Internal mTLS Edge Proxy Configuration
 # Terminates client traffic cleanly on Caddy and authenticates upstream connections
 # to admin:8003 over mutual TLS (client cert SAN caddy.internal.nce).
 
