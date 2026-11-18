@@ -49,7 +49,7 @@ def generate_internal_mtls_bundle(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    now = dt.datetime.now(dt.UTC)
+    now = dt.datetime.now(dt.timezone.utc)
     not_before = now - dt.timedelta(minutes=5)
     not_after = now + dt.timedelta(days=max(1, validity_days))
 
