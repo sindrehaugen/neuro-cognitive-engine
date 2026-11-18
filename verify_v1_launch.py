@@ -67,14 +67,15 @@ class _NoopLLM:
 
 def _admin_hmac_headers(api_key: str, method: str, path: str, body: bytes = b"") -> dict[str, str]:
     ts = int(time.time())
-    parts = [method.upper(), path, str(ts)]
+    nonce = uuid.uuid4().hex
+    parts = [method.upper(), path, str(ts), nonce]
     if body:
         parts.append(hashlib.sha256(body).hexdigest())
     canonical = "\n".join(parts)
     sig = hmac.new(api_key.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
     return {
         "X-NCE-Timestamp": str(ts),
-        "X-NCE-Nonce": uuid.uuid4().hex,
+        "X-NCE-Nonce": nonce,
         "Authorization": f"HMAC-SHA256 {sig}",
     }
 
@@ -128,10 +129,19 @@ async def _step_health(client: httpx.AsyncClient, api_key: str) -> None:
                 f"{key!r} expected 'up', got {db_report.get(key)!r}",
             )
 
-    # Cognitive sidecar check (soft warning in orchestrator, but verify script should be strict)
+    # Cognitive sidecar check (real engine required unless explicitly running CI stub)
     cog_report = data.get("cognitive", {})
-    if cog_report.get("engine") != "up":
-        print(f"[WARN] Cognitive engine state: {cog_report.get('engine')}")
+    if cog_report.get("engine") == "stub":
+        _fail(
+            "Admin /api/health/v1 (Cognitive)",
+            f"Cognitive sidecar reports engine='stub': {cog_report!r}",
+        )
+    if cog_report.get("status") != "up" and cog_report.get("engine") not in (
+        "up",
+        "sentence-transformers",
+        "openvino-npu",
+    ):
+        print(f"[WARN] Cognitive engine state: {cog_report!r}")
 
     _ok("Admin /api/health/v1 (Full Tri-Stack deep check passed)")
 
@@ -260,6 +270,43 @@ async def _step_rls_isolation(ns_id: UUID) -> None:
                     f"Could not fetch consolidation run when using correct namespace_id {ns_id}",
                 )
 
+        # Test 4: Verify catalog consistency, zero unforced tenant tables/partitions, and role posture
+        from nce.event_log import verify_rls_catalog_consistency, verify_rls_role_capability
+
+        await verify_rls_catalog_consistency(conn)
+        findings = await verify_rls_role_capability(conn)
+        if findings:
+            _fail("RLS Role Capability", "; ".join(findings))
+
+        # Test 5: Direct access to public.signing_keys as nce_app must fail closed
+        try:
+            await conn.fetch("SELECT id FROM public.signing_keys LIMIT 1")
+            _fail(
+                "Key Confinement",
+                "nce_app unexpectedly succeeded selecting directly from public.signing_keys!",
+            )
+        except asyncpg.InsufficientPrivilegeError:
+            pass
+
+        # Test 6: Direct unscoped SELECT on tenant child partitions must fail closed or return 0 rows
+        for child_part in ("kg_nodes_0", "kg_node_embeddings_0"):
+            try:
+                cnt = await conn.fetchval(f"SELECT count(*) FROM {child_part}")
+                if cnt not in (0, None):
+                    _fail(
+                        "Partition RLS",
+                        f"Unscoped SELECT on child partition {child_part} returned {cnt} rows!",
+                    )
+            except asyncpg.InsufficientPrivilegeError:
+                # Direct privileges on child partitions are revoked in migration 040.
+                pass
+            except asyncpg.PostgresError as exc:
+                if "nce.namespace_id is not set for this transaction" not in str(exc):
+                    _fail(
+                        "Partition RLS",
+                        f"Unexpected Postgres error probing {child_part}: {exc}",
+                    )
+
     finally:
         await conn.close()
 
@@ -316,24 +363,26 @@ async def _async_main(admin_base: str, a2a_base: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="NCE v3.5.0 launch verification")
+    caddy_port = os.environ.get("NCE_CADDY_HTTP_PORT", "8082").strip() or "8082"
+    default_caddy_base = f"http://127.0.0.1:{caddy_port}"
+    parser = argparse.ArgumentParser(description="NCE v3.5.3 launch verification")
     parser.add_argument(
         "--admin-url",
         default=os.environ.get(
-            "NCE_ADMIN_BASE_URL", os.environ.get("TRIMCP_ADMIN_BASE_URL", "http://127.0.0.1:8003")
+            "NCE_ADMIN_BASE_URL", os.environ.get("TRIMCP_ADMIN_BASE_URL", default_caddy_base)
         ),
-        help="Admin server base URL (default NCE_ADMIN_BASE_URL or http://127.0.0.1:8003)",
+        help="Admin server base URL (default NCE_ADMIN_BASE_URL or Caddy loopback URL)",
     )
     parser.add_argument(
         "--a2a-url",
         default=os.environ.get(
-            "NCE_A2A_BASE_URL", os.environ.get("TRIMCP_A2A_BASE_URL", "http://127.0.0.1:8004")
+            "NCE_A2A_BASE_URL", os.environ.get("TRIMCP_A2A_BASE_URL", default_caddy_base)
         ),
-        help="A2A server base URL (default NCE_A2A_BASE_URL or http://127.0.0.1:8004)",
+        help="A2A server base URL (default NCE_A2A_BASE_URL or Caddy loopback URL)",
     )
     args = parser.parse_args()
 
-    print("=== NCE v3.5.0 Launch Verification ===")
+    print("=== NCE v3.5.3 Launch Verification ===")
     print()
 
     try:

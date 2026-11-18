@@ -29,6 +29,11 @@ from nce.auth import (
     optional_hmac_nonce_store,
 )
 from nce.config import cfg
+from nce.health_probe import (
+    SingleflightReadinessCache,
+    build_liveness_payload,
+    probe_engine_readiness,
+)
 from nce.http_body_limit import BoundedBodyMiddleware
 from nce.mtls import MTLSAuthMiddleware
 from nce.notifications import dispatcher
@@ -39,6 +44,8 @@ from nce.resource_surface import build_all_resource_routes
 logger = logging.getLogger("nce-admin")
 
 _hmac_nonce_store = optional_hmac_nonce_store()
+_ADMIN_READINESS_CACHE = SingleflightReadinessCache(ttl_seconds=5.0)
+_ADMIN_SHUTTING_DOWN = False
 
 # ---------------------------------------------------------------------------
 # C3 principal-session wiring (Wave 23)
@@ -62,9 +69,12 @@ ADMIN_PRINCIPAL_KIND: str = "employee"
 
 @asynccontextmanager
 async def admin_lifespan(app):
+    global _ADMIN_SHUTTING_DOWN
     from nce.config import assert_admin_override_not_in_production
     from nce.mtls import assert_server_mtls_or_acknowledged
 
+    _ADMIN_SHUTTING_DOWN = False
+    _ADMIN_READINESS_CACHE.invalidate()
     assert_admin_override_not_in_production()
 
     admin_state.engine = NCEEngine()
@@ -113,38 +123,37 @@ async def admin_lifespan(app):
         logger.exception("event_log partition startup check failed")
 
     yield
+    _ADMIN_SHUTTING_DOWN = True
+    _ADMIN_READINESS_CACHE.invalidate()
     await dispatcher.stop_worker()
     await admin_state.engine.disconnect()
     logger.info("NCE Admin: shutdown complete.")
 
 
 async def get_healthz(request):
-    """Unauthenticated liveness probe that actually probes.
+    """Fast in-memory liveness probe (< 3 ms, zero DB/Redis/crypto calls)."""
+    payload, status_code = build_liveness_payload(
+        "admin",
+        shutting_down=_ADMIN_SHUTTING_DOWN,
+        version="3.5.3",
+    )
+    return JSONResponse(payload, status_code=status_code)
 
-    Wave I-13. This returned a literal ``{"status": "ok"}`` regardless of the engine's
-    real state, so the compose healthcheck it backs could not fail. It now reports the
-    engine's verdict and its security block, and answers 503 when a degradation is
-    blocking. Still unauthenticated, so it exposes only status strings -- never a key,
-    a fingerprint, or a row.
-    """
+
+async def get_readyz(request):
+    """Singleflight readiness probe cached for 5.0s using pooled datastore checks."""
     engine = getattr(admin_state, "engine", None)
-    if engine is None:
-        return JSONResponse({"status": "down", "reason": "engine_not_initialised"}, status_code=503)
-    try:
-        res = await engine.check_health()
-    except Exception:
-        logger.exception("/healthz: check_health raised")
-        return JSONResponse({"status": "down", "reason": "health_probe_raised"}, status_code=503)
 
-    from nce.orchestrator import health_is_blocking
+    async def _probe():
+        return await probe_engine_readiness(
+            engine,
+            service="admin",
+            shutting_down=_ADMIN_SHUTTING_DOWN,
+            version="3.5.3",
+        )
 
-    body = {
-        "status": res.get("status", "unknown"),
-        "security": res.get("security", {}),
-        "databases": res.get("databases", {}),
-        "degraded_reasons": res.get("degraded_reasons", []),
-    }
-    return JSONResponse(body, status_code=503 if health_is_blocking(res) else 200)
+    payload, status_code = await _ADMIN_READINESS_CACHE.get_or_probe(_probe)
+    return JSONResponse(payload, status_code=status_code)
 
 
 def build_admin_middleware() -> list[Middleware]:
@@ -164,7 +173,13 @@ def build_admin_middleware() -> list[Middleware]:
         Middleware(
             BasicAuthMiddleware,
             protected_prefix="/",
-            excluded_prefixes=("/api/", "/admin/plugins/api", "/healthz", "/public-api/"),
+            excluded_prefixes=(
+                "/api/",
+                "/admin/plugins/api",
+                "/healthz",
+                "/readyz",
+                "/public-api/",
+            ),
             username=cfg.NCE_ADMIN_USERNAME,
             password=cfg.NCE_ADMIN_PASSWORD,
             realm="NCE Admin",
@@ -195,6 +210,7 @@ def _bind(handler: Any, ctx: Any = None) -> Any:
 def build_admin_routes(ctx: Any = None) -> list[Route]:
     routes: list[Route] = [
         Route("/healthz", endpoint=get_healthz, methods=["GET"]),
+        Route("/readyz", endpoint=get_readyz, methods=["GET"]),
         Route("/", endpoint=h.serve_index),
         Route("/styles.css", endpoint=h.serve_styles),
         Route("/api/health", endpoint=h.get_health, methods=["GET"]),

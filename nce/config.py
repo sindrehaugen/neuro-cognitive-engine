@@ -624,9 +624,10 @@ class _Config:
 
     # --- Database connections ---
     # ``DATABASE_URL`` is accepted as a 12-factor alias for ``PG_DSN`` (same precedence: explicit PG_DSN wins).
-    # DB role password used by RLS session setup. Honours NCE_APP_PASSWORD_FILE
+    # DB role passwords used by RLS session & worker setup. Honours *_FILE
     # (Docker/K8s secret) via secret_env; env remains a backward-compatible fallback.
     NCE_APP_PASSWORD: str = secret_env("NCE_APP_PASSWORD", "nce_app_secret").strip()
+    NCE_GC_PASSWORD: str = secret_env("NCE_GC_PASSWORD", "nce_gc_secret").strip()
     MONGO_URI: str = os.getenv("MONGO_URI", "mongodb://localhost:27017")
     # DSNs carry the DB password inline. ``secret_env`` lets the credential-
     # bearing DSN be supplied via a Docker/K8s secret file (PG_DSN_FILE,
@@ -665,6 +666,11 @@ class _Config:
         or secret_env("DATABASE_URL")
         or "postgresql://mcp_user:mcp_password@localhost:5432/memory_meta"
     )
+    # Optional owner/superuser DSN used transiently only for startup DDL & migrations
+    # inside NCEEngine.connect() and closed before runtime pools handle requests.
+    NCE_MIGRATION_PG_DSN: str = secret_env("NCE_MIGRATION_PG_DSN").strip()
+    # Opt-in cross-tenant admin fleet pool backed by NCE_GC_DSN (coordinator-only).
+    NCE_ENABLE_FLEET_POOL: bool = _bool_env("NCE_ENABLE_FLEET_POOL", False)
     # REDIS_URL carries credentials inline when Redis AUTH is enabled
     # (``redis://:<password>@host:port/db`` — set ``requirepass`` on the server;
     # see docker-compose.yml, which sources the password from ${REDIS_PASSWORD}).
@@ -805,6 +811,9 @@ class _Config:
         "NCE_COGNITIVE_FALLBACK_MODEL", "text-embedding-3-small"
     ).strip()
     NCE_COGNITIVE_API_KEY: str = (os.getenv("NCE_COGNITIVE_API_KEY") or "").strip()
+    # Explicit CI opt-in for running against cognitive-stub in non-production smoke tests.
+    # In production, cognitive stubs are rejected at boot regardless of this flag unless explicitly dev/test.
+    NCE_ALLOW_COGNITIVE_STUB: bool = _bool_env("NCE_ALLOW_COGNITIVE_STUB", False)
     # Declarative default LLM provider label for operators / future LLMProvider wiring [D2].
     NCE_LLM_PROVIDER: str = (os.getenv("NCE_LLM_PROVIDER") or "local-cognitive-model").strip()
 
@@ -1637,6 +1646,10 @@ class _Config:
             if cls.NCE_APP_PASSWORD == "nce_app_secret":
                 log.warning(
                     "SECURITY WARNING: NCE_APP_PASSWORD is set to development default in production."
+                )
+            if cls.NCE_GC_PASSWORD == "nce_gc_secret":
+                log.warning(
+                    "SECURITY WARNING: NCE_GC_PASSWORD is set to development default in production."
                 )
 
         # P0: Database connections present in all environments

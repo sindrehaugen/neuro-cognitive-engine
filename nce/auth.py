@@ -22,15 +22,16 @@ Signature scheme
 ----------------
 Required request headers:
   X-NCE-Timestamp:  <unix_epoch_seconds>        integer, UTC
-  Authorization:       HMAC-SHA256 <hex_signature>
+  X-NCE-Nonce:      <16..128 URL-safe ASCII>    per-request nonce
+  Authorization:    HMAC-SHA256 <hex_signature>
 
-canonical_message = METHOD\\nPATH\\nTIMESTAMP[\\nSHA256_HEX(raw_body)]
+canonical_message = METHOD\\nPATH\\nTIMESTAMP\\nNONCE[\\nSHA256_HEX(raw_body)]
 signature         = HMAC-SHA256(NCE_API_KEY, canonical_message)
 
 Notes:
   - Body hash is omitted for requests with an empty body (GET, etc.)
   - Comparison is always constant-time (hmac.compare_digest)
-  - Timestamps outside ±5 minutes are rejected (replay protection)
+  - Timestamps outside the configured skew window are rejected (replay protection)
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ import hmac as _hmac
 import inspect
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -70,8 +72,9 @@ log = logging.getLogger("nce.auth")
 # ---------------------------------------------------------------------------
 
 _TIMESTAMP_DRIFT_SECONDS: int = cfg.NCE_CLOCK_SKEW_TOLERANCE_S
-_NONCE_TTL_SECONDS: int = _TIMESTAMP_DRIFT_SECONDS * 2  # 600 s — auto-cleanup
-_NONCE_KEY_PREFIX: str = "nce:nonce:"
+_NONCE_TTL_SECONDS: int = _TIMESTAMP_DRIFT_SECONDS * 2 + 5
+_NONCE_KEY_PREFIX: str = "nce:hmac_nonce:"
+_HMAC_NONCE_RE = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
 
 # ---------------------------------------------------------------------------
 # PBKDF2 password hashing (OWASP 2026)
@@ -732,6 +735,7 @@ class HMACAuthContext(BaseModel):
 
     timestamp: int = Field(..., description="Unix epoch seconds (from X-NCE-Timestamp)")
     signature: str = Field(..., description="Lowercase hex HMAC (from Authorization header)")
+    nonce: str = Field(default="", description="Validated request nonce (from X-NCE-Nonce)")
 
     @field_validator("timestamp")
     @classmethod
@@ -819,18 +823,35 @@ class NamespaceContext(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def validate_hmac_nonce(nonce: str | None) -> bool:
+    """Return True iff *nonce* is 16-128 URL-safe ASCII chars [A-Za-z0-9._:-]."""
+    if not isinstance(nonce, str):
+        return False
+    return bool(_HMAC_NONCE_RE.fullmatch(nonce))
+
+
+def hmac_principal_scope(api_key: str) -> str:
+    """Derive a non-secret, fixed-length principal scope identifier from *api_key*."""
+    if not api_key:
+        return "anonymous"
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+
+
 def _compute_signature(
     api_key: str,
     method: str,
     path: str,
-    timestamp: int,
-    body_bytes: bytes,
+    timestamp: int | str,
+    body_bytes: bytes = b"",
+    nonce: str = "",
 ) -> str:
     """Compute the expected HMAC-SHA256 hex signature for a request.
 
-    canonical_message = METHOD\\nPATH\\nTIMESTAMP[\\nSHA256_HEX(body)]
+    canonical_message = METHOD\\nPATH\\nTIMESTAMP\\nNONCE[\\nSHA256_HEX(body)]
     """
-    parts = [method.upper(), path, str(timestamp)]
+    if not validate_hmac_nonce(nonce):
+        raise ValueError("HMAC nonce must be 16-128 URL-safe ASCII characters")
+    parts = [method.upper(), path, str(timestamp), nonce]
     if body_bytes:
         parts.append(hashlib.sha256(body_bytes).hexdigest())
     canonical = "\n".join(parts)
@@ -845,18 +866,19 @@ def verify_hmac(
     api_key: str,
     method: str,
     path: str,
-    timestamp: int,
+    timestamp: int | str,
     body_bytes: bytes,
     provided_sig: str,
+    nonce: str = "",
 ) -> bool:
-    """Constant-time HMAC-SHA256 verification.
+    """Constant-time HMAC-SHA256 verification bound to ``X-NCE-Nonce``.
 
-    Returns True when the signature is valid, False otherwise.
-    An empty api_key always returns False (server misconfigured).
+    Returns True when the nonce and signature are valid, False otherwise.
+    An empty api_key or invalid nonce always returns False (fail-closed).
     """
-    if not api_key:
+    if not api_key or not validate_hmac_nonce(nonce):
         return False
-    expected = _compute_signature(api_key, method, path, timestamp, body_bytes)
+    expected = _compute_signature(api_key, method, path, timestamp, body_bytes, nonce=nonce)
     return _hmac.compare_digest(expected, provided_sig.strip().lower())
 
 
@@ -1231,19 +1253,26 @@ class NonceStore:
         except Exception:
             return False
 
-    async def check_and_store(self, nonce: str) -> bool:
-        """Atomically check and store a nonce.
+    async def check_and_store(
+        self,
+        nonce: str,
+        *,
+        principal_scope: str | None = None,
+    ) -> bool:
+        """Atomically check and store a nonce scoped by principal.
 
         Returns ``True`` if the nonce is **new** (request accepted).
         Returns ``False`` if the nonce was already seen (replay) **or**
         if Redis is unreachable (fail-closed).
 
-        Key format: ``nce:nonce:<hex_signature>``
+        Key format: ``nce:hmac_nonce:<principal_scope>:<nonce>`` (or ``nce:hmac_nonce:<nonce>``)
         TTL:        configured ``_ttl`` seconds (auto-cleanup).
         """
         try:
             r = await self._get_redis()
-            key = f"{_NONCE_KEY_PREFIX}{nonce}"
+            scope = (principal_scope or "").strip()
+            scoped_val = f"{scope}:{nonce}" if scope else nonce
+            key = f"{_NONCE_KEY_PREFIX}{scoped_val}"
             # SET key value NX PX ttl_ms → True if new, None if already exists
             result = await r.set(key, "1", nx=True, px=self._ttl * 1000)
             return result is True
@@ -1281,8 +1310,9 @@ def optional_hmac_nonce_store() -> NonceStore | None:
             "HMAC replay protection is timestamp-only."
         )
         return None
-    log.info("HMAC distributed replay: NonceStore active (Redis).")
-    return NonceStore(url, max_connections=cfg.REDIS_MAX_CONNECTIONS)
+    ttl = int(2 * cfg.NCE_CLOCK_SKEW_TOLERANCE_S + 5)
+    log.info("HMAC distributed replay: NonceStore active (Redis, ttl=%ds).", ttl)
+    return NonceStore(url, ttl=ttl, max_connections=cfg.REDIS_MAX_CONNECTIONS)
 
 
 # ---------------------------------------------------------------------------
@@ -1357,12 +1387,13 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
     # ------------------------------------------------------------------
 
     async def _extract_hmac_context(self, request: Request) -> HMACAuthContext | JSONResponse:
-        """Extract and validate X-NCE-Timestamp + Authorization headers.
+        """Extract and validate X-NCE-Timestamp, X-NCE-Nonce, and Authorization headers.
 
         Returns an ``HMACAuthContext`` on success, or a JSON-RPC error response.
         """
         timestamp_raw = request.headers.get("x-nce-timestamp", "").strip()
         auth_header = request.headers.get("authorization", "").strip()
+        nonce_raw = request.headers.get("x-nce-nonce", "").strip()
 
         if not timestamp_raw or not auth_header:
             return _jsonrpc_error(
@@ -1381,6 +1412,7 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
             return HMACAuthContext(
                 timestamp=int(timestamp_raw),
                 signature=sig_value.strip(),
+                nonce=nonce_raw,
             )
         except (ValueError, Exception) as exc:
             log.warning("HMAC header validation error: %s", exc)
@@ -1405,13 +1437,31 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
             )
         return None
 
+    def _verify_nonce_header(self, ctx: HMACAuthContext) -> JSONResponse | None:
+        """Enforce mandatory, syntactically valid X-NCE-Nonce (16-128 URL-safe ASCII)."""
+        if not ctx.nonce:
+            log.warning("HMAC auth failed: X-NCE-Nonce header is missing")
+            return _jsonrpc_error(
+                _CODE_AUTH_FAILED,
+                "Authentication failed",
+                "nonce_missing",
+            )
+        if not validate_hmac_nonce(ctx.nonce):
+            log.warning("HMAC auth failed: X-NCE-Nonce is malformed")
+            return _jsonrpc_error(
+                _CODE_AUTH_FAILED,
+                "Authentication failed",
+                "invalid_nonce",
+            )
+        return None
+
     def _verify_signature(
         self,
         request: Request,
         ctx: HMACAuthContext,
         body_bytes: bytes,
     ) -> JSONResponse | None:
-        """HMAC-SHA256 signature verification."""
+        """HMAC-SHA256 signature verification bound to X-NCE-Nonce."""
         if not verify_hmac(
             self._api_key,
             request.method,
@@ -1419,6 +1469,7 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
             ctx.timestamp,
             body_bytes,
             ctx.signature,
+            nonce=ctx.nonce,
         ):
             log.warning(
                 "HMAC signature mismatch: method=%s path=%s",
@@ -1433,18 +1484,13 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
         ctx: HMACAuthContext,
         nonce_value: str,
     ) -> JSONResponse | None:
-        """Mandatory nonce enforcement + distributed replay check.
+        """Distributed nonce replay check via Redis SETNX on ``{principal_scope}:{nonce}``.
 
-        Behaviour matrix (``nonce_required=True``):
-          - Redis up  + nonce present  → SETNX; reject if already seen.
-          - Redis up  + nonce absent   → reject (nonce_missing).
-          - Redis down + prod          → reject (fail-closed).
-          - Redis down + dev/test      → allow with WARNING log.
-
-        When ``nonce_required=False``:
-          - nonce_store absent → skip (timestamp-only protection).
-          - nonce_store present + nonce present → check replay as before.
-          - nonce_store present + nonce absent → skip (optional).
+        Signature validation already enforces valid ``X-NCE-Nonce`` cryptographically.
+        Behaviour matrix:
+          - Redis up   → SETNX ``nce:hmac_nonce:{principal_scope}:{nonce}``; reject if seen.
+          - Redis down + prod     → reject (fail-closed, ``nonce_store_unavailable``).
+          - Redis down + dev/test → allow with WARNING log.
         """
         is_prod = bool(
             cfg.IS_PROD or os.environ.get("NCE_ENV", "").lower() in ("production", "prod")
@@ -1466,24 +1512,17 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
             )
             return None
 
+        principal_scope = hmac_principal_scope(self._api_key)
+        scoped_nonce = f"{principal_scope}:{nonce_value}"
+
         if not self._nonce_required:
-            # Legacy / opt-out path: check signature replay and optional nonce if store present
-            sig_key = f"sig:{ctx.signature}"
-            if not await self._nonce_store.check_and_store(sig_key):
-                log.warning("HMAC signature replay detected: sig=%s...", ctx.signature[:16])
+            if nonce_value and not await self._nonce_store.check_and_store(scoped_nonce):
+                log.warning("HMAC nonce replay detected: nonce=%s...", nonce_value[:16])
                 return _jsonrpc_error(
                     _CODE_REPLAY,
                     "Request already processed (replay detected)",
                     "replay_nonce_conflict",
                 )
-            if nonce_value:
-                if not await self._nonce_store.check_and_store(nonce_value):
-                    log.warning("HMAC nonce replay detected: nonce=%s...", nonce_value[:16])
-                    return _jsonrpc_error(
-                        _CODE_REPLAY,
-                        "Request already processed (replay detected)",
-                        "replay_nonce_conflict",
-                    )
             return None
 
         # Store is configured; probe reachability
@@ -1502,7 +1541,6 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
             log.warning("HMAC nonce required but Redis is unreachable — allowing in dev/test")
             return None
 
-        # Redis is up: nonce header must be present
         if not nonce_value:
             log.warning("HMAC nonce required but X-NCE-Nonce header is missing")
             return _jsonrpc_error(
@@ -1511,17 +1549,7 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
                 "nonce_missing",
             )
 
-        # Replay check: SET NX on both signature and client nonce
-        sig_key = f"sig:{ctx.signature}"
-        if not await self._nonce_store.check_and_store(sig_key):
-            log.warning("HMAC signature replay detected: sig=%s...", ctx.signature[:16])
-            return _jsonrpc_error(
-                _CODE_REPLAY,
-                "Request already processed (replay detected)",
-                "replay_nonce_conflict",
-            )
-
-        if not await self._nonce_store.check_and_store(nonce_value):
+        if not await self._nonce_store.check_and_store(scoped_nonce):
             log.warning("HMAC nonce replay detected: nonce=%s...", nonce_value[:16])
             return _jsonrpc_error(
                 _CODE_REPLAY,
@@ -1565,23 +1593,28 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
         if ts_err is not None:
             return ts_err
 
-        # Step 3: Read body + verify signature
+        # Step 3: Validate mandatory X-NCE-Nonce format/length before verification
+        nonce_hdr_err = self._verify_nonce_header(ctx)
+        if nonce_hdr_err is not None:
+            return nonce_hdr_err
+
+        # Step 4: Read body + verify nonce-bound signature
         body_bytes = await request.body()
         sig_err = self._verify_signature(request, ctx, body_bytes)
         if sig_err is not None:
             return sig_err
 
-        # Step 4: Nonce enforcement + distributed replay check
-        nonce_value = request.headers.get("x-nce-nonce", "").strip()
-        nonce_err = await self._check_nonce(ctx, nonce_value)
+        # Step 5: Distributed nonce replay check
+        nonce_err = await self._check_nonce(ctx, ctx.nonce)
         if nonce_err is not None:
             return nonce_err
 
-        # Step 5: Resolve namespace context
+        # Step 6: Resolve namespace context
         ns_result = self._resolve_namespace_context(request)
         if isinstance(ns_result, JSONResponse):
             return ns_result
 
+        request.state.hmac_auth = ctx
         return await call_next(request)
 
 
@@ -1719,7 +1752,7 @@ class AdminHTTPRateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
         path = request.url.path
-        if path == "/healthz":
+        if path in ("/healthz", "/readyz"):
             return await call_next(request)
 
         sensitive = _admin_http_is_sensitive(path, request.method)

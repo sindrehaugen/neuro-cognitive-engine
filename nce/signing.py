@@ -70,8 +70,71 @@ from typing import Any, Final
 from uuid import UUID as _UUID  # noqa: F401
 
 import asyncpg
+from asyncpg.pool import PoolConnectionProxy as _PoolConnProxy
+from cachetools import TTLCache
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from nce.config import cfg, secret_env
+
+
+def _is_real_pg_conn(conn: Any) -> bool:
+    """True for live asyncpg connections/pool proxies (false for offline mocks)."""
+    return isinstance(conn, (asyncpg.Connection, _PoolConnProxy))
+
+
+async def fetch_signing_key_count(conn: Any) -> int:
+    """Return total rows in signing_keys via SECURITY DEFINER RPC when available."""
+    if _is_real_pg_conn(conn):
+        try:
+            cnt = await conn.fetchval("SELECT nce_count_signing_keys()")
+            return int(cnt or 0)
+        except asyncpg.UndefinedFunctionError:
+            pass
+    cnt = await conn.fetchval("SELECT COUNT(*) FROM signing_keys")
+    return int(cnt or 0)
+
+
+async def fetch_active_signing_key_row(conn: Any) -> Any:
+    """Return active (key_id, encrypted_key) row via SECURITY DEFINER RPC when available."""
+    if _is_real_pg_conn(conn):
+        try:
+            return await conn.fetchrow(
+                "SELECT key_id, encrypted_key FROM nce_get_active_signing_key()"
+            )
+        except asyncpg.UndefinedFunctionError:
+            pass
+    return await conn.fetchrow(
+        """
+        SELECT key_id, encrypted_key
+        FROM   signing_keys
+        WHERE  status = 'active'
+        ORDER  BY created_at DESC
+        LIMIT  1
+        """
+    )
+
+
+async def fetch_signing_key_row_by_id(conn: Any, key_id: str) -> Any:
+    """Return (key_id, encrypted_key) row for *key_id* via SECURITY DEFINER RPC."""
+    if _is_real_pg_conn(conn):
+        try:
+            return await conn.fetchrow(
+                "SELECT key_id, encrypted_key FROM nce_get_signing_key_by_id($1)",
+                key_id,
+            )
+        except asyncpg.UndefinedFunctionError:
+            pass
+    return await conn.fetchrow(
+        """
+        SELECT key_id, encrypted_key
+        FROM   signing_keys
+        WHERE  key_id = $1
+        """,
+        key_id,
+    )
+
 
 try:
     import jcs as _jcs_lib  # RFC 8785 — preferred
@@ -95,11 +158,6 @@ except ImportError:  # pragma: no cover – jcs is in requirements.txt; handle g
             "utf-8"
         )
 
-
-from cachetools import TTLCache
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 log = logging.getLogger(__name__)
 
@@ -1014,13 +1072,7 @@ async def get_active_key(
             SIGNING_KEY_CACHE_MISS_TOTAL.inc()
 
         with require_master_key() as master_key:
-            row = await conn.fetchrow("""
-                SELECT key_id, encrypted_key
-                FROM   signing_keys
-                WHERE  status = 'active'
-                ORDER  BY created_at DESC
-                LIMIT  1
-                """)
+            row = await fetch_active_signing_key_row(conn)
             if row is None:
                 raise NoActiveSigningKeyError(
                     "No active signing key exists in signing_keys.  "
@@ -1107,14 +1159,7 @@ async def get_key_by_id(
             SIGNING_KEY_CACHE_MISS_TOTAL.inc()
 
         with require_master_key() as master_key:
-            row = await conn.fetchrow(
-                """
-                SELECT encrypted_key
-                FROM   signing_keys
-                WHERE  key_id = $1
-                """,
-                key_id,
-            )
+            row = await fetch_signing_key_row_by_id(conn, key_id)
             if row is None:
                 raise NoActiveSigningKeyError(
                     f"Signing key '{key_id}' not found in signing_keys table."
@@ -1200,6 +1245,46 @@ async def admin_signing_keys_status(conn: asyncpg.Connection) -> dict[str, Any]:
     Exposes metadata only — never raw key bytes, encrypted blobs, or master-key
     derivation parameters.
     """
+    if _is_real_pg_conn(conn):
+        try:
+            rpc_row = await conn.fetchrow(
+                "SELECT active_key_id, active_created_at, status_counts, latest_retired_at "
+                "FROM nce_get_signing_keys_status()"
+            )
+            if rpc_row is not None:
+                raw_counts = rpc_row["status_counts"]
+                if isinstance(raw_counts, str):
+                    import json as _json_status
+
+                    counts_dict = {
+                        str(k): int(v) for k, v in (_json_status.loads(raw_counts) or {}).items()
+                    }
+                else:
+                    counts_dict = {str(k): int(v) for k, v in dict(raw_counts or {}).items()}
+                act_created = rpc_row["active_created_at"]
+                lat_ret = rpc_row["latest_retired_at"]
+                return {
+                    "active_key_id": (
+                        str(rpc_row["active_key_id"]) if rpc_row["active_key_id"] else None
+                    ),
+                    "active_created_at": (
+                        act_created.astimezone(timezone.utc).isoformat()
+                        if act_created is not None
+                        else None
+                    ),
+                    "keys_by_status": counts_dict,
+                    "latest_retired_at": (
+                        lat_ret.astimezone(timezone.utc).isoformat()
+                        if lat_ret is not None
+                        else None
+                    ),
+                    "signing_wire_format_notes": (
+                        "memories/events: HMAC-SHA256 over RFC 8785 (JCS) canonical JSON; "
+                        "see nce.signing.sign_fields."
+                    ),
+                }
+        except asyncpg.UndefinedFunctionError:
+            pass
 
     active = await conn.fetchrow(
         """
@@ -1278,20 +1363,32 @@ async def rotate_key(conn: asyncpg.Connection, *, redis_client: Any = None) -> s
             encrypted_blob = encrypt_signing_key(bytes(raw_buf), master_key)
 
         async with conn.transaction():
-            await conn.execute("""
-                UPDATE signing_keys
-                SET    status = 'retired',
-                       retired_at = now()
-                WHERE  status = 'active'
-                """)
-            await conn.execute(
-                """
-                INSERT INTO signing_keys (key_id, encrypted_key, status)
-                VALUES ($1, $2, 'active')
-                """,
-                new_key_id,
-                encrypted_blob,
-            )
+            used_rpc = False
+            if _is_real_pg_conn(conn):
+                try:
+                    await conn.execute(
+                        "SELECT nce_rotate_signing_key($1, $2)",
+                        new_key_id,
+                        encrypted_blob,
+                    )
+                    used_rpc = True
+                except asyncpg.UndefinedFunctionError:
+                    used_rpc = False
+            if not used_rpc:
+                await conn.execute("""
+                    UPDATE signing_keys
+                    SET    status = 'retired',
+                           retired_at = now()
+                    WHERE  status = 'active'
+                    """)
+                await conn.execute(
+                    """
+                    INSERT INTO signing_keys (key_id, encrypted_key, status)
+                    VALUES ($1, $2, 'active')
+                    """,
+                    new_key_id,
+                    encrypted_blob,
+                )
 
     # Zero all cached key buffers, then clear the cache.
     # Iterate over a snapshot of keys to avoid mutation-during-iteration.

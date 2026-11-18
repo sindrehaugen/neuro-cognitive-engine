@@ -22,6 +22,7 @@ from nce.admin_handlers._shared import (
     admin_error_response,
     bump_mcp_cache_generation,
     logger,
+    maybe_scoped_pg_conn,
 )
 from nce.outbound_webhooks import (
     create_webhook,
@@ -77,7 +78,7 @@ async def api_admin_webhooks_post(request: Request) -> JSONResponse:
 
     try:
         ns_uuid = uuid.UUID(namespace_id)
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, ns_uuid) as conn:
             webhook = await create_webhook(
                 conn,
                 namespace_id=ns_uuid,
@@ -117,7 +118,7 @@ async def api_admin_webhooks_get(request: Request) -> JSONResponse:
 
     try:
         ns_uuid = uuid.UUID(namespace_id)
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, ns_uuid) as conn:
             webhooks = await list_webhooks(conn, namespace_id=ns_uuid, is_active=is_active)
     except Exception as exc:
         logger.exception("[admin_webhooks] failed to list webhooks")
@@ -157,7 +158,7 @@ async def api_admin_webhooks_delete(request: Request) -> JSONResponse:
 
     try:
         ns_uuid = uuid.UUID(namespace_id)
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with maybe_scoped_pg_conn(admin_state.engine.pg_pool, ns_uuid) as conn:
             deleted = await delete_webhook(conn, namespace_id=ns_uuid, webhook_id=webhook_id)
     except Exception as exc:
         logger.exception("[admin_webhooks] failed to delete webhook")

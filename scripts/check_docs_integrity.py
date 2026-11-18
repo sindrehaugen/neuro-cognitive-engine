@@ -21,10 +21,13 @@ from __future__ import annotations
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 _BRAND_WALL_RE = re.compile(r"\b(glamox|vertex|e2d)\b", re.IGNORECASE)
+_CODE_SCAN_SUFFIXES = {".py", ".sql", ".yml", ".yaml", ".sh"}
+_CODE_SCAN_NAMES = {"Makefile", "Caddyfile"}
 _MD_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+(.+?)\s*$")
@@ -209,7 +212,7 @@ def check_version_and_brand_wall(files: list[pathlib.Path]) -> list[str]:
     errors: list[str] = []
     pyproj = (_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     m_ver = re.search(r'^version\s*=\s*"([^"]+)"', pyproj, re.MULTILINE)
-    expected_ver = m_ver.group(1) if m_ver else "3.5.2"
+    expected_ver = m_ver.group(1) if m_ver else "3.5.3"
 
     readme = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
     if f"v{expected_ver}" not in readme and expected_ver not in readme:
@@ -222,6 +225,48 @@ def check_version_and_brand_wall(files: list[pathlib.Path]) -> list[str]:
         for m in _BRAND_WALL_RE.finditer(raw):
             rel_src = fpath.relative_to(_REPO_ROOT)
             errors.append(f"{rel_src}: brand-wall violation {m.group(0)!r}")
+            break
+    errors.extend(check_code_and_config_brand_wall())
+    return errors
+
+
+def check_code_and_config_brand_wall() -> list[str]:
+    """Scan tracked source/config files for private vertical brand leaks."""
+    errors: list[str] = []
+    candidates: list[pathlib.Path] = []
+    if (_REPO_ROOT / ".git").exists():
+        try:
+            out = subprocess.check_output(
+                ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+                cwd=_REPO_ROOT,
+                text=True,
+                encoding="utf-8",
+            )
+            for rel in out.splitlines():
+                p = _REPO_ROOT / rel
+                if p.is_file():
+                    candidates.append(p)
+        except Exception:
+            candidates = []
+    if not candidates:
+        candidates = [p for p in _REPO_ROOT.rglob("*") if p.is_file()]
+
+    skip_rel = {"scripts/check_docs_integrity.py"}
+    for fpath in candidates:
+        rel_posix = fpath.relative_to(_REPO_ROOT).as_posix()
+        if rel_posix in skip_rel:
+            continue
+        if any(
+            part
+            in {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", "dist", "build"}
+            for part in fpath.relative_to(_REPO_ROOT).parts
+        ):
+            continue
+        if fpath.suffix.lower() not in _CODE_SCAN_SUFFIXES and fpath.name not in _CODE_SCAN_NAMES:
+            continue
+        raw = fpath.read_text(encoding="utf-8", errors="ignore")
+        for m in _BRAND_WALL_RE.finditer(raw):
+            errors.append(f"{rel_posix}: code/config brand-wall violation {m.group(0)!r}")
             break
     return errors
 

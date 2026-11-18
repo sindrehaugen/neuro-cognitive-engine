@@ -1,0 +1,64 @@
+# NCE v3.5.3 — Opt-in Caddy <-> Admin mutual TLS + Production Admin Posture Overlay
+#
+# Generate internal mTLS PKI first:
+#   python scripts/generate_internal_mtls.py
+#
+# Then layer on top of the base compose stack:
+#   docker compose -f docker-compose.yml -f docker-compose.mtls.yml up -d
+#
+# Ensure deploy/compose.stack.env.generated (or runtime env) supplies non-default
+# PostgreSQL, MinIO, A2A JWT, and PBKDF2 admin secrets when NCE_ENV=prod is active.
+
+services:
+  admin:
+    command:
+      [
+        "uvicorn",
+        "admin_server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8003",
+        "--workers",
+        "${ADMIN_WORKERS:-2}",
+        "--ssl-keyfile",
+        "/etc/nce/certs/admin.key",
+        "--ssl-certfile",
+        "/etc/nce/certs/admin.crt",
+        "--ssl-ca-certs",
+        "/etc/nce/certs/ca.crt",
+        "--ssl-cert-reqs",
+        "2",
+      ]
+    environment:
+      NCE_ENV: ${NCE_ENV:-prod}
+      NCE_LOAD_DOTENV: "false"
+      NCE_A2A_JWT_AUDIENCE: ${NCE_A2A_JWT_AUDIENCE:-nce-a2a}
+      NCE_ADMIN_MTLS_ENABLED: "true"
+      NCE_ADMIN_MTLS_STRICT: "true"
+      NCE_ADMIN_MTLS_TRUSTED_PROXY_HOP: "1"
+      NCE_ADMIN_MTLS_ALLOWED_SANS: "caddy.internal.nce"
+      NCE_MTLS_CERT_PATH: /etc/nce/certs/admin.crt
+      NCE_MTLS_KEY_PATH: /etc/nce/certs/admin.key
+      NCE_MTLS_CA_PATH: /etc/nce/certs/ca.crt
+    volumes:
+      - ./deploy/certs/internal-mtls:/etc/nce/certs:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json,ssl,urllib.request;ctx=ssl.create_default_context(cafile='/etc/nce/certs/ca.crt');ctx.load_cert_chain('/etc/nce/certs/caddy.crt','/etc/nce/certs/caddy.key');d=json.load(urllib.request.urlopen('https://127.0.0.1:8003/readyz',context=ctx));assert d.get('status')=='ok', d",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    volumes:
+      - ./deploy/Caddyfile.mtls:/etc/caddy/Caddyfile:ro
+      - ./deploy/certs/internal-mtls:/etc/nce/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config

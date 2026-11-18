@@ -18,8 +18,8 @@ http://:80, https://localhost:443, https://127.0.0.1:443 {
 		X-Frame-Options "DENY"
 		# MIME-type sniffing protection
 		X-Content-Type-Options "nosniff"
-		# Cross-Site Scripting (XSS) protection
-		X-XSS-Protection "1; mode=block"
+		# Cross-Site Scripting (XSS) protection disabled in favor of strict CSP (OWASP recommendation)
+		X-XSS-Protection "0"
 		# Prevent referrer information leak
 		Referrer-Policy "strict-origin-when-cross-origin"
 		# Restrict browser feature access
@@ -70,6 +70,49 @@ http://:80, https://localhost:443, https://127.0.0.1:443 {
 			header_up X-Forwarded-Proto {scheme}
 			header_up X-Real-IP {remote_host}
 		}
+	}
+
+	# Optional vertical engine upstreams (resolved dynamically so Core-only stacks start cleanly)
+	vars portal_upstream "portal:8010"
+	vars odoo_upstream "odoo:8011"
+	vars salesforce_upstream "salesforce:8012"
+
+	# Optional vertical engine routes (active when docker-compose.verticals.yml is attached)
+	handle /api/portal/* {
+		reverse_proxy {vars.portal_upstream} {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle_path /portal/* {
+		reverse_proxy {vars.portal_upstream} {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle_path /odoo/* {
+		reverse_proxy {vars.odoo_upstream} {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle_path /salesforce/* {
+		reverse_proxy {vars.salesforce_upstream} {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# Edge proxy health probe (independent of upstream app state)
+	handle /caddy-healthz {
+		respond "ok" 200
 	}
 
 	# Route everything else to the Admin UI / REST API

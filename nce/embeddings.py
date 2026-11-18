@@ -660,6 +660,37 @@ def cognitive_health_check_url(raw: str | None = None) -> str:
     return "http://localhost:11435/health"
 
 
+async def assert_cognitive_not_stub_in_prod() -> dict[str, Any] | None:
+    """Async startup guard failing closed in production if configured sidecar is a stub."""
+    base = validated_cognitive_base_url()
+    if not base or cfg.NCE_BACKEND:
+        return None
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=2.0, trust_env=False) as client:
+            resp = await client.get(cognitive_health_check_url(base))
+            if resp.status_code != 200:
+                return None
+            payload = resp.json() if resp.content else {}
+    except Exception:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    engine = str(payload.get("engine") or "").strip().lower()
+    if (
+        engine == "stub"
+        and cfg.ENVIRONMENT in {"prod", "production"}
+        and not getattr(cfg, "NCE_ALLOW_COGNITIVE_STUB", False)
+    ):
+        raise RuntimeError(
+            f"Refusing to start: cognitive sidecar at {base} reports engine='stub' "
+            "while NCE_ENV is production and NCE_ALLOW_COGNITIVE_STUB is false."
+        )
+    return payload
+
+
 class CognitiveRemoteBackend(EmbeddingBackend):
     """
     OpenAI-compatible ``/v1/embeddings`` against the bundled cognitive image [D2/D7].
@@ -709,20 +740,30 @@ class CognitiveRemoteBackend(EmbeddingBackend):
         if engine != "stub":
             return
 
+        if getattr(cfg, "NCE_ALLOW_COGNITIVE_STUB", False) and cfg.ENVIRONMENT not in {
+            "prod",
+            "production",
+        }:
+            log.warning(
+                "CognitiveRemoteBackend: running against stub (NCE_ALLOW_COGNITIVE_STUB=true)"
+            )
+            return
+
         msg = (
             "COGNITIVE SIDECAR AT %s IS A STUB (GET /health reports "
-            'engine="stub"). It returns ZERO vectors, so embeddings are not '
-            "real and semantic recall over anything written now will be "
-            "meaningless. Point NCE_COGNITIVE_BASE_URL at a real model server, "
+            'engine="stub"). It generates synthetic hash/zero vectors, so embeddings are not '
+            "real semantic inference and recall over anything written now will not match "
+            "real models. Point NCE_COGNITIVE_BASE_URL at a real model server, "
             "or unset it so nce.embeddings.detect_backend() falls through to "
             "the in-process hardware chain (CUDA/ROCm/XPU/OpenVINO-NPU/CPU)."
         )
-        if cfg.ENVIRONMENT in {"prod", "production"}:
+        if cfg.ENVIRONMENT in {"prod", "production"} and not getattr(
+            cfg, "NCE_ALLOW_COGNITIVE_STUB", False
+        ):
             log.critical(msg, self._base)
             raise RuntimeError(
                 f"Refusing to start: cognitive sidecar at {self._base} is a stub "
-                "and NCE_ENV is production. A stub returns zero vectors; storing "
-                "them is silent data loss."
+                "and NCE_ENV is production. Real semantic inference is required."
             )
         log.warning(msg, self._base)
 

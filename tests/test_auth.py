@@ -69,8 +69,9 @@ def _make_signature(
     path: str,
     timestamp: int,
     body: bytes = b"",
+    nonce: str = "test-nonce-000001",
 ) -> str:
-    parts = [method.upper(), path, str(timestamp)]
+    parts = [method.upper(), path, str(timestamp), nonce]
     if body:
         parts.append(hashlib.sha256(body).hexdigest())
     canonical = "\n".join(parts)
@@ -83,11 +84,14 @@ def _valid_headers(
     path: str = "/api/health",
     body: bytes = b"",
     ts: int | None = None,
+    nonce: str | None = None,
 ) -> dict[str, str]:
     ts = ts if ts is not None else int(time.time())
-    sig = _make_signature(key, method, path, ts, body)
+    eff_nonce = uuid4().hex if nonce is None else nonce
+    sig = _make_signature(key, method, path, ts, body, nonce=eff_nonce)
     return {
         "X-NCE-Timestamp": str(ts),
+        "X-NCE-Nonce": eff_nonce,
         "Authorization": f"HMAC-SHA256 {sig}",
     }
 
@@ -99,58 +103,92 @@ def _valid_headers(
 
 class TestComputeSignature:
     def test_no_body_excludes_hash(self) -> None:
-        sig = _compute_signature(_KEY, "GET", "/api/health", 1000, b"")
-        expected = _hmac.new(_KEY.encode(), b"GET\n/api/health\n1000", hashlib.sha256).hexdigest()
+        nonce = "test-nonce-000001"
+        sig = _compute_signature(_KEY, "GET", "/api/health", 1000, b"", nonce=nonce)
+        expected = _hmac.new(
+            _KEY.encode(), f"GET\n/api/health\n1000\n{nonce}".encode(), hashlib.sha256
+        ).hexdigest()
         assert sig == expected
 
     def test_with_body_includes_sha256(self) -> None:
+        nonce = "test-nonce-000001"
         body = b'{"x": 1}'
         body_hash = hashlib.sha256(body).hexdigest()
-        sig = _compute_signature(_KEY, "POST", "/api/gc/trigger", 2000, body)
-        canonical = f"POST\n/api/gc/trigger\n2000\n{body_hash}"
+        sig = _compute_signature(_KEY, "POST", "/api/gc/trigger", 2000, body, nonce=nonce)
+        canonical = f"POST\n/api/gc/trigger\n2000\n{nonce}\n{body_hash}"
         expected = _hmac.new(_KEY.encode(), canonical.encode(), hashlib.sha256).hexdigest()
         assert sig == expected
 
     def test_method_uppercased(self) -> None:
-        sig_lower = _compute_signature(_KEY, "get", "/api/health", 1000, b"")
-        sig_upper = _compute_signature(_KEY, "GET", "/api/health", 1000, b"")
+        nonce = "test-nonce-000001"
+        sig_lower = _compute_signature(_KEY, "get", "/api/health", 1000, b"", nonce=nonce)
+        sig_upper = _compute_signature(_KEY, "GET", "/api/health", 1000, b"", nonce=nonce)
         assert sig_lower == sig_upper
+
+    def test_distinct_nonces_produce_distinct_signatures(self) -> None:
+        s1 = _compute_signature(_KEY, "GET", "/api/health", 1000, b"", nonce="test-nonce-000001")
+        s2 = _compute_signature(_KEY, "GET", "/api/health", 1000, b"", nonce="test-nonce-000002")
+        assert s1 != s2
+
+    def test_invalid_nonce_raises(self) -> None:
+        with pytest.raises(ValueError, match="16-128"):
+            _compute_signature(_KEY, "GET", "/api/health", 1000, b"", nonce="short")
 
 
 class TestVerifyHmac:
     def test_valid_signature_returns_true(self) -> None:
         ts = int(time.time())
         body = b""
-        sig = _make_signature(_KEY, "GET", "/api/health", ts, body)
-        assert verify_hmac(_KEY, "GET", "/api/health", ts, body, sig) is True
+        nonce = "test-nonce-000001"
+        sig = _make_signature(_KEY, "GET", "/api/health", ts, body, nonce=nonce)
+        assert verify_hmac(_KEY, "GET", "/api/health", ts, body, sig, nonce=nonce) is True
 
     def test_wrong_key_returns_false(self) -> None:
         ts = int(time.time())
-        sig = _make_signature("wrong-key", "GET", "/api/health", ts, b"")
-        assert verify_hmac(_KEY, "GET", "/api/health", ts, b"", sig) is False
+        nonce = "test-nonce-000001"
+        sig = _make_signature("wrong-key", "GET", "/api/health", ts, b"", nonce=nonce)
+        assert verify_hmac(_KEY, "GET", "/api/health", ts, b"", sig, nonce=nonce) is False
 
     def test_tampered_body_returns_false(self) -> None:
         ts = int(time.time())
+        nonce = "test-nonce-000001"
         original_body = b'{"data": "original"}'
-        sig = _make_signature(_KEY, "POST", "/api/x", ts, original_body)
+        sig = _make_signature(_KEY, "POST", "/api/x", ts, original_body, nonce=nonce)
         tampered = b'{"data": "tampered"}'
-        assert verify_hmac(_KEY, "POST", "/api/x", ts, tampered, sig) is False
+        assert verify_hmac(_KEY, "POST", "/api/x", ts, tampered, sig, nonce=nonce) is False
 
     def test_empty_api_key_returns_false(self) -> None:
         ts = int(time.time())
-        sig = _make_signature(_KEY, "GET", "/api/health", ts, b"")
-        assert verify_hmac("", "GET", "/api/health", ts, b"", sig) is False
+        nonce = "test-nonce-000001"
+        sig = _make_signature(_KEY, "GET", "/api/health", ts, b"", nonce=nonce)
+        assert verify_hmac("", "GET", "/api/health", ts, b"", sig, nonce=nonce) is False
 
     def test_case_insensitive_signature(self) -> None:
         ts = int(time.time())
         body = b""
-        sig = _make_signature(_KEY, "GET", "/api/health", ts, body).upper()
-        assert verify_hmac(_KEY, "GET", "/api/health", ts, body, sig) is True
+        nonce = "test-nonce-000001"
+        sig = _make_signature(_KEY, "GET", "/api/health", ts, body, nonce=nonce).upper()
+        assert verify_hmac(_KEY, "GET", "/api/health", ts, body, sig, nonce=nonce) is True
 
     def test_different_path_returns_false(self) -> None:
         ts = int(time.time())
-        sig = _make_signature(_KEY, "GET", "/api/health", ts, b"")
-        assert verify_hmac(_KEY, "GET", "/api/other", ts, b"", sig) is False
+        nonce = "test-nonce-000001"
+        sig = _make_signature(_KEY, "GET", "/api/health", ts, b"", nonce=nonce)
+        assert verify_hmac(_KEY, "GET", "/api/other", ts, b"", sig, nonce=nonce) is False
+
+    def test_swapped_nonce_returns_false(self) -> None:
+        ts = int(time.time())
+        sig = _make_signature(_KEY, "GET", "/api/health", ts, b"", nonce="test-nonce-000001")
+        assert (
+            verify_hmac(_KEY, "GET", "/api/health", ts, b"", sig, nonce="test-nonce-000002")
+            is False
+        )
+
+    def test_missing_or_short_nonce_returns_false(self) -> None:
+        ts = int(time.time())
+        sig = _make_signature(_KEY, "GET", "/api/health", ts, b"", nonce="test-nonce-000001")
+        assert verify_hmac(_KEY, "GET", "/api/health", ts, b"", sig, nonce="") is False
+        assert verify_hmac(_KEY, "GET", "/api/health", ts, b"", sig, nonce="short") is False
 
 
 # ---------------------------------------------------------------------------
@@ -305,9 +343,11 @@ class TestHMACAuthMiddleware:
         app = _build_test_app(_KEY)
         body = b'{"force": true}'
         ts = int(time.time())
-        sig = _make_signature(_KEY, "POST", "/api/gc/trigger", ts, body)
+        nonce = "test-nonce-000001"
+        sig = _make_signature(_KEY, "POST", "/api/gc/trigger", ts, body, nonce=nonce)
         headers = {
             "X-NCE-Timestamp": str(ts),
+            "X-NCE-Nonce": nonce,
             "Authorization": f"HMAC-SHA256 {sig}",
             "Content-Type": "application/json",
         }
@@ -396,6 +436,7 @@ class TestHMACAuthMiddleware:
                 "/api/health",
                 headers={
                     "X-NCE-Timestamp": str(ts),
+                    "X-NCE-Nonce": "test-nonce-000001",
                     "Authorization": "HMAC-SHA256 deadbeefdeadbeefdeadbeef",
                 },
             )
@@ -410,6 +451,7 @@ class TestHMACAuthMiddleware:
                 "/api/health",
                 headers={
                     "X-NCE-Timestamp": str(ts),
+                    "X-NCE-Nonce": "test-nonce-000001",
                     "Authorization": "HMAC-SHA256 not-hex!",
                 },
             )
@@ -464,7 +506,9 @@ class TestNonceStoreUnit:
         ns._redis = mock_redis
         assert asyncio.run(ns.check_and_store("abc123def456")) is True
 
-        mock_redis.set.assert_awaited_once_with("nce:nonce:abc123def456", "1", nx=True, px=600_000)
+        mock_redis.set.assert_awaited_once_with(
+            "nce:hmac_nonce:abc123def456", "1", nx=True, px=600_000
+        )
 
     def test_replayed_nonce_rejected(self) -> None:
         """SETNX returns None (key already exists) → replay detected."""
@@ -523,13 +567,11 @@ class TestNonceStoreUnit:
         assert mock_redis.set.await_args.kwargs["px"] == 120_000  # 120 s → 120,000 ms
 
     def test_default_ttl_is_double_drift_window(self) -> None:
-        """Default TTL should be 2× the timestamp drift."""
+        """Default TTL should be 2× the timestamp drift + 5s skew slack."""
         from nce.auth import _NONCE_TTL_SECONDS, _TIMESTAMP_DRIFT_SECONDS
 
-        assert _NONCE_TTL_SECONDS == _TIMESTAMP_DRIFT_SECONDS * 2
-        assert (
-            _NONCE_TTL_SECONDS == 180
-        )  # 2 × 90 (NCE_CLOCK_SKEW_TOLERANCE_S default changed 300→90)
+        assert _NONCE_TTL_SECONDS == _TIMESTAMP_DRIFT_SECONDS * 2 + 5
+        assert _NONCE_TTL_SECONDS == 185
 
 
 # ============================================================================
@@ -590,8 +632,7 @@ class TestHMACAuthMiddlewareWithNonceStore:
         nonce_store._redis = mock_redis
 
         app = _build_test_app_with_nonce(_KEY, nonce_store)
-        # Supply X-NCE-Nonce so the store's check_and_store path is reached
-        headers = {**_valid_headers(_KEY, "GET", "/api/health"), "X-NCE-Nonce": "test-nonce-abc123"}
+        headers = _valid_headers(_KEY, "GET", "/api/health", nonce="test-nonce-abc1234")
         with TestClient(app, raise_server_exceptions=False) as client:
             r = client.get("/api/health", headers=headers)
         assert r.status_code == 401
@@ -635,12 +676,13 @@ class TestHMACAuthMiddlewareWithNonceStore:
         app_b = _build_test_app_with_nonce(_KEY, ns_b)
 
         ts = int(time.time())
-        sig = _make_signature(_KEY, "GET", "/api/health", ts)
-        # X-NCE-Nonce is required by the new contract when Redis is reachable
+        nonce = "concurrent-test-nonce-abc123"
+        sig = _make_signature(_KEY, "GET", "/api/health", ts, nonce=nonce)
+        # X-NCE-Nonce is cryptographically bound into signature
         headers = {
             "X-NCE-Timestamp": str(ts),
             "Authorization": f"HMAC-SHA256 {sig}",
-            "X-NCE-Nonce": "concurrent-test-nonce-abc123",
+            "X-NCE-Nonce": nonce,
         }
 
         # Instance A — should pass
@@ -688,15 +730,11 @@ class TestHMACAuthMiddlewareWithNonceStore:
         assert body["error"]["data"]["reason"] == "nonce_store_unavailable"
 
     def test_no_nonce_store_falls_back_to_timestamp_only(self) -> None:
-        """Without NonceStore, two identical requests both pass (legacy mode)."""
+        """Without NonceStore, two requests with signed nonces both pass (legacy mode)."""
         app = _build_test_app_with_nonce(_KEY, None)  # no NonceStore
 
         ts = int(time.time())
-        sig = _make_signature(_KEY, "GET", "/api/health", ts)
-        headers = {
-            "X-NCE-Timestamp": str(ts),
-            "Authorization": f"HMAC-SHA256 {sig}",
-        }
+        headers = _valid_headers(_KEY, "GET", "/api/health", ts=ts)
 
         with TestClient(app, raise_server_exceptions=False) as client:
             r1 = client.get("/api/health", headers=headers)
@@ -739,6 +777,7 @@ class TestHMACAuthMiddlewareWithNonceStore:
         ts = int(time.time())
         headers = {
             "X-NCE-Timestamp": str(ts),
+            "X-NCE-Nonce": "test-nonce-000001",
             "Authorization": "HMAC-SHA256 deadbeefdeadbeefdeadbeef",
         }
         with TestClient(app, raise_server_exceptions=False) as client:

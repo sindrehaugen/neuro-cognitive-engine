@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.5.3] - 2026-11-18
+
+### Security
+- **PostgreSQL Partition RLS, WORM Parity & Key Confinement (`nce/schema.sql`, Migration `040_partition_rls_and_key_confinement.sql`, `nce/signing.py`, `nce/event_log.py`):**
+  - Enabled and forced Row-Level Security (`ENABLE` + `FORCE ROW LEVEL SECURITY` with `(SELECT get_nce_namespace())`) on `kg_node_embeddings` and every tenant hash/range/default child partition (`kg_nodes_0..3`, `kg_edges_0..3`, `kg_node_embeddings_0..3`, `embedding_aspects_0..3`, `memory_embeddings_0..3`, `memory_salience_0..3`, `memories_default`, `contradictions_default`, `pii_redactions_default`, and all `event_log_*` child partitions), and revoked direct `UPDATE, DELETE, TRUNCATE` on `event_log_*` partitions from `nce_app`/`nce_gc`.
+  - Hardened `nce_ensure_event_log_monthly_partitions(int)` (`SECURITY DEFINER`, `SET search_path = public, pg_temp`) so newly minted monthly partitions automatically inherit forced RLS and WORM protections.
+  - Revoked direct `public.signing_keys` table privileges from `nce_app` in favor of narrow `SECURITY DEFINER` helpers (`nce_get_signing_key_for_unwrap`, `nce_list_signing_keys_metadata`, `nce_list_active_signing_keys`, `nce_resolve_signing_key_status`, `nce_list_signing_key_versions`), and tightened `verify_rls_role_capability()` and `verify_v1_launch.py` to audit partitions and key confinement continuously.
+- **Nonce-Bound HMAC-SHA256 Authentication (`nce/auth.py`):**
+  - Bound `X-NCE-Nonce` (`^[A-Za-z0-9._:-]{16,128}$`) directly into canonical HMAC strings (`METHOD\nPATH\nTIMESTAMP\nNONCE[\nSHA256(BODY)]`), stored per-principal atomic replay keys (`nce:hmac_nonce:{principal_scope}:{nonce}`) in Redis `SETNX`, and attached `request.state.hmac_auth` across `HMACAuthMiddleware`.
+- **Single-Port Edge Proxy, Internal mTLS & Worker Seccomp (`docker-compose.yml`, `Caddyfile`, `deploy/Caddyfile.mtls`, `docker-compose.mtls.yml`, `deploy/seccomp/worker.json`):**
+  - Isolated datastores and internal services onto `nce_data` (`internal: true`) with host ports bound solely on `nce-caddy` (`127.0.0.1:8082`/`8443`), added opt-in `docker-compose.debug-ports.yml` and `docker-compose.ci-stub.yml`, added `scripts/generate_internal_mtls.py` + `docker-compose.mtls.yml` for Caddy <-> Admin mTLS (`NCE_ENV=prod`, `--ssl-cert-reqs 2`), updated `X-XSS-Protection "0"` and dynamic vertical `vars` in `Caddyfile`, and enforced a 21-syscall `deploy/seccomp/worker.json` profile (`Seccomp: 2`) on Celery/RQ workers and cron.
+
+### Changed
+- **Fast Liveness, Singleflight Readiness & Real CPU Inference (`nce/health_probe.py`, `nce/embeddings.py`, `deploy/cognitive-service/`):**
+  - Decoupled `< 3 ms` in-memory `GET /healthz` from `5.0 s` asyncio singleflight `GET /readyz` across Admin, A2A, MCP Gateway, Webhook Receiver, and `health_probe.py --liveness`.
+  - Replaced default stub inference with CPU `sentence-transformers/all-mpnet-base-v2` (768-d L2-normalized) + `spaCy` `en_core_web_sm` in `deploy/cognitive-service/` and enforced fail-closed `assert_cognitive_not_stub_in_prod()` in production.
+- **Public Brand-Wall & Benchmark Documentation:** Removed residual vertical/downstream references from Core tooling (`Makefile`, `scripts/stage-vertical-wheels.py`, `scripts/check_docs_integrity.py`, `nce/mcp_stdio_tools.py`), regenerated `docs/API.md`, added `scripts/benchmark_live_stack.py`, and published `docs/benchmarks/HARDENING_READINESS_v3.5.3.md`.
+
+---
+
 ## [3.5.2] - 2026-11-17
 
 ### Performance

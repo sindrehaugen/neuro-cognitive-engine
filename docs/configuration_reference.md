@@ -19,7 +19,10 @@ No other module calls `os.getenv()` directly.
 | `DB_WRITE_URL` | `str` | falls back to `PG_DSN` | No | Reserved write-DSN override (`DB_WRITE_URL_FILE` supported). Defaults to `PG_DSN`. |
 | `PG_BOUNCER_URL` | `str` | `""` | No | PgBouncer connection URL when running behind a connection pooler. |
 | `NCE_APP_PASSWORD` | `str` | `nce_app_secret` | No (dev) / Required (prod) | Password for the `nce_app` PostgreSQL role (`NCE_APP_PASSWORD_FILE` supported). Used when establishing RLS sessions; must be overridden in production. |
-| `NCE_GC_DSN` | `str` | falls back to `PG_DSN` | No | Least-privilege worker DSN for background maintenance (`NCE_GC_DSN_FILE` supported). When set, background workers (GC, re-embedding) connect as a distinct principal (e.g. `nce_gc`) rather than reusing `nce_app`. |
+| `NCE_GC_PASSWORD` | `str` | `nce_gc_secret` | No (dev) / Required (prod) | Password for the `nce_gc` PostgreSQL role (`NCE_GC_PASSWORD_FILE` supported). Must be overridden in production. |
+| `NCE_GC_DSN` | `str` | falls back to `PG_DSN` | No | Least-privilege worker DSN for background maintenance (`NCE_GC_DSN_FILE` supported). When set, background workers (GC, re-embedding, cron) connect as a distinct principal (e.g. `nce_gc`) rather than reusing `nce_app`. |
+| `NCE_MIGRATION_PG_DSN` | `str` | `""` | No | Optional privileged PostgreSQL DSN (`NCE_MIGRATION_PG_DSN_FILE` supported) used only transiently during startup schema initialization and migrations, then closed before runtime requests are served. |
+| `NCE_ENABLE_FLEET_POOL` | `bool` | `false` | No | Enable an opt-in cross-tenant admin fleet pool backed by `NCE_GC_DSN` on coordinator processes while keeping `pg_pool` bound to `PG_DSN` (`nce_app`). |
 | `REDIS_URL` | `str` | `redis://localhost:6379/0` | **P0 Required (prod)** | Redis connection URL (`REDIS_URL_FILE` supported). Used by async (`redis.asyncio`) and sync (RQ) clients. Carries inline AUTH password if configured (`redis://:password@host:6379/0`). Dev default rejected in production. |
 | `MINIO_ENDPOINT` | `str` | `localhost:9000` | Yes (media) | MinIO host and port string (`host:port`). Used by MinIO client for object storage. |
 | `MINIO_ACCESS_KEY` | `str` | `""` | **P0 Required** | MinIO access key. Must be set via environment — no default permitted (FIX-013). |
@@ -92,9 +95,11 @@ Every secret resolved through `nce.config.secret_env` supports a companion `<NAM
 | `NCE_ADMIN_API_KEY` | `NCE_ADMIN_API_KEY_FILE` | Admin bearer token. |
 | `NCE_MCP_API_KEY` | `NCE_MCP_API_KEY_FILE` | MCP stdio tenant secret. |
 | `NCE_APP_PASSWORD` | `NCE_APP_PASSWORD_FILE` | PostgreSQL application role password. |
+| `NCE_GC_PASSWORD` | `NCE_GC_PASSWORD_FILE` | PostgreSQL background maintenance (`nce_gc`) role password. |
 | `PG_DSN` / `DATABASE_URL` | `PG_DSN_FILE` / `DATABASE_URL_FILE` | PostgreSQL connection DSN. |
 | `DB_READ_URL` / `DB_WRITE_URL` | `DB_READ_URL_FILE` / `DB_WRITE_URL_FILE` | Split database connection DSNs. |
 | `NCE_GC_DSN` | `NCE_GC_DSN_FILE` | Least-privilege GC maintenance DSN. |
+| `NCE_MIGRATION_PG_DSN` | `NCE_MIGRATION_PG_DSN_FILE` | Transient startup DDL and migration DSN. |
 | `REDIS_URL` | `REDIS_URL_FILE` | Redis connection URL with AUTH credentials. |
 
 *Precedence & Invariants:* `*_FILE` always takes precedence over the plain variable. If the file is missing or unreadable, startup fails closed with a `RuntimeError` naming the variable and path without echoing content.
@@ -197,6 +202,7 @@ All provider keys default to `""`. The provider factory logs a warning if a requ
 | `NCE_COGNITIVE_EMBEDDING_MODEL` | `str` | `""` | Model identifier requested from cognitive HTTP endpoint. |
 | `NCE_COGNITIVE_FALLBACK_MODEL` | `str` | `text-embedding-3-small` | Fallback embedding model used when primary cognitive backend returns 429 or times out. |
 | `NCE_COGNITIVE_API_KEY` | `str` | `""` | Optional API key for cognitive HTTP endpoint. |
+| `NCE_ALLOW_COGNITIVE_STUB` | `bool` | `false` | Explicit non-production opt-in allowing `cognitive-stub` without degrading `/api/health/v1`. |
 | `NCE_EMBEDDING_MODEL_ID` | `str` | `sentence-transformers/all-mpnet-base-v2` | HuggingFace model ID for in-process embedding inference. 768-dim, loads without `trust_remote_code`. |
 | `NCE_EMBEDDING_MODEL_REVISION` | `str` | `""` | HuggingFace commit SHA to pin for supply-chain integrity. Empty string selects `latest`. |
 | `NCE_EMBEDDING_TRUST_REMOTE_CODE` | `bool` | `false` | Set `true` to pass `trust_remote_code=True` to HuggingFace `AutoModel.from_pretrained`. |

@@ -23,24 +23,38 @@ RUN apt-get update \
 # represent this runtime: numpy 2.5.3 and scipy 1.18.1 declare Requires-Python >=3.12, so a
 # 3.11 resolve silently caps them at 2.4.6 / 1.17.1. See ci.yml's verify step and
 # .github/workflows/refresh-lock.yml -- those two and this base image move together.
-COPY requirements.lock .
-RUN pip wheel --no-cache-dir -r requirements.lock -w /wheels
+COPY requirements.lock deploy/requirements-verticals.lock ./
+RUN pip install --no-cache-dir "setuptools>=84.2.1" wheel \
+    && pip wheel --no-cache-dir -r requirements.lock -w /wheels \
+    && pip wheel --no-cache-dir --no-deps -r requirements-verticals.lock -w /wheels
+
+COPY pyproject.toml README.md ./
+COPY nce ./nce
+RUN pip wheel --no-cache-dir --no-deps --no-build-isolation . -w /core-wheel
 
 
 FROM python:3.12-slim-bookworm AS runtime
 
 WORKDIR /app
 
+# Install OCR/PDF runtime binaries required by document ingestion workers
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies from wheels
 COPY --from=builder /wheels /wheels
-COPY requirements.lock .
+COPY --from=builder /core-wheel /core-wheel
+COPY requirements.lock deploy/requirements-verticals.lock ./
 
 RUN pip install --no-cache-dir -r requirements.lock --no-index --find-links=/wheels \
-    && rm -rf /wheels \
+    && pip install --no-cache-dir --no-deps --no-index --find-links=/wheels -r requirements-verticals.lock \
+    && pip install --no-cache-dir --no-deps --no-index /core-wheel/*.whl \
     # Download spaCy model required for Graphify (Phase 2) with exact pinned 3.8.0 wheel matching spacy==3.8.18
     && pip install --no-cache-dir --no-deps https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl \
-    # Create non-root user
-    && useradd --system --uid 10001 --create-home nce
+    # Create fixed non-root user/group 10001:10001
+    && groupadd --system --gid 10001 nce \
+    && useradd --system --uid 10001 --gid 10001 --create-home nce
 
 # Copy application code
 COPY nce ./nce
@@ -54,14 +68,15 @@ COPY deploy/plugins /tmp/nce-plugin-wheels
 # keep /app code root:root owned (read-only to the non-root runtime user).
 RUN set -e; \
     if ls /tmp/nce-plugin-wheels/*.whl >/dev/null 2>&1; then \
-        pip install --no-cache-dir --no-index --find-links=/tmp/nce-plugin-wheels /tmp/nce-plugin-wheels/*.whl; \
+        pip install --no-cache-dir --no-index --find-links=/wheels --find-links=/core-wheel --find-links=/tmp/nce-plugin-wheels /tmp/nce-plugin-wheels/*.whl; \
     fi \
-    && rm -rf /tmp/nce-plugin-wheels \
+    && rm -rf /wheels /core-wheel /tmp/nce-plugin-wheels \
     && chmod 0755 /app/entrypoint.sh
 
-USER nce
+USER 10001:10001
 
 ENV XDG_CACHE_HOME=/tmp
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 

@@ -272,16 +272,16 @@ async def run_re_embedding_worker(pg_pool: asyncpg.Pool, mongo_client: Any):
 
                 # If memories are done, process kg_nodes
                 nodes_query = """
-                    SELECT id, label 
-                    FROM kg_nodes 
+                    SELECT id, label, namespace_id
+                    FROM kg_nodes
                     WHERE id > $1
                     ORDER BY id ASC
                     LIMIT 100
                 """
                 if not last_node_id:
                     nodes_query = """
-                        SELECT id, label 
-                        FROM kg_nodes 
+                        SELECT id, label, namespace_id
+                        FROM kg_nodes
                         ORDER BY id ASC
                         LIMIT 100
                     """
@@ -291,22 +291,23 @@ async def run_re_embedding_worker(pg_pool: asyncpg.Pool, mongo_client: Any):
 
                 if nodes_batch:
                     texts_to_embed = [row["label"] for row in nodes_batch]
-                    valid_nodes = [row["id"] for row in nodes_batch]
+                    valid_nodes = [(row["id"], row["namespace_id"]) for row in nodes_batch]
 
                     batch = await _embeddings.embed_batch(texts_to_embed)
                     vectors = batch
 
                     async with conn.transaction():
-                        for node_id, vec in zip(valid_nodes, vectors):
+                        for (node_id, node_ns_id), vec in zip(valid_nodes, vectors):
                             await conn.execute(
                                 """
-                                INSERT INTO kg_node_embeddings (node_id, model_id, embedding)
-                                VALUES ($1, $2, $3::vector)
+                                INSERT INTO kg_node_embeddings (node_id, model_id, embedding, namespace_id)
+                                VALUES ($1, $2, $3::vector, $4)
                                 ON CONFLICT DO NOTHING
                                 """,
                                 node_id,
                                 target_model_id,
                                 json.dumps(vec),
+                                node_ns_id,
                             )
 
                         new_last_id = nodes_batch[-1]["id"]

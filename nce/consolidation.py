@@ -828,13 +828,14 @@ class ConsolidationWorker:
                 if emb_node_ids:
                     await conn.execute(
                         """
-                        INSERT INTO kg_node_embeddings (node_id, model_id, embedding)
-                        SELECT unnest($1::uuid[]), unnest($2::uuid[]), unnest($3::text[])::vector
+                        INSERT INTO kg_node_embeddings (node_id, model_id, embedding, namespace_id)
+                        SELECT unnest($1::uuid[]), unnest($2::uuid[]), unnest($3::text[])::vector, $4::uuid
                         ON CONFLICT DO NOTHING
                         """,
                         emb_node_ids,
                         emb_model_ids,
                         emb_vectors,
+                        namespace_id,
                     )
 
         # Attenuate confidence by γ^depth to prevent hallucination compounding.

@@ -1878,13 +1878,47 @@ TOOLS = [
 if not cfg.NCE_DISABLE_MIGRATION_MCP:
     TOOLS.extend(_MIGRATION_TOOLS)
 
-# Auto-advertise installed Vertical Engine MCP tools if present
-try:
-    from nce_verticals.mcp_tool_definitions import VERTICAL_MCP_TOOLS
 
-    TOOLS.extend(VERTICAL_MCP_TOOLS)
-except ImportError:
-    pass
+# Auto-advertise active plugin MCP tool definitions (49 Verticals, optional private plugins, etc.)
+def _extend_tools_from_active_plugins() -> None:
+    """Populate TOOLS with MCP definitions returned by active effective plugins."""
+    try:
+        from nce.plugins import _iter_effective_plugins, _plugins_disabled_by_env_fastpath
+
+        if _plugins_disabled_by_env_fastpath():
+            return
+
+        seen_names = {t.name for t in TOOLS}
+        for _pid, plugin in _iter_effective_plugins():
+            getter = getattr(plugin, "get_mcp_tool_definitions", None)
+            defs = getter() if callable(getter) else None
+            if not isinstance(defs, list):
+                continue
+            for item in defs:
+                if isinstance(item, Tool):
+                    if item.name not in seen_names:
+                        TOOLS.append(item)
+                        seen_names.add(item.name)
+                elif isinstance(item, dict) and item.get("name"):
+                    name = str(item["name"])
+                    if name in seen_names:
+                        continue
+                    TOOLS.append(
+                        Tool(
+                            name=name,
+                            description=str(item.get("description") or f"Plugin tool {name}."),
+                            inputSchema=dict(
+                                item.get("inputSchema")
+                                or {"type": "object", "additionalProperties": True}
+                            ),
+                        )
+                    )
+                    seen_names.add(name)
+    except Exception:
+        pass
+
+
+_extend_tools_from_active_plugins()
 
 # Auto-advertise all C12 Resource Surface tools
 TOOLS.extend(build_all_resource_tool_definitions())

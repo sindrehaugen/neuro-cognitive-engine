@@ -1,11 +1,11 @@
-# NCE v3.5.2 — Infrastructure Orchestration
+# NCE v3.5.3 — Infrastructure Orchestration
 #
 # Standard workflows for developers and operators.
 
-.PHONY: help up down restart status logs clean build verify typecheck lint fmt fmt-check ruff linux-shim
+.PHONY: help up down up-all down-all restart status logs clean build verify typecheck lint fmt fmt-check ruff linux-shim
 
 help:
-	@echo "NCE v3.5.2 — Infrastructure Orchestration"
+	@echo "NCE v3.5.3 — Infrastructure Orchestration"
 	@echo ""
 	@echo "Usage: make <target>"
 	@echo ""
@@ -31,6 +31,7 @@ help:
 
 up:
 	python scripts/bootstrap-compose-secrets.py
+	python scripts/stage-vertical-wheels.py --optional
 	docker compose up -d --build
 	@echo "[health] gating the deploy on the container verdict (Wave I-13)"
 	python -m nce.deploy_health --timeout 300
@@ -38,8 +39,20 @@ up:
 down:
 	docker compose down
 
+NCE_EXTRA_COMPOSE_ARGS ?=
+
+up-all:
+	python scripts/bootstrap-compose-secrets.py
+	python scripts/stage-vertical-wheels.py --optional
+	docker compose -f docker-compose.yml -f ../nce-vertical-engines/docker-compose.verticals.yml $(NCE_EXTRA_COMPOSE_ARGS) up -d --build
+	@echo "[health] gating the unified deploy on the container verdict (Wave I-13)"
+	python -m nce.deploy_health --timeout 300
+
+down-all:
+	docker compose -f docker-compose.yml -f ../nce-vertical-engines/docker-compose.verticals.yml $(NCE_EXTRA_COMPOSE_ARGS) down
+
 restart:
-	docker compose restart worker admin a2a webhook-receiver cron
+	docker compose restart worker admin a2a mcp-gateway webhook-receiver cron
 
 health:
 	python -m nce.deploy_health --once
@@ -48,9 +61,10 @@ status:
 	docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}\t{{.Ports}}"
 
 logs:
-	docker compose logs -f worker admin a2a webhook-receiver cron
+	docker compose logs -f worker admin a2a mcp-gateway webhook-receiver cron
 
 build:
+	python scripts/stage-vertical-wheels.py --optional
 	docker compose build --no-cache
 
 clean:

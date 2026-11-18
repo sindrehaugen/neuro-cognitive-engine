@@ -236,6 +236,7 @@ async def test_existing_database_applies_migrations_before_schema_runtime(
 
     monkeypatch.setattr(engine, "_apply_pg_migrations", _fake_apply_migrations)
     monkeypatch.setattr(cfg, "NCE_APP_PASSWORD", "")
+    monkeypatch.setattr(cfg, "NCE_GC_PASSWORD", "")
 
     await engine._init_pg_schema()
 

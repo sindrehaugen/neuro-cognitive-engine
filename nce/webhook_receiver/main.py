@@ -19,6 +19,7 @@ from starlette.responses import JSONResponse
 from nce import bridge_repo
 from nce.config import cfg
 from nce.extractors.dispatch import get_priority_queue
+from nce.health_probe import SingleflightReadinessCache, build_liveness_payload
 from nce.http_body_limit import BoundedBodyMiddleware
 from nce.net_safety import BridgeURLValidationError, validate_webhook_payload_url
 from nce.observability import enqueue_traced
@@ -59,36 +60,43 @@ return 1
 """
 
 
+_WEBHOOK_READINESS_CACHE = SingleflightReadinessCache(ttl_seconds=5.0)
+
+
 @app.get("/health")
-async def health(response: Response):
-    """Healthcheck that probes what this process actually needs.
+@app.get("/healthz")
+async def health():
+    """Fast in-memory liveness probe (< 3 ms, zero Redis/DB calls)."""
+    payload, _ = build_liveness_payload("webhook-receiver", version="3.5.3")
+    return payload
 
-    Wave I-13. This returned a literal ``{"status": "ok"}``, so the compose healthcheck
-    behind it could not fail however broken the receiver was -- the same defect as the
-    admin ``/healthz`` and the same reason a real ``degraded`` verdict sat behind
-    ``13/13 healthy`` for five days.
 
-    This receiver has no engine; what it needs is Redis, for the sliding-window rate limit
-    and for enqueueing work. If Redis is unreachable the receiver accepts webhooks it
-    cannot rate-limit and cannot enqueue, so that is a blocking degradation and this
-    answers 503.
-    """
-    reasons: list[dict[str, object]] = []
-    try:
-        _redis_client().ping()
-        redis_state = "up"
-    except Exception:
-        redis_state = "down"
-        reasons.append({"reason": "redis_unreachable", "blocking": True})
+@app.get("/readyz")
+async def readyz(response: Response):
+    """Singleflight readiness probe cached for 5.0s verifying Redis connectivity."""
 
-    blocking = any(r.get("blocking") for r in reasons)
-    if blocking:
-        response.status_code = 503
-    return {
-        "status": "degraded" if reasons else "ok",
-        "databases": {"redis": redis_state},
-        "degraded_reasons": reasons,
-    }
+    async def _probe():
+        reasons: list[dict[str, object]] = []
+        try:
+            await asyncio.to_thread(lambda: _redis_client().ping())
+            redis_state = "up"
+        except Exception:
+            redis_state = "down"
+            reasons.append({"reason": "redis_unreachable", "blocking": True})
+        blocking = any(r.get("blocking") for r in reasons)
+        return (
+            {
+                "status": "degraded" if reasons else "ok",
+                "service": "webhook-receiver",
+                "databases": {"redis": redis_state},
+                "degraded_reasons": reasons,
+            },
+            503 if blocking else 200,
+        )
+
+    payload, status_code = await _WEBHOOK_READINESS_CACHE.get_or_probe(_probe)
+    response.status_code = status_code
+    return payload
 
 
 def _require_cfg_secret(attr: str) -> str:
@@ -152,6 +160,15 @@ async def _fetch_bridge_subscription(provider: str, subscription_id: str) -> asy
     """
     pool = await _get_pg_pool()
     async with pool.acquire(timeout=10.0) as conn:
+        if isinstance(pool, asyncpg.Pool):
+            try:
+                return await conn.fetchrow(
+                    "SELECT * FROM nce_lookup_active_bridge_subscription($1, $2)",
+                    provider,
+                    subscription_id,
+                )
+            except asyncpg.UndefinedFunctionError:
+                pass
         return await bridge_repo.fetch_active_subscription(
             conn, provider, subscription_id=subscription_id
         )
@@ -694,16 +711,26 @@ async def signing_webhook(
     ns_str = payload.get("namespace_id") or request.query_params.get("namespace_id")
     if not ns_str:
         async with pool.acquire(timeout=10.0) as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT namespace_id
-                FROM sales_read_model
-                WHERE entity = 'quotes'
-                  AND (manual->>'signing_session_id' = $1 OR source_json->>'signing_session_id' = $1)
-                LIMIT 1
-                """,
-                session_id_str,
-            )
+            row = None
+            if isinstance(pool, asyncpg.Pool):
+                try:
+                    row = await conn.fetchrow(
+                        "SELECT nce_resolve_signing_session_namespace($1) AS namespace_id",
+                        session_id_str,
+                    )
+                except asyncpg.UndefinedFunctionError:
+                    row = None
+            if row is None:
+                row = await conn.fetchrow(
+                    """
+                    SELECT namespace_id
+                    FROM sales_read_model
+                    WHERE entity = 'quotes'
+                      AND (manual->>'signing_session_id' = $1 OR source_json->>'signing_session_id' = $1)
+                    LIMIT 1
+                    """,
+                    session_id_str,
+                )
             if row and row.get("namespace_id"):
                 ns_str = str(row["namespace_id"])
 

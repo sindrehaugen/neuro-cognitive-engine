@@ -23,7 +23,14 @@ from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Respon
 from starlette.routing import Route
 
 from nce import admin_state
-from nce.auth import _PBKDF2_HASH_FORMAT_PREFIX, verify_admin_password, verify_hmac
+from nce.auth import (
+    _PBKDF2_HASH_FORMAT_PREFIX,
+    _TIMESTAMP_DRIFT_SECONDS,
+    hmac_principal_scope,
+    validate_hmac_nonce,
+    verify_admin_password,
+    verify_hmac,
+)
 from nce.config import cfg, live_admin_api_key
 from nce.plugins import list_plugin_engine_descriptors
 from nce.tool_governance import GovernanceUnavailable
@@ -160,19 +167,29 @@ def _check_admin_auth(request: Request) -> JSONResponse | None:
             ):
                 return None
             ts_raw = headers.get("x-nce-timestamp")
+            nonce_val = (headers.get("x-nce-nonce") or "").strip()
             sig_val = auth.split(" ", 1)[1].strip()
-            if ts_raw:
+            if ts_raw and validate_hmac_nonce(nonce_val):
                 try:
                     ts = int(ts_raw)
-                    if abs(int(time.time()) - ts) > 300:
+                    if abs(int(time.time()) - ts) > _TIMESTAMP_DRIFT_SECONDS:
                         return JSONResponse({"error": "Unauthorized"}, status_code=401)
                     body_bytes = getattr(request, "_body", b"")
                     expected_hmac_keys = [k for k in (cfg.NCE_API_KEY, live_admin_api_key()) if k]
-                    if any(
-                        verify_hmac(k, request.method, request.url.path, ts, body_bytes, sig_val)
-                        for k in expected_hmac_keys
-                    ):
-                        return None
+                    for candidate_key in expected_hmac_keys:
+                        if verify_hmac(
+                            candidate_key,
+                            request.method,
+                            request.url.path,
+                            ts,
+                            body_bytes,
+                            sig_val,
+                            nonce=nonce_val,
+                        ):
+                            state = getattr(request, "state", None)
+                            if state is not None:
+                                state._matched_hmac_scope = hmac_principal_scope(candidate_key)
+                            return None
                 except Exception:
                     pass
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -222,16 +239,19 @@ def _get_admin_hmac_nonce_store() -> Any:
 
 async def _check_admin_auth_async(request: Request) -> JSONResponse | None:
     """Async wrapper over _check_admin_auth adding distributed HMAC replay protection."""
+    headers = getattr(request, "headers", None)
+    auth = ((headers.get("authorization") if headers else None) or "").strip()
+    if auth.lower().startswith("hmac-sha256 ") and callable(getattr(request, "body", None)):
+        try:
+            await request.body()
+        except Exception:
+            pass
+
     err = _check_admin_auth(request)
     if err is not None:
         return err
 
-    headers = getattr(request, "headers", None)
-    if headers is None:
-        return None
-
-    auth = (headers.get("authorization") or "").strip()
-    if not auth.lower().startswith("hmac-sha256 "):
+    if headers is None or not auth.lower().startswith("hmac-sha256 "):
         return None
 
     state = getattr(request, "state", None)
@@ -241,9 +261,16 @@ async def _check_admin_auth_async(request: Request) -> JSONResponse | None:
     ):
         return None
 
-    sig_val = auth.split(" ", 1)[1].strip()
-    sig_key = f"sig:{sig_val.lower()}"
     nonce_val = (headers.get("x-nce-nonce") or "").strip()
+    if not validate_hmac_nonce(nonce_val):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    principal_scope = getattr(state, "_matched_hmac_scope", None) if state is not None else None
+    if not principal_scope:
+        fallback_key = cfg.NCE_API_KEY or live_admin_api_key() or ""
+        principal_scope = hmac_principal_scope(fallback_key)
+    scoped_nonce = f"{principal_scope}:{nonce_val}"
+
     nonce_store = _get_admin_hmac_nonce_store()
     is_prod = bool(cfg.IS_PROD or os.environ.get("NCE_ENV", "").lower() in ("production", "prod"))
 
@@ -262,17 +289,8 @@ async def _check_admin_auth_async(request: Request) -> JSONResponse | None:
         logger.warning("Admin plugin HMAC NonceStore unreachable — allowing in dev/test")
         return None
 
-    if not await nonce_store.check_and_store(sig_key):
+    if not await nonce_store.check_and_store(scoped_nonce):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-
-    if getattr(cfg, "NCE_HMAC_NONCE_REQUIRED", True):
-        if not nonce_val:
-            return JSONResponse({"error": "Unauthorized"}, status_code=401)
-        if not await nonce_store.check_and_store(nonce_val):
-            return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    elif nonce_val:
-        if not await nonce_store.check_and_store(nonce_val):
-            return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     return None
 

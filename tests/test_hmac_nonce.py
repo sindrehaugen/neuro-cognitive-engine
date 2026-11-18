@@ -71,8 +71,15 @@ def test_timestamp_drift_constant_matches_config() -> None:
 _API_KEY = "test-hmac-secret-batch116"
 
 
-def _make_sig(key: str, method: str, path: str, timestamp: int, body: bytes = b"") -> str:
-    parts = [method.upper(), path, str(timestamp)]
+def _make_sig(
+    key: str,
+    method: str,
+    path: str,
+    timestamp: int,
+    body: bytes = b"",
+    nonce: str = "unique-nonce-abc123",
+) -> str:
+    parts = [method.upper(), path, str(timestamp), nonce]
     if body:
         parts.append(hashlib.sha256(body).hexdigest())
     canonical = "\n".join(parts)
@@ -98,7 +105,7 @@ def _valid_headers(
     """
     base = int(time.time()) if now is None else now
     ts = base + ts_offset
-    sig = _make_sig(key, method, path, ts, body)
+    sig = _make_sig(key, method, path, ts, body, nonce=nonce or "")
     headers: dict[str, str] = {
         "x-nce-timestamp": str(ts),
         "authorization": f"HMAC-SHA256 {sig}",
@@ -254,15 +261,28 @@ class TestMissingNonce:
         body = resp.json()
         assert body["error"]["data"]["reason"] == "nonce_missing"
 
-    def test_missing_nonce_required_false_is_allowed(self) -> None:
-        """When nonce_required=False, missing nonce is not rejected."""
+    def test_missing_nonce_always_rejected_even_when_nonce_required_false(self) -> None:
+        """Because X-NCE-Nonce is cryptographically bound into HMAC, missing nonce always returns 401."""
         store = _make_nonce_store_mock(ping_result=True)
         client = TestClient(
             _make_app(nonce_store=store, nonce_required=False), raise_server_exceptions=True
         )
         hdrs = _valid_headers(_API_KEY, nonce=None)
         resp = client.post("/api/ping", headers=hdrs)
-        assert resp.status_code == 200
+        assert resp.status_code == 401
+        assert resp.json()["error"]["data"]["reason"] == "nonce_missing"
+
+    def test_malformed_short_nonce_rejected(self) -> None:
+        """X-NCE-Nonce < 16 chars or non-URL-safe chars is rejected with 401 invalid_nonce."""
+        store = _make_nonce_store_mock(ping_result=True)
+        client = TestClient(
+            _make_app(nonce_store=store, nonce_required=True), raise_server_exceptions=True
+        )
+        for bad_nonce in ("short", "spaces not allowed!", "n" * 129):
+            hdrs = _valid_headers(_API_KEY, nonce=bad_nonce)
+            resp = client.post("/api/ping", headers=hdrs)
+            assert resp.status_code == 401
+            assert resp.json()["error"]["data"]["reason"] == "invalid_nonce"
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +305,7 @@ class TestProdFailClosed:
                 _make_app(nonce_store=store, nonce_required=True),
                 raise_server_exceptions=True,
             )
-            hdrs = _valid_headers(_API_KEY, nonce="any-nonce")
+            hdrs = _valid_headers(_API_KEY, nonce="any-valid-nonce-0001")
             resp = client.post("/api/ping", headers=hdrs)
 
         assert resp.status_code == 401
@@ -302,7 +322,7 @@ class TestProdFailClosed:
                 _make_app(nonce_store=None, nonce_required=True),
                 raise_server_exceptions=True,
             )
-            hdrs = _valid_headers(_API_KEY, nonce="any-nonce")
+            hdrs = _valid_headers(_API_KEY, nonce="any-valid-nonce-0002")
             resp = client.post("/api/ping", headers=hdrs)
 
         assert resp.status_code == 401
@@ -328,7 +348,7 @@ class TestDevRedisDown:
                 _make_app(nonce_store=store, nonce_required=True),
                 raise_server_exceptions=True,
             )
-            hdrs = _valid_headers(_API_KEY, nonce="any-nonce")
+            hdrs = _valid_headers(_API_KEY, nonce="any-valid-nonce-0003")
 
             import logging
 
@@ -350,7 +370,7 @@ class TestDevRedisDown:
                 _make_app(nonce_store=None, nonce_required=True),
                 raise_server_exceptions=True,
             )
-            hdrs = _valid_headers(_API_KEY, nonce="any-nonce")
+            hdrs = _valid_headers(_API_KEY, nonce="any-valid-nonce-0004")
 
             import logging
 
@@ -396,8 +416,8 @@ class TestNonceStorePing:
 def test_nonce_ttl_is_double_drift() -> None:
     from nce.auth import _NONCE_TTL_SECONDS, _TIMESTAMP_DRIFT_SECONDS
 
-    assert _NONCE_TTL_SECONDS == _TIMESTAMP_DRIFT_SECONDS * 2, (
-        f"Nonce TTL {_NONCE_TTL_SECONDS} must be 2× drift {_TIMESTAMP_DRIFT_SECONDS}"
+    assert _NONCE_TTL_SECONDS == _TIMESTAMP_DRIFT_SECONDS * 2 + 5, (
+        f"Nonce TTL {_NONCE_TTL_SECONDS} must be 2× drift + 5 ({_TIMESTAMP_DRIFT_SECONDS * 2 + 5})"
     )
 
 
@@ -407,7 +427,7 @@ def test_nonce_ttl_is_double_drift() -> None:
 
 
 class TestCheckAndStoreTTL:
-    """check_and_store uses TTL = 2× drift to ensure nonce coverage."""
+    """check_and_store uses TTL = 2× drift + 5 to ensure nonce coverage."""
 
     @pytest.mark.asyncio
     async def test_check_and_store_uses_correct_ttl(self) -> None:
@@ -418,10 +438,10 @@ class TestCheckAndStoreTTL:
         mock_redis.set = AsyncMock(return_value=True)
         store._redis = mock_redis
 
-        result = await store.check_and_store("abc123nonce")
+        result = await store.check_and_store("abc123nonce-0001")
         assert result is True
         mock_redis.set.assert_called_once_with(
-            "nce:nonce:abc123nonce",
+            "nce:hmac_nonce:abc123nonce-0001",
             "1",
             nx=True,
             px=_NONCE_TTL_SECONDS * 1000,
@@ -434,7 +454,7 @@ class TestCheckAndStoreTTL:
 
 
 class TestAdminSignedFetchNonceHeader:
-    """admin/index.html signedFetch sets X-NCE-Nonce alongside HMAC headers."""
+    """admin/index.html signedFetch sets X-NCE-Nonce and binds it into HMAC canonical string."""
 
     def test_signed_fetch_sets_x_nce_nonce_header(self) -> None:
         from pathlib import Path
@@ -450,8 +470,9 @@ class TestAdminSignedFetchNonceHeader:
         assert fetch_idx != -1, "fetch call inside signedFetch not found in admin/index.html"
 
         fn_header_block = content[start_idx:fetch_idx]
-        assert "headers['X-TriMCP-Timestamp'] = String(ts);" in fn_header_block
+        assert "headers['X-NCE-Timestamp'] = String(ts);" in fn_header_block
         assert "headers['Authorization'] = 'HMAC-SHA256 ' + sig;" in fn_header_block
         assert "k.toLowerCase() === 'x-nce-nonce'" in fn_header_block
-        assert "headers['X-NCE-Nonce'] =" in fn_header_block
+        assert "headers['X-NCE-Nonce'] = nonce;" in fn_header_block
+        assert "`${method}\\n${pathname}\\n${ts}\\n${nonce}`" in fn_header_block
         assert "crypto.randomUUID()" in fn_header_block

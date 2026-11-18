@@ -808,13 +808,13 @@ def test_pyproject_excludes_verticals_and_non_package_dirs() -> None:
 
     if _toml is not None:
         cfg_data = _toml.loads(pyproject_text)
-        assert cfg_data["project"]["version"] == "3.5.2"
+        assert cfg_data["project"]["version"] == "3.5.3"
         find_cfg = cfg_data["tool"]["setuptools"]["packages"]["find"]
         assert find_cfg["include"] == ["nce", "nce.*"]
         assert "nce_verticals*" in find_cfg["exclude"]
         assert "tests*" in find_cfg["exclude"]
     else:
-        assert 'version = "3.5.2"' in pyproject_text
+        assert 'version = "3.5.3"' in pyproject_text
         assert 'include = ["nce", "nce.*"]' in pyproject_text
         assert '"nce_verticals*"' in pyproject_text
         assert '"tests*"' in pyproject_text

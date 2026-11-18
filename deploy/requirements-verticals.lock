@@ -1,0 +1,22 @@
+# Pinned runtime dependencies for NCE Vertical Engines v4.2.0 (Python 3.12)
+# Installed with --no-deps alongside neuro-cognitive-engine/requirements.lock.
+aiomqtt==2.5.1
+aiosqlite==0.22.1
+asyncua==2.1.0
+ifcopenshell==0.9.0.post1
+isodate==0.7.2
+more-itertools==11.2.1
+msal==1.39.0
+paho-mqtt==2.2.0
+psutil==7.2.2
+pymodbus==3.16.2
+pynetbox==7.9.0
+pytz==2026.6
+requests-file==3.0.1
+requests-toolbelt==1.0.0
+sexpdata==1.0.2
+shapely==2.2.0
+simple-salesforce==1.12.11
+sortedcontainers==2.4.0
+trimesh==5.2.1
+zeep==4.3.3

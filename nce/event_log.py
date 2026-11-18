@@ -263,11 +263,13 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "memories": "namespace_id",
     "kg_nodes": "namespace_id",
     "kg_edges": "namespace_id",
+    "kg_node_embeddings": "namespace_id",
     "pii_redactions": "namespace_id",
     "memory_salience": "namespace_id",
     "contradictions": "namespace_id",
     "snapshots": "namespace_id",
     "event_log": "namespace_id",
+    "event_sequences": "namespace_id",
     "resource_quotas": "namespace_id",
     "outbox_events": "namespace_id",
     "saga_execution_log": "namespace_id",
@@ -307,9 +309,7 @@ EXPECTED_GLOBAL_TABLES: set[str] = {
     # Pure-Core tables intentionally without RLS — shared across all tenants.
     # Plugin global tables are merged dynamically via _plugin_global_tables().
     "embedding_models",
-    "kg_node_embeddings",
     "reembedding_runs",
-    "event_sequences",
     "applied_migrations",
 }
 
@@ -562,6 +562,47 @@ async def verify_rls_catalog_consistency(
                         f"{table_name}: FORCE ROW LEVEL SECURITY is not enabled (relforcerowsecurity=false)"
                     )
 
+    # --- Tenant child partitions (direct child-table query defense) ---
+    partition_rows = await conn.fetch("""
+        SELECT
+            c.relname                   AS partition_name,
+            p.relname                   AS parent_name,
+            c.relrowsecurity            AS rls_enabled,
+            c.relforcerowsecurity       AS force_rls_enabled,
+            (
+                SELECT count(*)
+                FROM pg_policies pol
+                WHERE pol.schemaname = 'public'
+                  AND pol.tablename  = c.relname
+            )                           AS policy_count
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_inherits i ON i.inhrelid = c.oid
+        JOIN pg_class p ON p.oid = i.inhparent
+        WHERE n.nspname   = 'public'
+          AND c.relkind  IN ('r', 'p')
+          AND c.relispartition = true
+        ORDER BY c.relname
+    """)
+    protected_parents = set(effective_tenant_tables) | set(EXPECTED_SPECIAL_RLS_TABLES)
+    for prow in partition_rows:
+        parent_name = prow["parent_name"]
+        part_name = prow["partition_name"]
+        if parent_name not in protected_parents:
+            continue
+        if not prow["rls_enabled"]:
+            errors.append(
+                f"{part_name} (partition of {parent_name}): RLS is not enabled on child partition"
+            )
+        if not prow["force_rls_enabled"]:
+            errors.append(
+                f"{part_name} (partition of {parent_name}): FORCE ROW LEVEL SECURITY is not enabled on child partition"
+            )
+        if int(prow["policy_count"] or 0) == 0:
+            errors.append(
+                f"{part_name} (partition of {parent_name}): no RLS policies found on child partition"
+            )
+
     if errors:
         raise RuntimeError(
             "RLS catalog consistency check failed:\n" + "\n".join(f"  - {e}" for e in errors)
@@ -633,22 +674,67 @@ async def verify_rls_role_capability(conn: asyncpg.Connection) -> list[str]:
         _log_once(finding)
 
     declared_tables = list({**EXPECTED_TENANT_RLS_TABLES, **_plugin_tenant_rls_tables()})
-    match_rows = await conn.fetch(
+    posture_rows = await conn.fetch(
         """
-        SELECT tablename,
-               bool_or(current_user = ANY(roles) OR 'public' = ANY(roles)) AS role_matches
-        FROM   pg_policies
-        WHERE  schemaname = 'public'
-          AND  tablename  = ANY($1::text[])
-        GROUP BY tablename
+        WITH declared(relname) AS (
+            SELECT unnest($1::text[])
+        ),
+        partitions AS (
+            SELECT c.relname
+            FROM   pg_class c
+            JOIN   pg_namespace n ON n.oid = c.relnamespace
+            JOIN   pg_inherits i ON i.inhrelid = c.oid
+            JOIN   pg_class p ON p.oid = i.inhparent
+            JOIN   pg_namespace pn ON pn.oid = p.relnamespace
+            JOIN   declared d ON d.relname = p.relname
+            WHERE  n.nspname = 'public'
+              AND  pn.nspname = 'public'
+              AND  c.relkind IN ('r', 'p')
+              AND  c.relispartition = true
+        ),
+        all_targets AS (
+            SELECT relname FROM declared
+            UNION
+            SELECT relname FROM partitions
+        ),
+        policy_match AS (
+            SELECT tablename AS relname,
+                   bool_or(current_user = ANY(roles) OR 'public' = ANY(roles)) AS role_matches
+            FROM   pg_policies
+            WHERE  schemaname = 'public'
+              AND  tablename IN (SELECT relname FROM all_targets)
+            GROUP BY tablename
+        )
+        SELECT t.relname AS tablename,
+               (c.oid IS NOT NULL AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity)) AS is_unforced,
+               pm.role_matches AS role_matches
+        FROM   all_targets t
+        LEFT JOIN pg_class c
+               ON c.relname = t.relname
+              AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+              AND c.relkind IN ('r', 'p')
+        LEFT JOIN policy_match pm ON pm.relname = t.relname
+        WHERE  (c.oid IS NOT NULL AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity))
+           OR  pm.role_matches IS FALSE
+        ORDER BY t.relname
         """,
         declared_tables,
     )
-    # Only tables with >=1 policy row appear here at all (GROUP BY over a
-    # filtered pg_policies) — a table with zero policies is excluded rather
-    # than counted as non-conforming (fix 1).
-    tables_with_policies = {r["tablename"]: r["role_matches"] for r in match_rows}
-    non_conforming = sorted(t for t, matches in tables_with_policies.items() if not matches)
+    unforced_names = sorted(r["tablename"] for r in posture_rows if r.get("is_unforced"))
+    if unforced_names:
+        sample_unforced = unforced_names[:10]
+        rem_unforced = len(unforced_names) - len(sample_unforced)
+        finding = (
+            f"{len(unforced_names)} tenant table(s)/partition(s) do not enforce FORCE RLS: "
+            + ", ".join(sample_unforced)
+            + (f" (+{rem_unforced} more)" if rem_unforced > 0 else "")
+        )
+        findings.append(finding)
+        _log_once(finding)
+
+    # Only tables with >=1 policy row appear with role_matches IS FALSE — a table
+    # with zero policies has NULL role_matches and is handled separately.
+    non_conforming = sorted(r["tablename"] for r in posture_rows if r.get("role_matches") is False)
     if non_conforming:
         sample = non_conforming[:10]
         remainder = len(non_conforming) - len(sample)

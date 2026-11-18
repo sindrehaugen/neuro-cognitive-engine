@@ -1,11 +1,16 @@
 deploy /opt/nce/
+docker-compose.yml /opt/nce/
+Caddyfile /opt/nce/
 nce /opt/nce/
 admin /opt/nce/
 server.py /opt/nce/
 admin_server.py /opt/nce/
+mcp_gateway_server.py /opt/nce/
 start_worker.py /opt/nce/
 health_probe.py /opt/nce/
 scripts /opt/nce/
+pyproject.toml /opt/nce/
+README.md /opt/nce/
 requirements.txt /opt/nce/
 requirements.lock /opt/nce/
 build/linux/systemd/nce.env.example /etc/nce/

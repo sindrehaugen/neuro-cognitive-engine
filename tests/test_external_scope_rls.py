@@ -43,12 +43,18 @@ def _get_primary_dsn() -> str:
 
 def _app_dsn(primary_dsn: str) -> str:
     """Rewrite the primary DSN to connect as nce_app."""
-    from urllib.parse import urlparse, urlunparse
+    from urllib.parse import quote, urlparse, urlunparse
+
+    from nce.config import cfg
 
     parsed = urlparse(primary_dsn)
     host = parsed.hostname or "localhost"
     netloc = f"{host}:{parsed.port}" if parsed.port else host
-    netloc = f"nce_app:nce_app_secret@{netloc}"
+    app_pass = quote(
+        os.getenv("NCE_APP_PASSWORD") or cfg.NCE_APP_PASSWORD or "nce_app_secret",
+        safe="",
+    )
+    netloc = f"nce_app:{app_pass}@{netloc}"
     return urlunparse(parsed._replace(netloc=netloc))
 
 

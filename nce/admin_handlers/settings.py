@@ -4,10 +4,17 @@ import json
 import os
 from typing import Any
 
+import asyncpg  # type: ignore[import-untyped]
 from starlette.responses import JSONResponse
 
 from nce import admin_state
-from nce.admin_handlers._shared import UTC, bump_mcp_cache_generation, logger
+from nce.admin_handlers._shared import (
+    UTC,
+    bump_mcp_cache_generation,
+    fleet_pg_pool,
+    logger,
+    set_namespace_context,
+)
 from nce.config import cfg
 from nce.settings_registry import (
     REGISTRY,
@@ -256,7 +263,7 @@ async def api_admin_settings_effective(request: Any) -> JSONResponse:
             return JSONResponse({"error": "Database not available"}, status_code=503)
 
         try:
-            async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+            async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
                 effective_dict = await _reconstruct_effective_as_of(conn, as_of_dt)
         except Exception as e:
             logger.exception("Failed to reconstruct effective config as_of: %s", e)
@@ -302,7 +309,7 @@ async def handle_explain_config_change(engine: Any, arguments: dict[str, Any]) -
         return json.dumps({"key": key, "error": "Setting key not found in registry"})
 
     metadata = REGISTRY[key]
-    pool = getattr(engine, "pg_pool", None)
+    pool = fleet_pg_pool(engine) if getattr(engine, "pg_pool", None) is not None else None
     if pool is None:
         raise RuntimeError("Database pool not available")
 
@@ -442,7 +449,7 @@ async def api_admin_settings_rollback(request: Any) -> JSONResponse:
 
     # Reconstruct past config + read current DB overrides for the live effective view.
     try:
-        async with admin_state.engine.pg_pool.acquire(timeout=10.0) as conn:
+        async with fleet_pg_pool(admin_state.engine).acquire(timeout=10.0) as conn:
             past = await _reconstruct_effective_as_of(conn, as_of_dt)
             db_overrides: dict[str, Any] = {}
             rows = await conn.fetch(
@@ -833,6 +840,9 @@ async def api_admin_settings_patch(request: Any) -> JSONResponse:
                     if not ns_id:
                         raise RuntimeError("No namespace found to log config_changed event")
 
+                    if isinstance(admin_state.engine.pg_pool, asyncpg.Pool):
+                        await set_namespace_context(conn, ns_id)
+
                     await append_event(
                         conn=conn,
                         namespace_id=ns_id,
@@ -984,6 +994,9 @@ async def api_admin_settings_reset(request: Any) -> JSONResponse:
                     raise RuntimeError("No namespace found to log config_reset event")
 
                 from nce.event_log import append_event
+
+                if isinstance(admin_state.engine.pg_pool, asyncpg.Pool):
+                    await set_namespace_context(conn, ns_id)
 
                 await append_event(
                     conn=conn,
@@ -1178,6 +1191,9 @@ async def api_admin_settings_reload(request: Any) -> JSONResponse:
                         raise RuntimeError("No namespace found to log config_reload event")
 
                     from nce.event_log import append_event
+
+                    if isinstance(admin_state.engine.pg_pool, asyncpg.Pool):
+                        await set_namespace_context(conn, ns_id)
 
                     for dom in successful_domains:
                         res = await append_event(

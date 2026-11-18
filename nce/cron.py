@@ -31,7 +31,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from nce.bridge_renewal import renew_expiring_subscriptions
 from nce.config import cfg
 from nce.cron_lock import CronLock, acquire_cron_lock, release_cron_lock
-from nce.db_utils import scoped_pg_session, unmanaged_pg_connection
+from nce.db_utils import resolve_worker_dsn, scoped_pg_session, unmanaged_pg_connection
 from nce.mcp_errors import BusinessRefusalError
 from nce.reembedding_worker import CRON_INTERVAL_MINUTES as _REEMBED_INTERVAL
 from nce.reembedding_worker import ReembeddingWorker
@@ -2676,7 +2676,7 @@ async def async_main() -> None:
         await asyncio.sleep(jitter)
 
     pool = await asyncpg.create_pool(
-        cfg.PG_DSN,
+        resolve_worker_dsn(),
         min_size=1,
         max_size=8,
         command_timeout=120,

@@ -129,31 +129,30 @@ def test_empty_params_with_namespace_id_in_sql_raises() -> None:
         assert_namespace_filter(sql, [], ns)
 
 
-# ── unit: kg_node_embeddings is NOT checked ────────────────────────────────────
+# ── unit: kg_node_embeddings enforces tenant namespace_id scoping (040) ────────
 
 
-def test_kg_node_embeddings_query_is_orthogonal() -> None:
-    """assert_namespace_filter is not called for kg_node_embeddings (global table).
+def test_kg_node_embeddings_requires_namespace_id_filter() -> None:
+    """Migration 040: kg_node_embeddings is tenant-scoped with forced RLS."""
+    from nce.event_log import EXPECTED_TENANT_RLS_TABLES
 
-    This test documents the intentional asymmetry: kg_node_embeddings has no
-    namespace_id column and RLS is disabled on it (schema.sql FIX-055).  It is
-    used for cross-namespace graph topology lookups.  The helper correctly raises
-    for a memory_embeddings-shaped missing predicate and is simply never invoked
-    for kg_node_embeddings queries — caller discipline enforced by code review.
-    """
-    # Simulate a kg_node_embeddings query (no namespace_id column exists):
+    assert EXPECTED_TENANT_RLS_TABLES.get("kg_node_embeddings") == "namespace_id"
+
     ns = _ns()
-    kg_sql = (
+    unscoped_sql = (
         "SELECT kne.embedding FROM kg_node_embeddings kne "
         "JOIN kg_nodes kn ON kn.id = kne.node_id "
-        "ORDER BY kne.embedding <=> $1::vector LIMIT 20"
+        "ORDER BY kne.embedding <=> $1::halfvec(768) LIMIT 20"
     )
-    # assert_namespace_filter would raise here — we document that callers
-    # MUST NOT call it for kg_node_embeddings.
     with pytest.raises(AssertionError, match="namespace_id predicate"):
-        assert_namespace_filter(kg_sql, ["[0.1]"], ns)
-    # The test passes precisely because the assertion fires: that's the proof
-    # that kg_node_embeddings queries must bypass the guard entirely.
+        assert_namespace_filter(unscoped_sql, ["[0.1]"], ns)
+
+    scoped_sql = (
+        "SELECT kne.embedding FROM kg_node_embeddings kne "
+        "WHERE kne.namespace_id = $2::uuid "
+        "ORDER BY kne.embedding <=> $1::halfvec(768) LIMIT 20"
+    )
+    assert_namespace_filter(scoped_sql, ["[0.1]", ns], ns)
 
 
 # ── integration: semantic_search returns only caller-namespace vectors ─────────

@@ -781,11 +781,13 @@ _HMAC_KEY = "pytest-quota-hmac-secret-not-for-prod"
 def _signed_post(path: str, body: dict) -> tuple[bytes, dict[str, str]]:
     raw = json.dumps(body).encode("utf-8")
     ts = int(time.time())
-    parts = ["POST", path, str(ts), hashlib.sha256(raw).hexdigest()]
+    nonce = uuid.uuid4().hex
+    parts = ["POST", path, str(ts), nonce, hashlib.sha256(raw).hexdigest()]
     canonical = "\n".join(parts)
     sig = _hmac.new(_HMAC_KEY.encode(), canonical.encode(), hashlib.sha256).hexdigest()
     headers = {
         "X-NCE-Timestamp": str(ts),
+        "X-NCE-Nonce": nonce,
         "Authorization": f"HMAC-SHA256 {sig}",
         "Content-Type": "application/json",
     }

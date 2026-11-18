@@ -63,10 +63,10 @@ def _make_hmac_headers(
     body: bytes = b"",
     *,
     ts: int | None = None,
-    nonce: str | None = "nonce-1",
+    nonce: str | None = "nonce-000000000001",
 ) -> dict[str, str]:
     now_ts = int(time.time()) if ts is None else ts
-    parts = [method.upper(), path, str(now_ts)]
+    parts = [method.upper(), path, str(now_ts), nonce or ""]
     if body:
         parts.append(hashlib.sha256(body).hexdigest())
     sig = hmac.new(
@@ -195,7 +195,9 @@ async def test_admin_plugins_hmac_timestamp_and_nonce_replay() -> None:
         r_exp = await admin_plugins._check_admin_auth_async(_make_req(expired_hdrs))
         assert r_exp is not None and r_exp.status_code == 401
 
-        fresh_hdrs = _make_hmac_headers("hmac-secret-key", "GET", "/admin/plugins/api", nonce="n-1")
+        fresh_hdrs = _make_hmac_headers(
+            "hmac-secret-key", "GET", "/admin/plugins/api", nonce="nonce-00000000000001"
+        )
         r_ok = await admin_plugins._check_admin_auth_async(_make_req(fresh_hdrs))
         assert r_ok is None
 
@@ -205,7 +207,11 @@ async def test_admin_plugins_hmac_timestamp_and_nonce_replay() -> None:
 
         # Replay of same nonce with new timestamp/sig rejected
         hdrs_same_nonce = _make_hmac_headers(
-            "hmac-secret-key", "GET", "/admin/plugins/api", ts=int(time.time()) + 1, nonce="n-1"
+            "hmac-secret-key",
+            "GET",
+            "/admin/plugins/api",
+            ts=int(time.time()) + 1,
+            nonce="nonce-00000000000001",
         )
         r_rep2 = await admin_plugins._check_admin_auth_async(_make_req(hdrs_same_nonce))
         assert r_rep2 is not None and r_rep2.status_code == 401
@@ -356,7 +362,9 @@ def test_bridge_redis_passes_socket_timeouts() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_hmac_middleware_rejects_replayed_signature_across_nonces() -> None:
+def test_hmac_middleware_nonce_bound_burst_and_tamper_protection() -> None:
+    """Same-second concurrent identical requests succeed with distinct bound nonces;
+    mutated nonces fail signature check; replayed (timestamp, nonce) fails replay check."""
     seen: set[str] = set()
     store = MagicMock(spec=NonceStore)
     store.ping = AsyncMock(return_value=True)
@@ -386,12 +394,28 @@ def test_hmac_middleware_rejects_replayed_signature_across_nonces() -> None:
     )
     client = TestClient(app, raise_server_exceptions=False)
     ts = int(time.time())
-    hdrs1 = _make_hmac_headers("test-key-s4", "GET", "/api/ping", ts=ts, nonce="nonce-A")
-    hdrs2 = {**hdrs1, "X-NCE-Nonce": "nonce-B"}
-    assert client.get("/api/ping", headers=hdrs1).status_code == 200
-    r2 = client.get("/api/ping", headers=hdrs2)
-    assert r2.status_code == 401
-    assert r2.json()["error"]["data"]["reason"] == "replay_nonce_conflict"
+
+    # 1. 10 identical GET /api/ping requests within the same integer second with distinct nonces -> all 200
+    for idx in range(10):
+        hdrs_i = _make_hmac_headers(
+            "test-key-s4", "GET", "/api/ping", ts=ts, nonce=f"nonce-burst-{idx:06d}"
+        )
+        assert client.get("/api/ping", headers=hdrs_i).status_code == 200
+
+    # 2. Mutating X-NCE-Nonce on captured signature fails cryptographically (invalid_signature)
+    captured = _make_hmac_headers(
+        "test-key-s4", "GET", "/api/ping", ts=ts, nonce="nonce-aaaaaaaaaaaa01"
+    )
+    tampered = {**captured, "X-NCE-Nonce": "nonce-bbbbbbbbbbbb02"}
+    r_tampered = client.get("/api/ping", headers=tampered)
+    assert r_tampered.status_code == 401
+    assert r_tampered.json()["error"]["data"]["reason"] == "invalid_signature"
+
+    # 3. Genuine request succeeds, exact replay of (ts, nonce, sig) is rejected (replay_nonce_conflict)
+    assert client.get("/api/ping", headers=captured).status_code == 200
+    r_replay = client.get("/api/ping", headers=captured)
+    assert r_replay.status_code == 401
+    assert r_replay.json()["error"]["data"]["reason"] == "replay_nonce_conflict"
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +466,7 @@ async def test_mcp_gateway_session_hardening_and_version(monkeypatch: pytest.Mon
 
         hz = client.get("/healthz")
         assert hz.status_code == 200
-        assert hz.json()["version"] == "3.5.2"
+        assert hz.json()["version"] == "3.5.3"
 
         # Invalid bearer returns generic Unauthorized
         r_bad = client.post(
@@ -453,14 +477,14 @@ async def test_mcp_gateway_session_hardening_and_version(monkeypatch: pytest.Mon
         assert r_bad.status_code == 401
         assert r_bad.json() == {"error": "Unauthorized"}
 
-        # Initialize returns 3.5.2 and binds session
+        # Initialize returns 3.5.3 and binds session
         r_init = client.post(
             "/mcp",
             headers={"Authorization": "Bearer nce_test_tok_s5"},
             json={"jsonrpc": "2.0", "id": 1, "method": "initialize"},
         )
         assert r_init.status_code == 200
-        assert r_init.json()["result"]["serverInfo"]["version"] == "3.5.2"
+        assert r_init.json()["result"]["serverInfo"]["version"] == "3.5.3"
         sid = r_init.headers["mcp-session-id"]
         assert _GATEWAY_SESSIONS[sid].token_sha256 == tok_sha
         assert _GATEWAY_SESSIONS[sid].expires_at > time.time()

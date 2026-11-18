@@ -3,6 +3,7 @@
 .worktrees
 .env*
 deploy/secrets
+deploy/certs
 *.pem
 *.key
 __pycache__
@@ -13,3 +14,12 @@ __pycache__
 *.egg-info
 tests/
 build/
+nce_verticals/
+docs/
+go/
+scripts/
+debian/
+.github/
+.claude/
+*.md
+!README.md

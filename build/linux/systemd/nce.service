@@ -19,8 +19,8 @@ Group=nce
 
 EnvironmentFile=-/etc/nce/nce.env
 
-ExecStart=/usr/bin/docker compose -f /opt/nce/deploy/multiuser/docker-compose.yml up -d --remove-orphans
-ExecStop=/usr/bin/docker compose -f /opt/nce/deploy/multiuser/docker-compose.yml down
+ExecStart=/usr/bin/docker compose -f /opt/nce/docker-compose.yml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f /opt/nce/docker-compose.yml down
 
 # Sandbox and Filesystem Hardening
 NoNewPrivileges=yes

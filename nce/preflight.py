@@ -146,6 +146,8 @@ _RETRYABLE_MESSAGE_FRAGMENTS = (
     "server selection timeout",
     "temporary failure in name resolution",
     "name or service not known",
+    "canceling statement due to lock timeout",
+    "deadlock detected",
 )
 
 #: Seconds between retries. Short: this is a boot path, and the timeout bounds it.
@@ -163,6 +165,8 @@ def is_retryable(exc: BaseException) -> bool:
     importing any of them here.
     """
     if isinstance(exc, (ConnectionRefusedError, ConnectionResetError)):
+        return True
+    if "locknotavailable" in type(exc).__name__.lower():
         return True
     text = str(exc).lower()
     return any(fragment in text for fragment in _RETRYABLE_MESSAGE_FRAGMENTS)
