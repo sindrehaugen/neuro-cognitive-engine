@@ -10542,7 +10542,7 @@
     },
     "/healthz": {
       "get": {
-        "description": "get_health (/healthz)",
+        "description": "Fast in-memory liveness probe (< 3 ms, zero DB/Redis/crypto calls).",
         "operationId": "get_healthz",
         "parameters": [],
         "responses": {
@@ -10598,7 +10598,71 @@
             "description": "Resource or endpoint not found"
           }
         },
-        "summary": "get_health (/healthz)",
+        "summary": "Fast in-memory liveness probe (< 3 ms, zero DB/Redis/crypto calls).",
+        "tags": [
+          "a2a"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Singleflight readiness probe cached for 5.0s using pooled datastore checks.",
+        "operationId": "get_readyz",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failure or malformed input"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing, expired, or invalid authentication credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Principal tier refusal or cross-tenant boundary violation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource or endpoint not found"
+          }
+        },
+        "summary": "Singleflight readiness probe cached for 5.0s using pooled datastore checks.",
         "tags": [
           "a2a"
         ]

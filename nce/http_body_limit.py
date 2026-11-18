@@ -3,13 +3,46 @@
 from __future__ import annotations
 
 import builtins
+import gc
 import json
 import os
+import socket
 import sys
 from collections.abc import Callable
 from typing import Any
 
 _DEFAULT_MAX_HTTP_BODY_BYTES: int = 10_485_760
+_NODELAY_APPLIED_PID: int | None = None
+
+
+def enable_tcp_nodelay_for_current_process(*, force: bool = False) -> int:
+    """Enable TCP_NODELAY once per worker PID to eliminate multi-worker h11 Delayed-ACK stalls.
+
+    Uvicorn ``--workers > 1`` passes a shared pre-bound socket where ``TCP_NODELAY``
+    is unset; with ``h11`` writing headers and body separately, Nagle + Linux
+    40 ms Delayed ACK adds ~44 ms per keep-alive HTTP/1.1 response. Setting
+    ``TCP_NODELAY=1`` on ``AF_INET``/``AF_INET6`` ``SOCK_STREAM`` sockets
+    (including the listener so future accepted sockets inherit it) removes the stall.
+    """
+    global _NODELAY_APPLIED_PID
+    pid = os.getpid()
+    if not force and _NODELAY_APPLIED_PID == pid:
+        return 0
+    applied = 0
+    for obj in gc.get_objects():
+        if type(obj) is socket.socket:
+            try:
+                if (
+                    obj.fileno() != -1
+                    and obj.family in (socket.AF_INET, socket.AF_INET6)
+                    and (obj.type & socket.SOCK_STREAM)
+                ):
+                    obj.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    applied += 1
+            except OSError:
+                pass
+    _NODELAY_APPLIED_PID = pid
+    return applied
 
 
 class _BodyTooLargeError(Exception):
@@ -93,6 +126,7 @@ class BoundedBodyMiddleware:
             await self.app(scope, receive, send)
             return
 
+        enable_tcp_nodelay_for_current_process()
         limit = self._get_limit()
 
         # 1. Content-Length header inspection

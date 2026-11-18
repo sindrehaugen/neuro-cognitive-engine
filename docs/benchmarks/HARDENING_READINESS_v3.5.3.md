@@ -1,4 +1,4 @@
-# NCE v3.5.3 Zero-Trust Hardening & Live Readiness Certification Report
+# NCE `v3.5.3` Zero-Trust Hardening & Live Readiness Certification Report
 
 **Release Baseline:** `neuro-cognitive-engine` `v3.5.3` (`nce-vertical-engines` `v4.2.1` integration verified)  
 **Certification Date:** `2026-11-18`  

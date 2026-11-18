@@ -113,10 +113,12 @@ services:
       - mongo_data:/data/db
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
+      test: ["CMD", "mongosh", "--quiet", "--norc", "--eval", "quit(db.runCommand({ ping: 1 }).ok ? 0 : 2)"]
+      interval: 30s
       timeout: 5s
       retries: 5
+      start_period: 15s
+      start_interval: 2s
     logging:
       driver: json-file
       options:
@@ -162,7 +164,7 @@ services:
           memory: 512M
 
   cognitive:
-    image: nce-cognitive:3.5.3
+    image: nce-cognitive:3.5.4
     build:
       context: .
       dockerfile: deploy/cognitive-service/Dockerfile
@@ -170,8 +172,12 @@ services:
     environment:
       COGNITIVE_PORT: "11435"
       NCE_EMBEDDING_MODEL_ID: ${NCE_EMBEDDING_MODEL_ID:-sentence-transformers/all-mpnet-base-v2}
-      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
-      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
+      NCE_COGNITIVE_BACKEND: ${NCE_COGNITIVE_BACKEND:-onnx}
+      NCE_COGNITIVE_BATCH_WINDOW_MS: ${NCE_COGNITIVE_BATCH_WINDOW_MS:-5}
+      NCE_COGNITIVE_MAX_BATCH_SIZE: ${NCE_COGNITIVE_MAX_BATCH_SIZE:-32}
+      NCE_COGNITIVE_NUM_THREADS: ${NCE_COGNITIVE_NUM_THREADS:-4}
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
     expose:
       - "11435"
     networks:
@@ -180,11 +186,12 @@ services:
       - "no-new-privileges:true"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:11435/readyz'));assert d.get('status')=='ok' and d.get('engine')=='sentence-transformers', d\""]
-      interval: 10s
+      test: ["CMD-SHELL", "python -c \"import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:11435/readyz'));assert d.get('status')=='ok' and d.get('engine') in ('onnxruntime', 'onnxruntime-int8', 'sentence-transformers'), d\""]
+      interval: 30s
       timeout: 5s
       retries: 6
-      start_period: 30s
+      start_period: 20s
+      start_interval: 2s
     logging:
       driver: json-file
       options:
@@ -353,6 +360,7 @@ services:
     # Confinement (Batch 123): prevent privilege escalation on internal data plane.
     security_opt:
       - "no-new-privileges:true"
+      - "seccomp:./deploy/seccomp/worker.json"
     networks:
       - nce_data
     # Multicore (VI.5a): cron MUST stay a singleton — CronLock is the only
@@ -483,10 +491,11 @@ services:
           "-c",
           "import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:8003/readyz'));assert d.get('status') == 'ok', d",
         ]
-      interval: 15s
+      interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 10s
+      start_interval: 2s
     restart: unless-stopped
     logging:
       driver: json-file
@@ -597,10 +606,11 @@ services:
           "-c",
           "import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:8004/readyz'));assert d.get('status') == 'ok', d",
         ]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 10s
+      start_interval: 2s
     restart: unless-stopped
     logging:
       driver: json-file
@@ -688,10 +698,11 @@ services:
           "-c",
           "import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:8005/readyz'));assert d.get('status') == 'ok', d",
         ]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 10s
+      start_interval: 2s
     restart: unless-stopped
     logging:
       driver: json-file
@@ -780,10 +791,11 @@ services:
           "-c",
           "import json,urllib.request;d=json.load(urllib.request.urlopen('http://127.0.0.1:8080/readyz'));assert d.get('status') == 'ok', d",
         ]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+      start_interval: 2s
     restart: unless-stopped
     logging:
       driver: json-file

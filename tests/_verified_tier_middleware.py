@@ -20,25 +20,34 @@ for verification.
 
 from __future__ import annotations
 
+from starlette.datastructures import Headers
 from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 
 from nce.auth import NamespaceContext
 
 _VALID_TIERS = ("employee", "contractor", "external-customer")
 
 
-class VerifiedTierTestMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        raw = request.headers.get("X-NCE-Principal-Tier") or request.headers.get(
-            "X-NCE-Principal-Kind"
-        )
+class VerifiedTierTestMiddleware:
+    """Pure-ASGI test stand-in setting verified namespace_ctx principal kind."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = Headers(scope=scope)
+        raw = headers.get("X-NCE-Principal-Tier") or headers.get("X-NCE-Principal-Kind")
         if raw:
             tier = raw.strip().lower()
             if tier in _VALID_TIERS:
-                request.state.namespace_ctx = NamespaceContext(principal_kind=tier)
-        return await call_next(request)
+                scope.setdefault("state", {})["namespace_ctx"] = NamespaceContext(
+                    principal_kind=tier
+                )
+        await self.app(scope, receive, send)
 
 
 VERIFIED_TIER_TEST_MIDDLEWARE = [Middleware(VerifiedTierTestMiddleware)]

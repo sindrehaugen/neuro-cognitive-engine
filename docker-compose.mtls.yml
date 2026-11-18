@@ -1,4 +1,4 @@
-# NCE v3.5.3 — Opt-in Caddy <-> Admin mutual TLS + Production Admin Posture Overlay
+# NCE v3.5.4 — Opt-in Caddy <-> Admin mutual TLS + Production Admin Posture Overlay
 #
 # Generate internal mTLS PKI first:
 #   python scripts/generate_internal_mtls.py
@@ -33,14 +33,21 @@ services:
     environment:
       NCE_ENV: ${NCE_ENV:-prod}
       NCE_LOAD_DOTENV: "false"
+      NCE_ADMIN_OVERRIDE: "false"
+      NCE_DISABLE_MIGRATION_MCP: ${NCE_DISABLE_MIGRATION_MCP:-true}
       NCE_A2A_JWT_AUDIENCE: ${NCE_A2A_JWT_AUDIENCE:-nce-a2a}
       NCE_ADMIN_MTLS_ENABLED: "true"
       NCE_ADMIN_MTLS_STRICT: "true"
       NCE_ADMIN_MTLS_TRUSTED_PROXY_HOP: "1"
       NCE_ADMIN_MTLS_ALLOWED_SANS: "caddy.internal.nce"
+      NCE_MTLS_STRICT: "true"
       NCE_MTLS_CERT_PATH: /etc/nce/certs/admin.crt
       NCE_MTLS_KEY_PATH: /etc/nce/certs/admin.key
       NCE_MTLS_CA_PATH: /etc/nce/certs/ca.crt
+      NCE_MASTER_KEY_FILE: /run/secrets/nce_master_key
+      NCE_MASTER_KEY: ""
+      NCE_API_KEY_FILE: /run/secrets/nce_api_key
+      NCE_API_KEY: ""
     volumes:
       - ./deploy/certs/internal-mtls:/etc/nce/certs:ro
     healthcheck:

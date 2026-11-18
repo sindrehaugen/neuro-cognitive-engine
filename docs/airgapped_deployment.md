@@ -62,7 +62,11 @@ The table below lists the env-vars that govern offline/edge operation. All are r
 | `NCE_BACKEND` | _(empty, auto-detect)_ | Force an embedding backend. Accepted values: `cpu`, `cuda`, `rocm`, `xpu`, `openvino_npu`, `openvino`, `mps`. `openvino` and `openvino_npu` both route to `OpenVINONPUBackend`. |
 | `NCE_OPENVINO_MODEL_DIR` | _(empty)_ | Absolute path to the exported OpenVINO IR directory. Required when using `openvino_npu` / `openvino` backend. |
 | `NCE_OPENVINO_SEQ_LEN` | `512` | Token sequence length used at inference time. Must match the `sequence_length` used during export. |
-| `NCE_COGNITIVE_BASE_URL` | _(empty)_ | Base URL of an OpenAI-compatible embeddings sidecar (e.g. `http://localhost:11435`). When set and `NCE_BACKEND` is not forced, embeddings route to `POST {base}/v1/embeddings`. |
+| `NCE_COGNITIVE_BASE_URL` | _(empty)_ | Base URL of an OpenAI-compatible embeddings sidecar (e.g. `http://cognitive:11435`). When set and `NCE_BACKEND` is not forced, embeddings route to `POST {base}/v1/embeddings` and worker/cron skip importing `torch`. |
+| `NCE_COGNITIVE_BACKEND` | `onnx` | Inference engine for the `cognitive` container (`onnx` uses pre-baked ONNX Runtime weights with zero runtime hub calls). |
+| `NCE_COGNITIVE_BATCH_WINDOW_MS` | `5` | Micro-batching accumulation window (ms) in the `cognitive` ONNX server. |
+| `NCE_COGNITIVE_MAX_BATCH_SIZE` | `32` | Maximum inputs per batched ONNX forward pass. |
+| `NCE_COGNITIVE_NUM_THREADS` | `4` | CPU intra-op threads allocated per ONNX session in the `cognitive` container (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1` pinned in Compose). |
 | `NCE_EMBEDDING_MODEL_ID` | `sentence-transformers/all-mpnet-base-v2` | Hugging Face model ID used by the CPU/CUDA/ROCm/MPS backends. The OpenVINO **exporter** keeps its own default of `jinaai/jina-embeddings-v2-base-code`. |
 | `NCE_EMBEDDING_MODEL_REVISION` | _(empty)_ | Optional revision pin for supply-chain safety. Passed to `from_pretrained`. |
 | `NCE_EMBEDDING_TRUST_REMOTE_CODE` | `false` | Not needed by the default model. Required only for models shipping custom code, such as the Jina models. Must be explicit in production. |

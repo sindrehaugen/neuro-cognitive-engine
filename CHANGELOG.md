@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.5.4] - 2026-11-18
+
+### Performance & Pure-ASGI Runtime
+- **Eliminated HTTP/1.1 Delayed-ACK Floor Across Core (`nce/auth.py`, `nce/jwt_auth.py`, `nce/webhook_receiver/main.py`, `tests/_verified_tier_middleware.py`):**
+  - Replaced all `BaseHTTPMiddleware` subclasses (`HMACAuthMiddleware`, `BasicAuthMiddleware`, `AdminHTTPRateLimitMiddleware`, `JWTAuthMiddleware`, `VerifiedTierTestMiddleware`) and FastAPI `@app.middleware("http")` (`webhook_rate_limit_middleware`) with pure-ASGI (`__call__(scope, receive, send)`) implementations preserving `scope["state"]`, fast-probe bypasses (`/healthz`, `/health`, `/readyz`, `/ready`, `/.well-known/agent-card`), bounded-body HTTP `413` enforcement before HMAC hashing, and single-consumption replayable `receive`.
+- **Cron Remote-Inference RSS & Idle Healthcheck CPU (`nce/reembedding_worker.py`, `docker-compose.yml`):**
+  - Short-circuited `ReembeddingWorker._vram_pressure_gate()` prior to `import torch` when `NCE_COGNITIVE_BASE_URL` is configured, preventing ~400+ MiB `libtorch` RSS growth in `nce-cron`.
+  - Updated Compose `mongodb` healthcheck to `mongosh --quiet --norc --eval "quit(db.runCommand({ ping: 1 }).ok ? 0 : 2)"` (`30s` interval, `start_period: 15s`, `start_interval: 2s`) and aligned `admin`, `a2a`, `mcp-gateway`, and `webhook-receiver` readiness intervals to `30s` (`start_period: 10s`, `start_interval: 2s`).
+- **Air-Gapped Baked ONNX Cognitive Compose Wiring (`docker-compose.yml`, `nce/config.py`):**
+  - Upgraded Compose `cognitive` service to `nce-cognitive:3.5.4` with `NCE_COGNITIVE_BACKEND=onnx`, micro-batching (`NCE_COGNITIVE_BATCH_WINDOW_MS=5`, `NCE_COGNITIVE_MAX_BATCH_SIZE=32`, `NCE_COGNITIVE_NUM_THREADS=4`), pinned `HF_HUB_OFFLINE="1"` / `TRANSFORMERS_OFFLINE="1"`, and `/readyz` engine acceptance for `onnxruntime`, `onnxruntime-int8`, and `sentence-transformers`.
+
+### Security & Verification
+- **Cron Seccomp Parity (`docker-compose.yml`):** Enforced `- "seccomp:./deploy/seccomp/worker.json"` on `cron.security_opt`.
+- **Fail-Closed Entra Production Gate (`nce/config.py`, `nce/admin_app.py`, `admin_server.py`):** Raised `RuntimeError` during boot validation if `NCE_ENV` is `prod`/`production` and `NCE_ENTRA_TENANT_ID` is non-empty without `NCE_ENTRA_ENFORCE_MODE=strict`.
+- **Dynamic Package Version & Event Retention Tests (`nce/__init__.py`, `nce/webhook_receiver/main.py`, `nce/admin_app.py`, `nce/a2a_server.py`, `tests/test_event_retention.py`):** Resolved `nce.__version__` from `pyproject.toml`/`neuro-cognitive-engine` dist metadata instead of hardcoded `"3.5.3"`, and fixed `tests/test_event_retention.py` partition inserts to supply 32-byte `chain_hash` without silent `pytest.skip` suppression.
+
+---
+
 ## [3.5.3] - 2026-11-18
 
 ### Security

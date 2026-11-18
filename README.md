@@ -4,7 +4,7 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.5.3-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-3.5.4-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -193,7 +193,7 @@ A **Dynamic Tools Console** in the Admin UI can enable/disable individual stdio 
 
 ## Performance, Scale & LLM-Loop Latency
 
-NCE `v3.5.2` is engineered so the memory substrate is never the bottleneck during multi-tool streaming LLM reasoning loops. Against a live **100,000-row** envelope-encrypted (`TCDEK\x01` AES-256-GCM) tenant dataset (`100k` `memories` + Mongo `episodes`, `20k` `memory_salience`, `5k` `kg_nodes`, `15k` `kg_edges`, `10k` signed WORM `event_log` rows):
+NCE `v3.5.4` eliminates the HTTP/1.1 Delayed-ACK floor (`BaseHTTPMiddleware` replaced with pure-ASGI streaming middleware across all HTTP surfaces), serves air-gapped baked ONNX cognitive embeddings (`nce-cognitive:3.5.4` with `NCE_COGNITIVE_BACKEND=onnx`, `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`), keeps `nce-cron` free of `libtorch` RSS under remote embeddings with `worker.json` seccomp confinement, and trims idle container CPU via 30s healthchecks. On the live **100,000-row** envelope-encrypted (`TCDEK\x01` AES-256-GCM) tenant dataset (`100k` `memories` + Mongo `episodes`, `20k` `memory_salience`, `5k` `kg_nodes`, `15k` `kg_edges`, `10k` signed WORM `event_log` rows):
 
 | Operation / Chained LLM-Loop Step | `v3.5.0` Baseline (`p50`) | `v3.5.1` Direct Engine (`p50`) | `v3.5.2` `/mcp` HTTP Gateway (`p50 / p95`) | Key Optimization |
 | :--- | ---: | ---: | ---: | :--- |
@@ -204,7 +204,7 @@ NCE `v3.5.2` is engineered so the memory substrate is never the bottleneck durin
 | **Full 5-Tool Chained LLM Reasoning Turn** | `~1,515 ms` | `~148 ms` | **`116.94 ms` (`p50`)** | 30s verified-token cache + 2s Redis session sync + coalesced salience ring buffer |
 | **Mongo-Pause Saga Failover (`store_memory`)** | `10.10 s` | `2.36 s` | **`2.38 s` (`< 3.0s`)** | `2000ms` Motor timeouts + bounded inline rollback + `SKIP LOCKED` recovery |
 
-Full benchmark methodology and `EXPLAIN (ANALYZE, BUFFERS)` plans: [docs/benchmarks/PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · Live `v3.5.3` hardening & readiness report: [docs/benchmarks/HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md).
+Full benchmark methodology and `EXPLAIN (ANALYZE, BUFFERS)` plans: [docs/benchmarks/PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · Live `v3.5.3` report: [docs/benchmarks/HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) · Live `v3.5.4` ONNX & pure-ASGI report: [docs/benchmarks/HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md).
 
 ---
 
@@ -403,7 +403,7 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 | Integrations | [service_integrations.md](docs/service_integrations.md) · [bridge_setup_guide.md](docs/bridge_setup_guide.md) · [a2a.md](docs/a2a.md) |
 | Edge | [airgapped_deployment.md](docs/airgapped_deployment.md) · [vram_monitoring.md](docs/vram_monitoring.md) |
 | Plugins & Verticals | [plugin_development.md](docs/plugin_development.md) · [shared-core/overview.md](docs/shared-core/overview.md) · [nce-vertical-engines](https://github.com/sindrehaugen/nce-vertical-engines) |
-| Benchmarks | [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · [HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) |
+| Benchmarks | [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · [HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) · [HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md) |
 | Design decisions | [adr/](docs/adr/) |
 
 ---
@@ -420,5 +420,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-NCE — Neuro-Cognitive Engine · v3.5.3 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
+NCE — Neuro-Cognitive Engine · v3.5.4 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
 

@@ -16,6 +16,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from redis import Redis
 from starlette.responses import JSONResponse
 
+from nce import __version__ as _NCE_VERSION
 from nce import bridge_repo
 from nce.config import cfg
 from nce.extractors.dispatch import get_priority_queue
@@ -26,6 +27,10 @@ from nce.observability import enqueue_traced
 from nce.tasks import process_bridge_event
 
 log = logging.getLogger("nce.webhook_receiver")
+
+_FAST_PROBE_PATHS: frozenset[str] = frozenset(
+    {"/healthz", "/health", "/readyz", "/ready", "/.well-known/agent-card"}
+)
 
 app = FastAPI(title="NCE Webhook Receiver")
 app.add_middleware(BoundedBodyMiddleware)
@@ -67,7 +72,7 @@ _WEBHOOK_READINESS_CACHE = SingleflightReadinessCache(ttl_seconds=5.0)
 @app.get("/healthz")
 async def health():
     """Fast in-memory liveness probe (< 3 ms, zero Redis/DB calls)."""
-    payload, _ = build_liveness_payload("webhook-receiver", version="3.5.3")
+    payload, _ = build_liveness_payload("webhook-receiver", version=_NCE_VERSION)
     return payload
 
 
@@ -398,19 +403,36 @@ async def _read_json_bounded(request: Request) -> Any:
         raise HTTPException(status_code=400, detail="Invalid JSON body") from None
 
 
-@app.middleware("http")
-async def webhook_rate_limit_middleware(request: Request, call_next):
-    """Apply per-IP rate limits on webhook routes only."""
-    path = request.url.path
-    if path.startswith("/webhooks/"):
-        client_ip = _client_ip(request)
+class WebhookRateLimitMiddleware:
+    """Pure-ASGI per-IP sliding-window rate limiter on webhook routes."""
+
+    def __init__(self, app_inner: Any) -> None:
+        self.app = app_inner
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = str(scope.get("path") or "/")
+        if path in _FAST_PROBE_PATHS or not path.startswith("/webhooks/"):
+            await self.app(scope, receive, send)
+            return
+
+        client_ip = _client_ip(Request(scope))
         if not _allow_webhook_request(client_ip, path):
             log.warning("Webhook rate limit exceeded ip=%s path=%s", client_ip, path)
-            return JSONResponse(
+            resp = JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded"},
             )
-    return await call_next(request)
+            await resp(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(WebhookRateLimitMiddleware)
 
 
 def enqueue_process_bridge_event(provider: str, payload: dict[str, Any]) -> str:

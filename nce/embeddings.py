@@ -19,12 +19,14 @@ method sets the flag in the async context after ``run_in_executor`` completes.
 from __future__ import annotations
 
 import asyncio
+import collections
 import hashlib
 import logging
 import math
 import os
 import random
 import threading
+import weakref
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
@@ -40,6 +42,17 @@ log = logging.getLogger("nce-embeddings")
 
 _sync_http_client: Any = None
 _sync_http_client_lock = threading.Lock()
+_remote_backends: weakref.WeakSet[Any] = weakref.WeakSet()
+_remote_backends_lock = threading.Lock()
+
+ACCEPTED_COGNITIVE_ENGINES: frozenset[str] = frozenset(
+    {"onnxruntime", "onnxruntime-int8", "sentence-transformers"}
+)
+
+
+def _register_remote_backend(backend: Any) -> None:
+    with _remote_backends_lock:
+        _remote_backends.add(backend)
 
 
 def _get_sync_http_client() -> Any:
@@ -53,9 +66,35 @@ def _get_sync_http_client() -> Any:
 
             _sync_http_client = httpx.Client(
                 timeout=httpx.Timeout(120.0, connect=5.0),
+                limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
                 trust_env=False,
             )
         return _sync_http_client
+
+
+def _close_sync_http_client() -> None:
+    global _sync_http_client
+    with _sync_http_client_lock:
+        if _sync_http_client is not None and not getattr(_sync_http_client, "is_closed", False):
+            try:
+                _sync_http_client.close()
+            except Exception:
+                pass
+        _sync_http_client = None
+
+
+async def close_embedding_http_clients() -> None:
+    """Close pooled HTTP clients across all remote embedding backends and sync pool."""
+    _close_sync_http_client()
+    with _remote_backends_lock:
+        backends = list(_remote_backends)
+    for backend in backends:
+        aclose = getattr(backend, "aclose", None)
+        if callable(aclose):
+            try:
+                await aclose()
+            except Exception:
+                pass
 
 
 class EmbeddingDimensionMismatchError(ValueError):
@@ -107,8 +146,19 @@ _backend_lock = threading.Lock()
 
 
 def shutdown_embedding_executor() -> None:
-    """Gracefully drain the embedding executor. Call during app shutdown."""
+    """Gracefully drain the embedding executor and pooled clients. Call during app shutdown."""
     _executor.shutdown(wait=False, cancel_futures=True)
+    _close_sync_http_client()
+    with _remote_backends_lock:
+        backends = list(_remote_backends)
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
+    for backend in backends:
+        shutdown_sync = getattr(backend, "_shutdown_sync", None)
+        if callable(shutdown_sync):
+            shutdown_sync(running_loop)
 
 
 # ---------------------------------------------------------------------------
@@ -436,13 +486,8 @@ class EmbeddingBackend(ABC):
         - ``degraded`` is ``True`` whenever a fallback path was used
         """
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-
-        if not texts:
-            return []
-        loop = asyncio.get_running_loop()
-        vectors, degraded = await loop.run_in_executor(_executor, self._sync_embed_batch, texts)
-        # Set the flag in the async task context — NOT inside the executor thread.
+    async def _finalize_embed_result(self, degraded: bool) -> None:
+        """Set degraded ContextVar in caller's async task context and emit metric/alert."""
         degraded_embedding_flag.set(degraded)
         if degraded:
             EMBEDDING_FALLBACKS.inc()
@@ -455,6 +500,15 @@ class EmbeddingBackend(ABC):
                 )
             except Exception:
                 log.exception("Failed to dispatch alert for embedding fallback")
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+
+        if not texts:
+            return []
+        loop = asyncio.get_running_loop()
+        vectors, degraded = await loop.run_in_executor(_executor, self._sync_embed_batch, texts)
+        # Set the flag in the async task context — NOT inside the executor thread.
+        await self._finalize_embed_result(degraded)
         return vectors
 
 
@@ -688,7 +742,141 @@ async def assert_cognitive_not_stub_in_prod() -> dict[str, Any] | None:
             f"Refusing to start: cognitive sidecar at {base} reports engine='stub' "
             "while NCE_ENV is production and NCE_ALLOW_COGNITIVE_STUB is false."
         )
+    if engine in ACCEPTED_COGNITIVE_ENGINES:
+        return payload
+    if engine and engine != "stub":
+        log.warning(
+            "Cognitive sidecar at %s reported unexpected engine=%r (accepted: %s)",
+            base,
+            engine,
+            sorted(ACCEPTED_COGNITIVE_ENGINES),
+        )
     return payload
+
+
+class _AsyncBatchCoalescer:
+    """Coalesce same-loop embedding requests into batched HTTP calls."""
+
+    def __init__(
+        self,
+        batch_fn: Any,
+        *,
+        window_ms: float = 0.0,
+        max_batch_size: int = 64,
+    ) -> None:
+        self._batch_fn = batch_fn
+        self._window_ms = max(0.0, float(window_ms))
+        self._max_batch_size = max(1, int(max_batch_size))
+        self._pending: collections.deque[
+            tuple[list[str], asyncio.Future[tuple[list[list[float]], bool]]]
+        ] = collections.deque()
+        self._full_event: asyncio.Event | None = None
+        self._flush_task: asyncio.Task[None] | None = None
+
+    def _pending_text_count(self) -> int:
+        return sum(len(texts) for texts, fut in self._pending if not fut.done())
+
+    async def enqueue(self, texts: list[str]) -> tuple[list[list[float]], bool]:
+        loop = asyncio.get_running_loop()
+        if self._full_event is None:
+            self._full_event = asyncio.Event()
+        fut: asyncio.Future[tuple[list[list[float]], bool]] = loop.create_future()
+        self._pending.append((list(texts), fut))
+        if self._pending_text_count() >= self._max_batch_size:
+            self._full_event.set()
+        if self._flush_task is None or self._flush_task.done():
+            self._flush_task = loop.create_task(self._flush_loop())
+        return await fut
+
+    async def aclose(self) -> None:
+        task = self._flush_task
+        self._flush_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        while self._pending:
+            _, fut = self._pending.popleft()
+            if not fut.done():
+                fut.cancel()
+
+    def _pop_batch(self) -> list[tuple[list[str], asyncio.Future[tuple[list[list[float]], bool]]]]:
+        batch: list[tuple[list[str], asyncio.Future[tuple[list[list[float]], bool]]]] = []
+        total = 0
+        while self._pending:
+            texts, fut = self._pending[0]
+            if fut.done():
+                self._pending.popleft()
+                continue
+            if batch and total + len(texts) > self._max_batch_size:
+                break
+            self._pending.popleft()
+            batch.append((texts, fut))
+            total += len(texts)
+            if total >= self._max_batch_size:
+                break
+        return batch
+
+    async def _flush_loop(self) -> None:
+        try:
+            while self._pending:
+                if self._pending_text_count() < self._max_batch_size:
+                    if self._window_ms > 0.0 and self._full_event is not None:
+                        try:
+                            await asyncio.wait_for(
+                                self._full_event.wait(),
+                                timeout=self._window_ms / 1000.0,
+                            )
+                        except asyncio.TimeoutError:
+                            pass
+                    else:
+                        await asyncio.sleep(0)
+                if self._full_event is not None:
+                    self._full_event.clear()
+
+                batch = self._pop_batch()
+                if not batch:
+                    continue
+                await self._dispatch_batch(batch)
+        finally:
+            self._flush_task = None
+
+    async def _dispatch_batch(
+        self,
+        batch: list[tuple[list[str], asyncio.Future[tuple[list[list[float]], bool]]]],
+    ) -> None:
+        active = [(texts, fut) for texts, fut in batch if not fut.done()]
+        if not active:
+            return
+
+        flat_texts = [t for texts, _ in active for t in texts]
+        try:
+            vectors, degraded = await self._batch_fn(flat_texts)
+            if len(vectors) != len(flat_texts):
+                raise ValueError(
+                    f"embedding count mismatch: got {len(vectors)} expected {len(flat_texts)}"
+                )
+            offset = 0
+            for texts, fut in active:
+                n = len(texts)
+                item_vecs = vectors[offset : offset + n]
+                offset += n
+                if not fut.done():
+                    fut.set_result((item_vecs, degraded))
+        except Exception as exc:
+            if len(active) == 1:
+                if not active[0][1].done():
+                    active[0][1].set_exception(exc)
+                return
+            for texts, fut in active:
+                if fut.done():
+                    continue
+                try:
+                    item_vecs, item_degraded = await self._batch_fn(texts)
+                    if not fut.done():
+                        fut.set_result((item_vecs, item_degraded))
+                except Exception as item_exc:
+                    if not fut.done():
+                        fut.set_exception(item_exc)
 
 
 class CognitiveRemoteBackend(EmbeddingBackend):
@@ -700,10 +888,31 @@ class CognitiveRemoteBackend(EmbeddingBackend):
     Fallback model: ``NCE_COGNITIVE_FALLBACK_MODEL`` (from config, not os.getenv).
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        batch_window_ms: float | None = None,
+        max_batch_size: int | None = None,
+    ) -> None:
         from nce.providers.base import LLMProviderError
 
         self._model = (cfg.NCE_COGNITIVE_EMBEDDING_MODEL or "").strip() or None
+        self._async_clients: dict[asyncio.AbstractEventLoop, Any] = {}
+        self._async_clients_lock = threading.Lock()
+        self._batchers: dict[asyncio.AbstractEventLoop, _AsyncBatchCoalescer] = {}
+        self._batch_window_ms = (
+            max(0.0, float(batch_window_ms))
+            if batch_window_ms is not None
+            else max(0.0, float(getattr(cfg, "NCE_COGNITIVE_CLIENT_BATCH_WINDOW_MS", 0.0) or 0.0))
+        )
+        self._max_batch_size = max(
+            1,
+            int(max_batch_size)
+            if max_batch_size is not None
+            else int(getattr(cfg, "EMBED_BATCH_CHUNK", 64) or 64),
+        )
+        _register_remote_backend(self)
+
         try:
             self._base = validated_cognitive_base_url()
         except LLMProviderError as exc:
@@ -711,6 +920,68 @@ class CognitiveRemoteBackend(EmbeddingBackend):
             self._base = ""
         if self._base:
             self._warn_if_sidecar_is_a_stub()
+
+    def _prune_closed_loops(self) -> None:
+        for lp in [k for k in self._async_clients if k.is_closed()]:
+            self._async_clients.pop(lp, None)
+        for lp in [k for k in self._batchers if k.is_closed()]:
+            self._batchers.pop(lp, None)
+
+    def _get_async_client(self) -> Any:
+        """Return a persistent per-event-loop ``httpx.AsyncClient`` connection pool."""
+        import httpx
+
+        loop = asyncio.get_running_loop()
+        with self._async_clients_lock:
+            self._prune_closed_loops()
+            client = self._async_clients.get(loop)
+            if client is None or getattr(client, "is_closed", False):
+                client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(120.0, connect=5.0),
+                    limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
+                    trust_env=False,
+                )
+                self._async_clients[loop] = client
+            return client
+
+    def _get_batcher(self, loop: asyncio.AbstractEventLoop) -> _AsyncBatchCoalescer:
+        self._prune_closed_loops()
+        batcher = self._batchers.get(loop)
+        if batcher is None:
+            batcher = _AsyncBatchCoalescer(
+                self._async_embed_batch_direct,
+                window_ms=self._batch_window_ms,
+                max_batch_size=self._max_batch_size,
+            )
+            self._batchers[loop] = batcher
+        return batcher
+
+    async def aclose(self) -> None:
+        """Close the current event loop's pooled ``AsyncClient`` and batcher cleanly."""
+        loop = asyncio.get_running_loop()
+        batcher = self._batchers.pop(loop, None)
+        if batcher is not None:
+            await batcher.aclose()
+        with self._async_clients_lock:
+            client = self._async_clients.pop(loop, None)
+            self._prune_closed_loops()
+        if client is not None and not getattr(client, "is_closed", False):
+            await client.aclose()
+
+    def _shutdown_sync(self, running_loop: asyncio.AbstractEventLoop | None) -> None:
+        with self._async_clients_lock:
+            self._prune_closed_loops()
+            for lp in list(self._async_clients):
+                if running_loop is not None and lp is running_loop and not lp.is_closed():
+                    client = self._async_clients.pop(lp, None)
+                    if client is not None and not getattr(client, "is_closed", False):
+                        running_loop.create_task(client.aclose())
+                elif lp.is_closed():
+                    self._async_clients.pop(lp, None)
+        if running_loop is not None and running_loop in self._batchers:
+            batcher = self._batchers.pop(running_loop, None)
+            if batcher is not None and not running_loop.is_closed():
+                running_loop.create_task(batcher.aclose())
 
     def _warn_if_sidecar_is_a_stub(self) -> None:
         """Say so, loudly, when the sidecar we delegate to is a stub.
@@ -728,11 +999,9 @@ class CognitiveRemoteBackend(EmbeddingBackend):
         """
         engine = ""
         try:
-            import httpx
-
-            with httpx.Client(timeout=2.0) as client:
-                r = client.get(cognitive_health_check_url(self._base))
-                engine = str((r.json() or {}).get("engine", "")).strip().lower()
+            client = _get_sync_http_client()
+            r = client.get(cognitive_health_check_url(self._base), timeout=2.0)
+            engine = str((r.json() or {}).get("engine", "")).strip().lower()
         except Exception as exc:  # noqa: BLE001 - a probe must never break startup
             log.debug("CognitiveRemoteBackend: stub probe inconclusive: %s", exc)
             return
@@ -767,90 +1036,51 @@ class CognitiveRemoteBackend(EmbeddingBackend):
             )
         log.warning(msg, self._base)
 
-    def _sync_embed_batch(self, texts: list[str]) -> tuple[list[list[float]], bool]:
-        if not self._base:
-            return _fallback_with_error(
-                texts,
-                "CognitiveRemoteBackend: empty base URL — stubbing.",
-                is_warn=True,
-            )
-
-        import httpx
-
+    def _build_request_spec(
+        self,
+        texts: list[str],
+        *,
+        model_override: str | None = None,
+    ) -> tuple[str, dict[str, str], dict[str, Any]]:
         api_key = cfg.NCE_COGNITIVE_API_KEY
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
         url = f"{self._base}/v1/embeddings"
-        payload: dict = {"input": texts}
-        if self._model:
-            payload["model"] = self._model
+        payload: dict[str, Any] = {"input": texts}
+        effective_model = model_override or self._model
+        if effective_model:
+            payload["model"] = effective_model
+        return url, headers, payload
 
-        from nce.http_resilience import request_with_retry_sync
+    @staticmethod
+    def _classify_fallback_error(exc: Exception) -> tuple[bool, bool]:
+        import httpx
 
-        try:
-            client = _get_sync_http_client()
-            r = request_with_retry_sync(
-                client,
-                "POST",
-                url,
-                json=payload,
-                headers=headers,
-                operation_name="embedding_sidecar:primary",
-            )
-            data = r.json()
-        except Exception as e:
-            # Classify the error so we can decide whether to try the fallback model.
-            is_rate_limit = isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 429
-            is_timeout = isinstance(e, httpx.TimeoutException)
-            if not (is_rate_limit or is_timeout):
-                err_str = str(e).lower()
-                if "rate limit" in err_str or "429" in err_str:
-                    is_rate_limit = True
-                elif "timeout" in err_str or "timed out" in err_str:
-                    is_timeout = True
+        is_rate_limit = (
+            isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429
+        ) or getattr(exc, "status_code", None) == 429
+        is_timeout = isinstance(exc, httpx.TimeoutException)
+        last_err = getattr(exc, "last_error", None)
+        if last_err is not None and not (is_rate_limit or is_timeout):
+            is_rate_limit = (
+                isinstance(last_err, httpx.HTTPStatusError) and last_err.response.status_code == 429
+            ) or getattr(last_err, "status_code", None) == 429
+            is_timeout = isinstance(last_err, httpx.TimeoutException)
+        if not (is_rate_limit or is_timeout):
+            err_str = str(exc).lower()
+            if "rate limit" in err_str or "429" in err_str:
+                is_rate_limit = True
+            elif "timeout" in err_str or "timed out" in err_str:
+                is_timeout = True
+        return is_rate_limit, is_timeout
 
-            if is_rate_limit or is_timeout:
-                reason = "RateLimit" if is_rate_limit else "Timeout"
-                log.warning(
-                    "Primary embedding model failed due to %s. "
-                    "Falling back to smaller model. Error: %s",
-                    reason,
-                    e,
-                )
-                # Fallback model from config — never os.getenv().
-                fallback_model = cfg.NCE_COGNITIVE_FALLBACK_MODEL
-                log.info("CognitiveRemoteBackend: triggering fallback model: %s", fallback_model)
-
-                payload_fallback = dict(payload)
-                payload_fallback["model"] = fallback_model
-
-                try:
-                    client = _get_sync_http_client()
-                    r = request_with_retry_sync(
-                        client,
-                        "POST",
-                        url,
-                        json=payload_fallback,
-                        headers=headers,
-                        timeout=60.0,
-                        operation_name="embedding_sidecar:fallback",
-                    )
-                    data = r.json()
-                except Exception as fe:
-                    return _fallback_with_error(
-                        texts,
-                        "Fallback embedding model also failed: %s",
-                        fe,
-                    )
-            else:
-                return _fallback_with_error(
-                    texts,
-                    "Cognitive embedding HTTP failed: %s",
-                    e,
-                )
-
+    @staticmethod
+    def _parse_embeddings_response(
+        texts: list[str],
+        data: Any,
+    ) -> tuple[list[list[float]], bool]:
         rows = data.get("data") if isinstance(data, dict) else None
         if not rows or not isinstance(rows, list):
             return _fallback_with_error(
@@ -879,9 +1109,121 @@ class CognitiveRemoteBackend(EmbeddingBackend):
             indexed.append((idx, [float(x) for x in emb]))
         indexed.sort(key=lambda t: t[0])
         vectors = [v for _, v in indexed]
-
-        # Validate count + dimension; returns (fallback, degraded=True) on mismatch.
         return _validate_batch(texts, vectors, backend_name="CognitiveRemote")
+
+    def _prepare_fallback_spec(
+        self,
+        texts: list[str],
+        exc: Exception,
+    ) -> tuple[str, dict[str, str], dict[str, Any]] | None:
+        is_rate_limit, is_timeout = self._classify_fallback_error(exc)
+        if not (is_rate_limit or is_timeout):
+            return None
+        reason = "RateLimit" if is_rate_limit else "Timeout"
+        log.warning(
+            "Primary embedding model failed due to %s. Falling back to smaller model. Error: %s",
+            reason,
+            exc,
+        )
+        fallback_model = cfg.NCE_COGNITIVE_FALLBACK_MODEL
+        log.info("CognitiveRemoteBackend: triggering fallback model: %s", fallback_model)
+        return self._build_request_spec(texts, model_override=fallback_model)
+
+    def _sync_embed_batch(self, texts: list[str]) -> tuple[list[list[float]], bool]:
+        if not self._base:
+            return _fallback_with_error(
+                texts,
+                "CognitiveRemoteBackend: empty base URL — stubbing.",
+                is_warn=True,
+            )
+
+        from nce.http_resilience import request_with_retry_sync
+
+        url, headers, payload = self._build_request_spec(texts)
+        try:
+            r = request_with_retry_sync(
+                _get_sync_http_client(),
+                "POST",
+                url,
+                json=payload,
+                headers=headers,
+                operation_name="embedding_sidecar:primary",
+            )
+            data = r.json()
+        except Exception as e:
+            fb_spec = self._prepare_fallback_spec(texts, e)
+            if fb_spec is None:
+                return _fallback_with_error(texts, "Cognitive embedding HTTP failed: %s", e)
+            fb_url, fb_headers, fb_payload = fb_spec
+            try:
+                r = request_with_retry_sync(
+                    _get_sync_http_client(),
+                    "POST",
+                    fb_url,
+                    json=fb_payload,
+                    headers=fb_headers,
+                    timeout=60.0,
+                    operation_name="embedding_sidecar:fallback",
+                )
+                data = r.json()
+            except Exception as fe:
+                return _fallback_with_error(texts, "Fallback embedding model also failed: %s", fe)
+
+        return self._parse_embeddings_response(texts, data)
+
+    async def _async_embed_batch_direct(self, texts: list[str]) -> tuple[list[list[float]], bool]:
+        if not self._base:
+            return _fallback_with_error(
+                texts,
+                "CognitiveRemoteBackend: empty base URL — stubbing.",
+                is_warn=True,
+            )
+
+        from nce.http_resilience import request_with_retry
+
+        url, headers, payload = self._build_request_spec(texts)
+        try:
+            r = await request_with_retry(
+                self._get_async_client(),
+                "POST",
+                url,
+                json=payload,
+                headers=headers,
+                operation_name="embedding_sidecar:primary",
+            )
+            data = r.json()
+        except Exception as e:
+            fb_spec = self._prepare_fallback_spec(texts, e)
+            if fb_spec is None:
+                return _fallback_with_error(texts, "Cognitive embedding HTTP failed: %s", e)
+            fb_url, fb_headers, fb_payload = fb_spec
+            try:
+                r = await request_with_retry(
+                    self._get_async_client(),
+                    "POST",
+                    fb_url,
+                    json=fb_payload,
+                    headers=fb_headers,
+                    timeout=60.0,
+                    operation_name="embedding_sidecar:fallback",
+                )
+                data = r.json()
+            except Exception as fe:
+                return _fallback_with_error(texts, "Fallback embedding model also failed: %s", fe)
+
+        return self._parse_embeddings_response(texts, data)
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed texts using persistent per-loop ``httpx.AsyncClient`` pooling & coalescing."""
+        if not texts:
+            return []
+        if "_sync_embed_batch" in self.__dict__:
+            return await super().embed(texts)
+        loop = asyncio.get_running_loop()
+        batcher = self._get_batcher(loop)
+        vectors, degraded = await batcher.enqueue(texts)
+        await self._finalize_embed_result(degraded)
+        return vectors
 
 
 # ---------------------------------------------------------------------------
@@ -965,7 +1307,16 @@ def reset_backend_singleton_for_tests() -> None:
     """Test hook: clear lazy singleton so ``detect_backend`` runs again."""
     global _backend
     with _backend_lock:
+        old = _backend
         _backend = None
+    if old is not None:
+        shutdown_sync = getattr(old, "_shutdown_sync", None)
+        if callable(shutdown_sync):
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+            shutdown_sync(running_loop)
     clear_embedding_query_cache()
 
 
@@ -1064,11 +1415,14 @@ async def embed_batch(texts: list[str]) -> list[list[float]]:
 
     backend = get_backend()
     results: list[list[float]] = []
+    any_degraded = False
     for start in range(0, len(texts), cfg.EMBED_BATCH_CHUNK):
         chunk = texts[start : start + cfg.EMBED_BATCH_CHUNK]
         chunk_vecs = await backend.embed(chunk)
+        any_degraded = any_degraded or bool(degraded_embedding_flag.get())
         results.extend(chunk_vecs)
         # Yield to the event loop between chunks so the embedding executor
         # does not monopolise the async thread for large batches.
         await asyncio.sleep(0)
+    degraded_embedding_flag.set(any_degraded)
     return results

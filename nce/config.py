@@ -816,6 +816,15 @@ class _Config:
     NCE_ALLOW_COGNITIVE_STUB: bool = _bool_env("NCE_ALLOW_COGNITIVE_STUB", False)
     # Declarative default LLM provider label for operators / future LLMProvider wiring [D2].
     NCE_LLM_PROVIDER: str = (os.getenv("NCE_LLM_PROVIDER") or "local-cognitive-model").strip()
+    # Cognitive embedding service runtime tuning (air-gapped ONNX default in v3.5.4).
+    NCE_COGNITIVE_BACKEND: str = (os.getenv("NCE_COGNITIVE_BACKEND") or "onnx").strip().lower()
+    NCE_COGNITIVE_BATCH_WINDOW_MS: int = _int_env("NCE_COGNITIVE_BATCH_WINDOW_MS", 5, minimum=0)
+    NCE_COGNITIVE_MAX_BATCH_SIZE: int = _int_env("NCE_COGNITIVE_MAX_BATCH_SIZE", 32, minimum=1)
+    NCE_COGNITIVE_NUM_THREADS: int = _int_env("NCE_COGNITIVE_NUM_THREADS", 4, minimum=1)
+
+    # --- Microsoft Entra ID gate ---
+    NCE_ENTRA_TENANT_ID: str = (os.getenv("NCE_ENTRA_TENANT_ID") or "").strip()
+    NCE_ENTRA_ENFORCE_MODE: str = (os.getenv("NCE_ENTRA_ENFORCE_MODE") or "").strip().lower()
 
     # --- A2A server ---
     # Base URL at which the A2A server is reachable (used in agent card discovery).
@@ -1688,8 +1697,22 @@ class _Config:
         # P1: D365 module — require secrets when enabled in production
         cls.validate_d365_config()
 
+        # P1: Microsoft Entra ID gate — strict mode mandatory in prod when tenant ID set
+        cls.validate_entra_config()
+
         # P1: Secrets-provider seam — reject the dev dotenv-persist path in prod
         cls.validate_secrets_provider()
+
+    @classmethod
+    def validate_entra_config(cls) -> None:
+        """Fail closed when Entra tenant ID is configured in production without strict mode."""
+        if not cls.IS_PROD or not (cls.NCE_ENTRA_TENANT_ID or "").strip():
+            return
+        if (cls.NCE_ENTRA_ENFORCE_MODE or "").strip().lower() != "strict":
+            raise RuntimeError(
+                "CRITICAL CONFIGURATION FAILURE: NCE_ENTRA_ENFORCE_MODE must be "
+                "'strict' when NCE_ENTRA_TENANT_ID is set in production."
+            )
 
     @classmethod
     def validate_secrets_provider(cls) -> None:
@@ -1849,6 +1872,38 @@ if cfg.IS_PROD and os.environ.get("NCE_LOAD_DOTENV", "true").strip().lower() in 
     )
 
 _fail_unless_nce_master_key_ok(cfg.NCE_MASTER_KEY, is_prod=cfg.IS_PROD)
+
+
+def assert_entra_strict_in_production() -> None:
+    """Fail closed if Entra tenant ID is set in production without strict enforcement."""
+    env_val = (live_env_str("NCE_ENV") or cfg.ENVIRONMENT or "").strip().lower()
+    if env_val not in {"prod", "production"} and not cfg.IS_PROD:
+        return
+    tenant_id = (
+        live_env_str("NCE_ENTRA_TENANT_ID")
+        if "NCE_ENTRA_TENANT_ID" in os.environ
+        else cfg.NCE_ENTRA_TENANT_ID
+    ).strip()
+    if not tenant_id:
+        return
+    enforce_mode = (
+        (
+            live_env_str("NCE_ENTRA_ENFORCE_MODE")
+            if "NCE_ENTRA_ENFORCE_MODE" in os.environ
+            else cfg.NCE_ENTRA_ENFORCE_MODE
+        )
+        .strip()
+        .lower()
+    )
+    if enforce_mode != "strict":
+        raise RuntimeError(
+            "CRITICAL CONFIGURATION FAILURE: NCE_ENTRA_ENFORCE_MODE must be "
+            "'strict' when NCE_ENTRA_TENANT_ID is configured in production "
+            f"(got {enforce_mode!r})."
+        )
+
+
+assert_entra_strict_in_production()
 
 
 def assert_admin_override_not_in_production() -> None:

@@ -56,16 +56,34 @@ from uuid import UUID
 
 from cachetools import TTLCache
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
+from starlette.datastructures import Headers
 from starlette.responses import JSONResponse, Response
 
-from nce.config import cfg
+from nce.config import cfg, live_max_http_body_bytes
 from nce.db_utils import POOL_ACQUIRE_TIMEOUT
+from nce.http_body_limit import _build_413_response
 from nce.principal_bindings.models import PrincipalContext as PrincipalContext
 from nce.principal_bindings.service import current_principal as current_principal
 
 log = logging.getLogger("nce.auth")
+
+_FAST_PROBE_PATHS: frozenset[str] = frozenset(
+    {"/healthz", "/health", "/readyz", "/ready", "/.well-known/agent-card"}
+)
+
+
+def _scope_path(scope: dict[str, Any]) -> str:
+    """Return normalized request path from an ASGI HTTP scope."""
+    return str(scope.get("path") or "/")
+
+
+def _resolve_http_body_limit() -> int:
+    """Resolve current max HTTP body limit safely."""
+    try:
+        return max(1, int(live_max_http_body_bytes()))
+    except (ValueError, TypeError):
+        return max(1, int(cfg.NCE_MAX_HTTP_BODY_BYTES))
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -1320,8 +1338,8 @@ def optional_hmac_nonce_store() -> NonceStore | None:
 # ---------------------------------------------------------------------------
 
 
-class HMACAuthMiddleware(BaseHTTPMiddleware):
-    """HMAC-SHA256 authentication middleware for Starlette admin endpoints.
+class HMACAuthMiddleware:
+    """Pure-ASGI HMAC-SHA256 authentication middleware for Starlette admin endpoints.
 
     All routes under ``protected_prefix`` (default: ``/api/``) require:
       - ``X-NCE-Timestamp`` header (Unix epoch, integer)
@@ -1364,7 +1382,7 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
         nonce_store: NonceStore | None = None,
         nonce_required: bool | None = None,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._protected_prefix = protected_prefix
         self._api_key = api_key
         self._nonce_store = nonce_store
@@ -1386,14 +1404,14 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
     # Dispatch helpers (extracted per Clean Code — Prompt 24)
     # ------------------------------------------------------------------
 
-    async def _extract_hmac_context(self, request: Request) -> HMACAuthContext | JSONResponse:
+    async def _extract_hmac_context(self, headers: Headers) -> HMACAuthContext | JSONResponse:
         """Extract and validate X-NCE-Timestamp, X-NCE-Nonce, and Authorization headers.
 
         Returns an ``HMACAuthContext`` on success, or a JSON-RPC error response.
         """
-        timestamp_raw = request.headers.get("x-nce-timestamp", "").strip()
-        auth_header = request.headers.get("authorization", "").strip()
-        nonce_raw = request.headers.get("x-nce-nonce", "").strip()
+        timestamp_raw = headers.get("x-nce-timestamp", "").strip()
+        auth_header = headers.get("authorization", "").strip()
+        nonce_raw = headers.get("x-nce-nonce", "").strip()
 
         if not timestamp_raw or not auth_header:
             return _jsonrpc_error(
@@ -1457,15 +1475,16 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
 
     def _verify_signature(
         self,
-        request: Request,
+        method: str,
+        path: str,
         ctx: HMACAuthContext,
         body_bytes: bytes,
     ) -> JSONResponse | None:
         """HMAC-SHA256 signature verification bound to X-NCE-Nonce."""
         if not verify_hmac(
             self._api_key,
-            request.method,
-            request.url.path,
+            method,
+            path,
             ctx.timestamp,
             body_bytes,
             ctx.signature,
@@ -1473,8 +1492,8 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
         ):
             log.warning(
                 "HMAC signature mismatch: method=%s path=%s",
-                request.method,
-                request.url.path,
+                method,
+                path,
             )
             return _jsonrpc_error(_CODE_AUTH_FAILED, "Authentication failed", "invalid_signature")
         return None
@@ -1559,67 +1578,141 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
 
         return None
 
-    def _resolve_namespace_context(self, request: Request) -> NamespaceContext | JSONResponse:
-        """Extract namespace_id + agent_id from headers, store on request.state."""
+    def _resolve_namespace_context(
+        self,
+        headers: Headers,
+        scope: dict[str, Any],
+    ) -> NamespaceContext | JSONResponse:
+        """Extract namespace_id + agent_id from headers, store on scope['state']."""
         try:
-            ns_id = resolve_namespace(dict(request.headers))
-            agent_id = validate_agent_id(request.headers.get("x-nce-agent-id", "default"))
+            headers_dict = dict(headers)
+            ns_id = resolve_namespace(headers_dict)
+            agent_id = validate_agent_id(headers.get("x-nce-agent-id", "default"))
             ns_ctx = NamespaceContext(namespace_id=ns_id, agent_id=agent_id)
-            request.state.namespace_ctx = ns_ctx
+            scope.setdefault("state", {})["namespace_ctx"] = ns_ctx
             return ns_ctx
         except (ValueError, ValidationError) as exc:
             log.warning("Namespace resolution failed: %s", exc)
             return _jsonrpc_error(_CODE_INVALID_NAMESPACE, "Invalid namespace context", str(exc))
 
-    async def dispatch(self, request: Request, call_next: Any) -> Any:
-        """HMAC-SHA256 authentication middleware entry point."""
-        if not request.url.path.startswith(self._protected_prefix):
-            return await call_next(request)
+    async def _read_bounded_body(
+        self,
+        headers: Headers,
+        receive: Any,
+    ) -> tuple[bytes, int | None]:
+        """Read request body once up to ``NCE_MAX_HTTP_BODY_BYTES`` before hashing.
+
+        Returns ``(body_bytes, None)`` when within limit, or ``(b"", limit)`` when
+        ``Content-Length`` or accumulated stream bytes exceed ``limit``.
+        """
+        limit = _resolve_http_body_limit()
+        cl_raw = headers.get("content-length")
+        if cl_raw is not None:
+            try:
+                cl_val = int(cl_raw.strip())
+            except ValueError:
+                return b"", limit
+            if cl_val < 0 or cl_val > limit:
+                return b"", limit
+
+        chunks: list[bytes] = []
+        total_bytes = 0
+        while True:
+            message = await receive()
+            if message.get("type") != "http.request":
+                break
+            chunk = message.get("body", b"")
+            if chunk:
+                total_bytes += len(chunk)
+                if total_bytes > limit:
+                    return b"", limit
+                chunks.append(chunk)
+            if not message.get("more_body", False):
+                break
+        return b"".join(chunks), None
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        """Pure-ASGI HMAC-SHA256 authentication middleware entry point."""
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = _scope_path(scope)
+        if path in _FAST_PROBE_PATHS or not path.startswith(self._protected_prefix):
+            await self.app(scope, receive, send)
+            return
 
         if not self._api_key:
             log.error("HMAC auth rejected: NCE_API_KEY is empty (server misconfigured)")
-            return _jsonrpc_error(
+            resp = _jsonrpc_error(
                 _CODE_AUTH_FAILED, "Authentication failed", "server_misconfigured"
             )
+            await resp(scope, receive, send)
+            return
+
+        headers = Headers(scope=scope)
 
         # Step 1: Extract + validate headers
-        ctx_or_err = await self._extract_hmac_context(request)
+        ctx_or_err = await self._extract_hmac_context(headers)
         if isinstance(ctx_or_err, JSONResponse):
-            return ctx_or_err
+            await ctx_or_err(scope, receive, send)
+            return
         ctx: HMACAuthContext = ctx_or_err
 
         # Step 2: Timestamp replay protection
         ts_err = self._verify_timestamp(ctx)
         if ts_err is not None:
-            return ts_err
+            await ts_err(scope, receive, send)
+            return
 
         # Step 3: Validate mandatory X-NCE-Nonce format/length before verification
         nonce_hdr_err = self._verify_nonce_header(ctx)
         if nonce_hdr_err is not None:
-            return nonce_hdr_err
+            await nonce_hdr_err(scope, receive, send)
+            return
 
-        # Step 4: Read body + verify nonce-bound signature
-        body_bytes = await request.body()
-        sig_err = self._verify_signature(request, ctx, body_bytes)
+        # Step 4: Bounded body read (HTTP 413 before hashing) + signature check
+        body_bytes, exceeded_limit = await self._read_bounded_body(headers, receive)
+        if exceeded_limit is not None:
+            start_msg, body_msg = _build_413_response(exceeded_limit)
+            await send(start_msg)
+            await send(body_msg)
+            return
+
+        method = str(scope.get("method", "GET")).upper()
+        sig_err = self._verify_signature(method, path, ctx, body_bytes)
         if sig_err is not None:
-            return sig_err
+            await sig_err(scope, receive, send)
+            return
 
         # Step 5: Distributed nonce replay check
         nonce_err = await self._check_nonce(ctx, ctx.nonce)
         if nonce_err is not None:
-            return nonce_err
+            await nonce_err(scope, receive, send)
+            return
 
         # Step 6: Resolve namespace context
-        ns_result = self._resolve_namespace_context(request)
+        ns_result = self._resolve_namespace_context(headers, scope)
         if isinstance(ns_result, JSONResponse):
-            return ns_result
+            await ns_result(scope, receive, send)
+            return
 
-        request.state.hmac_auth = ctx
-        return await call_next(request)
+        scope.setdefault("state", {})["hmac_auth"] = ctx
+
+        replayed = False
+
+        async def replay_receive() -> dict[str, Any]:
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": body_bytes, "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay_receive, send)
 
 
-class BasicAuthMiddleware(BaseHTTPMiddleware):
-    """HTTP Basic auth for non-API admin UI routes."""
+class BasicAuthMiddleware:
+    """Pure-ASGI HTTP Basic auth for non-API admin UI routes."""
 
     def __init__(
         self,
@@ -1631,7 +1724,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         excluded_prefixes: tuple[str, ...] = ("/api/",),
         realm: str = "NCE Admin",
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._protected_prefix = protected_prefix
         self._excluded_prefixes = excluded_prefixes
         self._username = username
@@ -1657,42 +1750,58 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
             headers={"WWW-Authenticate": f'Basic realm="{self._realm}"'},
         )
 
-    async def dispatch(self, request: Request, call_next: Any) -> Any:
-        if cfg.NCE_ADMIN_OVERRIDE:
-            return await call_next(request)
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
 
-        path = request.url.path
+        path = _scope_path(scope)
+        if path in _FAST_PROBE_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        if cfg.NCE_ADMIN_OVERRIDE:
+            await self.app(scope, receive, send)
+            return
+
         if not path.startswith(self._protected_prefix):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
         if any(
             path.startswith(prefix)
             if prefix.endswith("/")
             else (path == prefix or path.startswith(prefix + "/"))
             for prefix in self._excluded_prefixes
         ):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         if not self._username or not self._password:
-            return self._challenge()
+            await self._challenge()(scope, receive, send)
+            return
 
-        auth_header = request.headers.get("authorization", "").strip()
+        headers = Headers(scope=scope)
+        auth_header = headers.get("authorization", "").strip()
         scheme, _, token = auth_header.partition(" ")
         if scheme.lower() != "basic" or not token:
-            return self._challenge()
+            await self._challenge()(scope, receive, send)
+            return
 
         try:
             decoded = b64decode(token).decode("utf-8")
             username, _, password = decoded.partition(":")
         except (ValueError, BinasciiError, UnicodeDecodeError):
-            return self._challenge()
+            await self._challenge()(scope, receive, send)
+            return
 
         valid_pw, _ = await verify_admin_password_async(
             password, self._password, auto_upgrade=False
         )
         if not (secrets.compare_digest(username, self._username) and valid_pw):
-            return self._challenge()
+            await self._challenge()(scope, receive, send)
+            return
 
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
 
 # ---------------------------------------------------------------------------
@@ -1709,10 +1818,16 @@ _ADMIN_HTTP_SENSITIVE_PREFIXES: tuple[str, ...] = (
 )
 
 
-def _admin_http_client_ip(request: Request) -> str:
+def _admin_http_client_ip(scope_or_request: Any) -> str:
     """Client IP for admin HTTP rate limiting (direct connection only)."""
-    if request.client and request.client.host:
-        return request.client.host
+    if isinstance(scope_or_request, dict):
+        client = scope_or_request.get("client")
+        if client and len(client) >= 1 and client[0]:
+            return str(client[0])
+        return "unknown"
+    client = getattr(scope_or_request, "client", None)
+    if client and getattr(client, "host", None):
+        return str(client.host)
     return "unknown"
 
 
@@ -1747,15 +1862,24 @@ async def _check_admin_http_rate_limit(
     return _check_in_memory_rate_limit(key, limit, period)
 
 
-class AdminHTTPRateLimitMiddleware(BaseHTTPMiddleware):
-    """Per-IP sliding-window rate limits for admin_server HTTP routes."""
+class AdminHTTPRateLimitMiddleware:
+    """Pure-ASGI per-IP sliding-window rate limits for admin_server HTTP routes."""
 
-    async def dispatch(self, request: Request, call_next: Any) -> Any:
-        path = request.url.path
-        if path in ("/healthz", "/readyz"):
-            return await call_next(request)
+    def __init__(self, app: Any) -> None:
+        self.app = app
 
-        sensitive = _admin_http_is_sensitive(path, request.method)
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = _scope_path(scope)
+        if path in _FAST_PROBE_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        method = str(scope.get("method", "GET")).upper()
+        sensitive = _admin_http_is_sensitive(path, method)
         limit = (
             cfg.NCE_ADMIN_HTTP_SENSITIVE_RATE_LIMIT if sensitive else cfg.NCE_ADMIN_HTTP_RATE_LIMIT
         )
@@ -1764,24 +1888,28 @@ class AdminHTTPRateLimitMiddleware(BaseHTTPMiddleware):
             if sensitive
             else cfg.NCE_ADMIN_HTTP_RATE_PERIOD
         )
-        client_ip = _admin_http_client_ip(request)
+        client_ip = _admin_http_client_ip(scope)
         key = f"nce:ratelimit:admin:http:{client_ip}:{'sensitive' if sensitive else 'general'}"
 
-        redis_client = getattr(request.app.state, "redis_client", None)
+        app_obj = scope.get("app")
+        app_state = getattr(app_obj, "state", None)
+        redis_client = getattr(app_state, "redis_client", None)
         allowed = await _check_admin_http_rate_limit(redis_client, key, limit, period)
         if not allowed:
             log.warning(
                 "Admin HTTP rate limit exceeded ip=%s path=%s method=%s",
                 client_ip,
                 path,
-                request.method,
+                method,
             )
-            return JSONResponse(
+            resp = JSONResponse(
                 status_code=429,
                 content={"error": "Rate limit exceeded"},
             )
+            await resp(scope, receive, send)
+            return
 
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ from starlette.middleware import Middleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from nce import __version__ as _NCE_VERSION
 from nce import admin_http_handlers as h
 from nce import admin_state
 from nce.admin_handlers import entity_resolution as entity_resolution_handlers
@@ -70,12 +71,16 @@ ADMIN_PRINCIPAL_KIND: str = "employee"
 @asynccontextmanager
 async def admin_lifespan(app):
     global _ADMIN_SHUTTING_DOWN
-    from nce.config import assert_admin_override_not_in_production
+    from nce.config import (
+        assert_admin_override_not_in_production,
+        assert_entra_strict_in_production,
+    )
     from nce.mtls import assert_server_mtls_or_acknowledged
 
     _ADMIN_SHUTTING_DOWN = False
     _ADMIN_READINESS_CACHE.invalidate()
     assert_admin_override_not_in_production()
+    assert_entra_strict_in_production()
 
     admin_state.engine = NCEEngine()
     await admin_state.engine.connect()
@@ -135,7 +140,7 @@ async def get_healthz(request):
     payload, status_code = build_liveness_payload(
         "admin",
         shutting_down=_ADMIN_SHUTTING_DOWN,
-        version="3.5.3",
+        version=_NCE_VERSION,
     )
     return JSONResponse(payload, status_code=status_code)
 
@@ -149,7 +154,7 @@ async def get_readyz(request):
             engine,
             service="admin",
             shutting_down=_ADMIN_SHUTTING_DOWN,
-            version="3.5.3",
+            version=_NCE_VERSION,
         )
 
     payload, status_code = await _ADMIN_READINESS_CACHE.get_or_probe(_probe)
