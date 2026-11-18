@@ -312,3 +312,112 @@ async def test_depth_confidence_attenuation_d1(pg_pool: asyncpg.Pool, ns: UUID):
         f"Expected edge confidence {expected_conf:.6f} "
         f"(conf={abstraction_conf} × γ^1={gamma}), got {actual_conf:.6f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 3 — real-pool consolidation embeddings, halfvec(768), and dual-write
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_consolidation_embeds_memory_kg_nodes_and_active_model_tables(
+    pg_pool: asyncpg.Pool,
+    ns: UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consolidation embeds consolidated memories and new kg_nodes and dual-writes active models."""
+    from nce import embeddings as _embeddings
+    from nce.consolidation import _CONSOL_ACTIVE_MODELS_CACHE
+
+    monkeypatch.setattr(cfg, "NCE_BACKEND", "mock")
+    _embeddings.reset_backend_singleton_for_tests()
+    _CONSOL_ACTIVE_MODELS_CACHE.clear()
+
+    subject = f"ConsolEmbed-{uuid4().hex[:8]}"
+    abstraction = _make_abstraction([], conf=0.88, subject=subject)
+    worker = ConsolidationWorker(pg_pool, _StubLLM(abstraction))
+
+    temp_model_id: UUID | None = None
+    try:
+        async with pg_pool.acquire() as adm_conn:
+            existing_model_id = await adm_conn.fetchval(
+                "SELECT id FROM embedding_models WHERE status IN ('active', 'migrating') LIMIT 1"
+            )
+            if existing_model_id is None:
+                temp_model_id = await adm_conn.fetchval(
+                    "INSERT INTO embedding_models (name, dimension, status) "
+                    "VALUES ($1, 768, 'active') RETURNING id",
+                    f"test-consol-model-{uuid4().hex[:8]}",
+                )
+                active_model_id = temp_model_id
+            else:
+                active_model_id = existing_model_id
+
+        abs_vec, entity_vecs = await worker._embed_abstraction_and_entities(
+            abstraction.abstraction, abstraction.key_entities
+        )
+        assert abs_vec is not None and abs_vec.count(",") == 767
+        assert set(entity_vecs.keys()) == {subject, f"{subject}-entity"}
+
+        async with scoped_pg_session(pg_pool, ns) as conn:
+            new_mem_id, _depth = await worker._store_consolidated_memory(
+                conn,
+                namespace_id=ns,
+                abstraction=abstraction,
+                cluster_mems=[{"derivation_depth": 0}],
+                mem_ids=[],
+                payload_ref=_fake_objectid(),
+                embedding_vec=abs_vec,
+            )
+            await worker._update_kg(
+                conn,
+                namespace_id=ns,
+                abstraction=abstraction,
+                mem_ids=[],
+                new_depth=1,
+                entity_embeddings=entity_vecs,
+            )
+
+        async with scoped_pg_session(pg_pool, ns) as verify_conn:
+            mem_emb = await verify_conn.fetchval(
+                "SELECT embedding IS NOT NULL FROM memories WHERE id = $1",
+                new_mem_id,
+            )
+            assert mem_emb is True
+
+            node_rows = await verify_conn.fetch(
+                "SELECT id, embedding IS NOT NULL AS has_emb FROM kg_nodes "
+                "WHERE namespace_id = $1 AND label = ANY($2::text[])",
+                ns,
+                [subject, f"{subject}-entity"],
+            )
+            assert len(node_rows) == 2
+            assert all(r["has_emb"] is True for r in node_rows)
+
+            me_count = await verify_conn.fetchval(
+                "SELECT count(*) FROM memory_embeddings WHERE memory_id = $1 AND model_id = $2",
+                new_mem_id,
+                active_model_id,
+            )
+            assert me_count == 1
+
+            kne_count = await verify_conn.fetchval(
+                "SELECT count(*) FROM kg_node_embeddings WHERE node_id = ANY($1::uuid[]) AND model_id = $2",
+                [r["id"] for r in node_rows],
+                active_model_id,
+            )
+            assert kne_count == 2
+    finally:
+        _CONSOL_ACTIVE_MODELS_CACHE.clear()
+        _embeddings.reset_backend_singleton_for_tests()
+        if temp_model_id is not None:
+            async with pg_pool.acquire() as clean_conn:
+                await clean_conn.execute(
+                    "DELETE FROM memory_embeddings WHERE model_id = $1", temp_model_id
+                )
+                await clean_conn.execute(
+                    "DELETE FROM kg_node_embeddings WHERE model_id = $1", temp_model_id
+                )
+                await clean_conn.execute(
+                    "DELETE FROM embedding_models WHERE id = $1", temp_model_id
+                )
