@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import tomllib
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -374,8 +373,13 @@ def test_entra_fail_closed_in_production(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_dynamic_version_compose_and_retention_hygiene() -> None:
     """Verify v3.5.4 metadata, Compose hardening, and zero silent retention skips."""
-    pyproject = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    expected_version = pyproject["project"]["version"]
+    pyproject_text = (
+        (_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8").replace("\r\n", "\n")
+    )
+    project_section = pyproject_text.split("[project]", 1)[1].split("\n[", 1)[0]
+    ver_match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', project_section)
+    assert ver_match is not None
+    expected_version = ver_match.group(1)
     assert expected_version == "3.5.4"
     assert nce.__version__ == expected_version
 

@@ -22,10 +22,9 @@ from __future__ import annotations
 
 import logging as _logging
 import os
+import re
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
-
-import tomllib
 
 __all__ = [
     "NCEEngine",
@@ -45,11 +44,12 @@ def _resolve_package_version() -> str:
     )
     if os.path.isfile(pyproject_path):
         try:
-            with open(pyproject_path, "rb") as fh:
-                data = tomllib.load(fh)
-            ver = data.get("project", {}).get("version")
-            if isinstance(ver, str) and ver.strip():
-                return ver.strip()
+            with open(pyproject_path, encoding="utf-8") as fh:
+                text = fh.read().replace("\r\n", "\n")
+            section = text.split("[project]", 1)[1].split("\n[", 1)[0]
+            match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', section)
+            if match and match.group(1).strip():
+                return match.group(1).strip()
         except Exception:
             pass
 
