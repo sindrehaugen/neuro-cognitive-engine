@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.7.0] - 2026-11-19
+
+### Added
+- **Day-2 Control-Plane Schema & Leaf-Partition Autovacuum (`nce/migrations/042_day2_ops_backup_and_governance.sql`, `nce/schema.sql`, `nce/ops/models.py`):**
+  - Added 7 global control-plane tables (`runtime_tool_governance`, `backup_leases`, `backup_manifests`, `ops_probe_runs`, `ops_incidents`, `ops_quarantine`, `ops_playbook_executions`) owned by admin/`nce_gc` roles with direct table privileges revoked from `nce_app` and narrow `SECURITY DEFINER` lookup helpers (`nce_get_disabled_runtime_tools`, `nce_is_backup_lease_active`).
+  - Applied dynamic leaf-partition autovacuum tuning (`autovacuum_vacuum_scale_factor = 0.02`, `autovacuum_analyze_scale_factor = 0.02`) across partitioned `memory_salience` and `kg_edges` leaf partitions plus `ops_probe_runs`.
+- **`T_cut` Catalog-Watermark Backups, CoW Immutability & Ephemeral Drills (`nce/ops/backup.py`, `nce/ops/cli.py`, `nce/storage.py`, `nce/orchestrators/`, `nce/envelope.py`):**
+  - Enforced Copy-on-Write (`CoW`) revision immutability on MongoDB `episodes` (`created_at` ascending index + `saga_id`) and versioned SHA-256 MinIO keys (`x-amz-meta-created-at`, `x-amz-meta-saga-id`).
+  - Implemented `T_cut` coordinated `PG -> MongoDB -> MinIO` archive capture inside `REPEATABLE READ READ ONLY` snapshot transactions (`NCE_MIGRATION_PG_DSN`), TTL-bounded `<= 30m` `backup_leases`, two-phase `crypto_shred` appending HMAC-signed zero-PII lines to `<NCE_BACKUP_DIR>/shred_tombstones.jsonl` + deferred ciphertext GC (`drain_deferred_shred_gc`), disk headroom preflight (`OpsDiskHeadroomError`), and isolated single-host `nce_drill_*` ephemeral restore drills (`nce-ops backup|drill|restore-drill`, `make backup`, `make restore-drill`).
+- **Deterministic Maintenance Caddy, `ops-elm` Sidecar, `@governed` Playbooks & RQ Quarantine (`nce/ops/caddy.py`, `nce/ops/elm.py`, `nce/ops/playbooks.py`, `nce/ops/quarantine.py`, `nce/cron.py`, `start_worker.py`):**
+  - Added zero-`docker.sock` 5-minute, nightly, and weekly Maintenance Caddy probes writing `ops_probe_runs` and deduplicated `ops_incidents`, plus bounded Redis salience buffers (`NCE_SALIENCE_BUFFER_MAX_LEN=50000`, `24h` TTL) and `idle_in_transaction_session_timeout = '30s'`.
+  - Added optional isolated `ops-elm` Ollama sidecar (`docker compose --profile ops-elm`, `OLLAMA_KEEP_ALIVE=2m`) with secret scrubbing, prompt-injection delimiter fencing, Pydantic `ELMDiagnosticBrief` playbook allowlist validation, and `< 2.0 s` deterministic offline fallback.
+  - Added 5 two-step confirm-first `@governed` repair playbooks (`ops_playbook_executions`) and `RecoveringWorker` 2-strike / inflight OOM poison-pill quarantine into `ops_quarantine`.
+- **Air-Gapped 5-Tab `/admin` Console, Dual-Auth & Durable Governance (`admin/`, `nce/admin_ops.py`, `nce/tool_governance.py`):**
+  - Delivered 5-tab native-DOM `/admin` control plane (`1. Overview`, `2. Backups & Drills`, `3. Ops Caddy & Quarantine`, `4. Tenants & MCP Onboarding`, `5. Plugins, Tools & Connections`) with `0` external CDNs and `0` `innerHTML`, pure-ASGI `AdminDualAuthMiddleware` (`HttpOnly` signed session cookie + `X-NCE-CSRF-Token`, 3-header `HMAC-SHA256` + Redis nonces, strict Entra OIDC Bearer), and PostgreSQL-durable `runtime_tool_governance` surviving Redis `FLUSHALL`.
+- **Chaos Verification & Security Fixes:**
+  - Replaced `tarfile.extractall()` in `nce/ops/backup.py` with member-by-member validated stream extraction (eliminating Bandit `B202`), added `scripts/verify_day2_chaos_hardening.py` (`make verify-day2`), and published verified `6/6` telemetry in `docs/benchmarks/DAY2_OPS_HARDENING_v3.7.0.md`.
+
+---
+
 ## [3.6.0] - 2026-11-19
 
 ### Added

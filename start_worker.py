@@ -46,15 +46,28 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING
+import sys
+import traceback
+from typing import TYPE_CHECKING, Any
 
 from redis import Redis, from_url
 from rq import Queue, Worker
 from rq.registry import StartedJobRegistry
+from rq.timeouts import JobTimeoutException
+from rq.utils import now as rq_now
 
 from nce.config import cfg
+from nce.ops.quarantine import (
+    FAILURES_KEY_PREFIX,
+    FAILURES_TTL_SECONDS,
+    INFLIGHT_KEY_PREFIX,
+    INFLIGHT_TTL_SECONDS,
+    compute_job_fingerprint,
+    quarantine_poison_job_sync,
+)
 
 if TYPE_CHECKING:
+    from rq.executions import Execution
     from rq.job import Job
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [Worker] %(levelname)s %(message)s")
@@ -109,6 +122,10 @@ def requeue_abandoned_jobs(queue: Queue, connection: Redis) -> list[str]:
         # ``FailedJobRegistry.requeue`` contract — reset the run timestamps and
         # push the same Job object back via ``Queue.enqueue_job`` — so the job is
         # picked up again from the lane it came from instead of vanishing.
+        #
+        # IMPORTANT (v3.7.0 OOM / abrupt-death quarantine): intentionally do NOT
+        # clear ``nce:rq_inflight:{job_fp}`` here; its presence on next pickup
+        # tells RecoveringWorker that the prior attempt terminated abruptly.
         connection.zrem(registry.key, job_id)
         origin = Queue(job.origin, connection=connection)
         job.started_at = None
@@ -136,12 +153,18 @@ def maintain_started_registries(queues: list[Queue], connection: Redis) -> list[
 
 
 class RecoveringWorker(Worker):
-    """RQ worker that requeues abandoned in-flight jobs on each maintenance tick.
+    """RQ worker with crash recovery and poison-pill / OOM quarantine guards.
 
-    ``Worker.run_maintenance_tasks`` is invoked periodically by ``work()`` (and
-    once at startup); hooking it means crashed-worker recovery happens without a
-    separate process while keeping standard ``work()`` semantics.
+    ``Worker.run_maintenance_tasks`` requeues abandoned in-flight jobs on each
+    maintenance tick, while :meth:`perform_job` enforces pre-execution checks on
+    ``nce:rq_inflight:{job_fp}`` and ``nce:rq_failures:{job_fp}`` so repeated
+    poison pills or abruptly terminated OOM jobs quarantine cleanly without
+    crash-looping.
     """
+
+    def __init__(self, *args: Any, quarantine_pg_pool: Any = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._quarantine_pg_pool = quarantine_pg_pool
 
     def run_maintenance_tasks(self) -> None:
         super().run_maintenance_tasks()
@@ -149,6 +172,164 @@ class RecoveringWorker(Worker):
             maintain_started_registries(list(self.queues), self.connection)
         except Exception:  # never let recovery crash the worker loop
             log.exception("started-registry maintenance sweep failed")
+
+    def _job_fingerprint(self, job: Job, queue: Queue) -> str:
+        origin_name = getattr(job, "origin", None) or getattr(queue, "name", "")
+        return compute_job_fingerprint(
+            queue_name=str(origin_name),
+            func_name=str(getattr(job, "func_name", "") or ""),
+            args=getattr(job, "args", ()) or (),
+            kwargs=getattr(job, "kwargs", None) or {},
+        )
+
+    def _re_enqueue_once(self, job: Job, queue: Queue) -> None:
+        origin_name = getattr(job, "origin", None) or queue.name
+        origin = Queue(origin_name, connection=self.connection)
+        try:
+            job.requeue()
+            return
+        except Exception as exc:
+            log.debug("Job.requeue fallback to Queue.enqueue_job for %s: %s", job.id, exc)
+        job.started_at = None
+        job.ended_at = None
+        job._exc_info = ""
+        origin.enqueue_job(job)
+
+    def handle_work_horse_killed(
+        self,
+        job: Job,
+        retpid: int,
+        ret_val: Any,
+        rusage: Any,
+    ) -> None:
+        """Record abrupt work-horse death (e.g., OOM exit 137 / SIGKILL) and keep inflight."""
+        super().handle_work_horse_killed(job, retpid, ret_val, rusage)
+        try:
+            origin_name = getattr(job, "origin", None) or (
+                self.queues[0].name if self.queues else "default"
+            )
+            job_fp = compute_job_fingerprint(
+                queue_name=str(origin_name),
+                func_name=str(getattr(job, "func_name", "") or ""),
+                args=getattr(job, "args", ()) or (),
+                kwargs=getattr(job, "kwargs", None) or {},
+            )
+            quarantine_poison_job_sync(
+                pg_pool=self._quarantine_pg_pool,
+                redis_client=self.connection,
+                queue_name=str(origin_name),
+                func_name=str(getattr(job, "func_name", "") or ""),
+                args=getattr(job, "args", ()) or (),
+                kwargs=getattr(job, "kwargs", None) or {},
+                failure_count=2,
+                exit_reason="work_horse_killed",
+                traceback_text=f"Work horse killed abruptly (pid={retpid}, status={ret_val})",
+                job_id=str(getattr(job, "id", "") or ""),
+                job_fingerprint=job_fp,
+            )
+        except Exception:
+            log.exception("Failed recording killed work horse quarantine for job %s", job.id)
+
+    def perform_job(
+        self,
+        job: Job,
+        queue: Queue,
+        execution: Execution | None = None,
+    ) -> bool:
+        """Perform a job with OOM inflight-detection and 2-strike poison quarantine."""
+        if execution is None:
+            execution = self.prepare_execution(job)
+
+        origin_name = getattr(job, "origin", None) or queue.name
+        job_fp = self._job_fingerprint(job, queue)
+        inflight_key = f"{INFLIGHT_KEY_PREFIX}{job_fp}"
+        failures_key = f"{FAILURES_KEY_PREFIX}{job_fp}"
+        remove_from_intermediate_queue = len(self.queues) == 1
+
+        raw_inflight = self.connection.get(inflight_key)
+        raw_failures = self.connection.get(failures_key)
+        prior_failures = (
+            int(raw_failures.decode("utf-8") if isinstance(raw_failures, bytes) else raw_failures)
+            if raw_failures is not None
+            else 0
+        )
+
+        # Pre-execution guard: if inflight marker persisted from an abrupt exit
+        # (OOM / SIGKILL) OR failure threshold already reached, quarantine BEFORE
+        # calling the user callable.
+        if raw_inflight is not None or prior_failures >= 2:
+            was_abrupt = raw_inflight is not None
+            exit_reason = "oom_or_abrupt_exit" if was_abrupt else "repeated_exception"
+            tb_hint = str(getattr(job, "_exc_info", "") or "").strip() or (
+                "Previous worker died abruptly mid-job (lingering inflight marker)"
+                if was_abrupt
+                else f"Repeated exception quarantine triggered (failures={prior_failures})"
+            )
+            self.prepare_job_execution(job, remove_from_intermediate_queue)
+            quarantine_poison_job_sync(
+                pg_pool=self._quarantine_pg_pool,
+                redis_client=self.connection,
+                queue_name=str(origin_name),
+                func_name=str(getattr(job, "func_name", "") or ""),
+                args=getattr(job, "args", ()) or (),
+                kwargs=getattr(job, "kwargs", None) or {},
+                failure_count=max(2, prior_failures + (1 if was_abrupt else 0)),
+                exit_reason=exit_reason,
+                traceback_text=tb_hint,
+                job_id=str(getattr(job, "id", "") or ""),
+                job_fingerprint=job_fp,
+            )
+            self.connection.delete(inflight_key)
+            self._finalize_success(
+                job,
+                queue,
+                execution,
+                {"quarantined": True, "exit_reason": exit_reason, "job_fingerprint": job_fp},
+            )
+            return False
+
+        self.connection.set(inflight_key, str(job.id), ex=INFLIGHT_TTL_SECONDS)
+        try:
+            self.prepare_job_execution(job, remove_from_intermediate_queue)
+            job.started_at = rq_now()
+            timeout = job.timeout or self.queue_class.DEFAULT_TIMEOUT
+            with self.death_penalty_class(timeout, JobTimeoutException, job_id=job.id):
+                self.log.debug("Worker %s: performing job %s ...", self.name, job.id)
+                return_value = job.perform()
+                self.log.debug("Worker %s: finished performing job %s", self.name, job.id)
+
+            self._finalize_success(job, queue, execution, return_value)
+            self.connection.delete(inflight_key, failures_key)
+            return True
+        except (KeyboardInterrupt, SystemExit):
+            # Intentionally preserve inflight_key across abrupt termination so
+            # subsequent pickup detects the interrupted run pre-execution.
+            raise
+        except Exception:
+            exc_info = sys.exc_info()
+            tb_text = "".join(traceback.format_exception(*exc_info))
+            self.connection.delete(inflight_key)
+            failures = int(self.connection.incr(failures_key))
+            self.connection.expire(failures_key, FAILURES_TTL_SECONDS)
+            self._finalize_failure(job, queue, execution, exc_info)
+
+            if failures >= 2:
+                quarantine_poison_job_sync(
+                    pg_pool=self._quarantine_pg_pool,
+                    redis_client=self.connection,
+                    queue_name=str(origin_name),
+                    func_name=str(getattr(job, "func_name", "") or ""),
+                    args=getattr(job, "args", ()) or (),
+                    kwargs=getattr(job, "kwargs", None) or {},
+                    failure_count=failures,
+                    exit_reason="repeated_exception",
+                    traceback_text=tb_text,
+                    job_id=str(getattr(job, "id", "") or ""),
+                    job_fingerprint=job_fp,
+                )
+            elif failures == 1 and getattr(job, "retries_left", None) in (None, 0):
+                self._re_enqueue_once(job, queue)
+            return False
 
 
 def start_worker() -> None:

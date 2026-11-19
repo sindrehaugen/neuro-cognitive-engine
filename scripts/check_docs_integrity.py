@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Mechanical Documentation & Configuration Truth Verifier (v3.5.2).
+"""Mechanical Documentation & Configuration Truth Verifier (v3.7.0).
 
-Enforces 6 zero-tolerance checks across all Markdown files in neuro-cognitive-engine:
+Enforces zero-tolerance checks across all Markdown and code/config files in neuro-cognitive-engine:
   1. Relative Path & Heading Anchor Resolution: 0 broken links or missing #anchors.
   2. Orphan Doc Detection: Every .md file under docs/ must be reachable from README.md,
      docs/README.md, docs/_sidebar.md, or docs/adr/README.md.
@@ -10,10 +10,11 @@ Enforces 6 zero-tolerance checks across all Markdown files in neuro-cognitive-en
      nce/vertical_modules paths outside historical ADRs and _generated/ ledgers.
   4. Configuration & Tool Count Parity: 100% of NCE_* variables in nce/config.py
      documented in .env.example and docs/configuration_reference.md, plus version
-     and 71-tool parity in README.md.
+     and 71-tool parity in README.md and Day-2 runbook gates for >=3.7.0.
   5. Fenced JSON & Mermaid Syntax Validation: All ```json blocks parse cleanly and
      all ```mermaid node labels with ()/: are properly quoted.
-  6. Brand-Wall Scanner: 0 occurrences of Glamox, Vertex, or E2D.
+  6. Brand-Wall & File-URI Scanner: 0 occurrences of Glamox, Vertex, or E2D,
+     0 local file:/// paths in Markdown or code/config, and 0 banned prose metaphors.
 """
 
 from __future__ import annotations
@@ -26,9 +27,16 @@ import sys
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 _BRAND_WALL_RE = re.compile(r"\b(glamox|vertex|e2d)\b", re.IGNORECASE)
-_CODE_SCAN_SUFFIXES = {".py", ".sql", ".yml", ".yaml", ".sh"}
+_CODE_SCAN_SUFFIXES = {".py", ".sql", ".yml", ".yaml", ".sh", ".html", ".toml"}
 _CODE_SCAN_NAMES = {"Makefile", "Caddyfile"}
 _MD_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+_FILE_URI_RE = re.compile(r"file:///[^\s\)\"`'<>]*", re.IGNORECASE)
+_ALLOWED_DOC_FILE_URI_PLACEHOLDERS = frozenset(
+    {
+        "file:///path/to/pub.pem",
+        "file:///absolute/path/to/key.pem",
+    }
+)
 _STATIC_SHIELDS_BADGE_PREFIX = "https://img.shields.io/badge/"
 _STATIC_SHIELDS_IMAGE_MD_RE = re.compile(r"!\[[^\]]*\]\((https://img\.shields\.io/badge/[^)\s]+)\)")
 _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
@@ -48,10 +56,15 @@ _BANNED_PROSE_PHRASES = (
     "time-travelling memory",
     "competing beliefs",
     "autonomous enterprise operating system",
+    "autonomous os",
     "zero hallucinations",
     "hallucination-free",
     "empathic-tensor",
     "empathic tensor",
+)
+_REQUIRED_DAY2_DOCS = (
+    "docs/backup_and_recovery.md",
+    "docs/day2_operations_caddy.md",
 )
 _BANNED_PROSE_RE = re.compile(
     "|".join(re.escape(phrase) for phrase in _BANNED_PROSE_PHRASES),
@@ -128,8 +141,12 @@ def check_links_and_orphans(files: list[pathlib.Path]) -> list[str]:
             target = match.group(1).strip()
             if is_static_shields_badge_url(target):
                 continue
+            if target.lower().startswith("file:"):
+                rel_src = fpath.relative_to(_REPO_ROOT)
+                errors.append(f"{rel_src}: forbidden file:// link -> {target}")
+                continue
             if not target or target.startswith(
-                ("http://", "https://", "mailto:", "conversation://", "file://")
+                ("http://", "https://", "mailto:", "conversation://")
             ):
                 continue
             if target.startswith("#"):
@@ -247,31 +264,23 @@ def check_json_and_mermaid(files: list[pathlib.Path]) -> list[str]:
     return errors
 
 
-def check_version_and_brand_wall(files: list[pathlib.Path]) -> list[str]:
-    errors: list[str] = []
+def _read_pyproject_version() -> str:
     pyproj = (_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     m_ver = re.search(r'^version\s*=\s*"([^"]+)"', pyproj, re.MULTILINE)
-    expected_ver = m_ver.group(1) if m_ver else "3.5.3"
-
-    readme = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    if f"v{expected_ver}" not in readme and expected_ver not in readme:
-        errors.append(f"README.md does not reference current version {expected_ver}")
-    if "71" not in readme:
-        errors.append("README.md does not reference the 71 static Core MCP tools")
-
-    for fpath in files:
-        raw = fpath.read_text(encoding="utf-8")
-        for m in _BRAND_WALL_RE.finditer(raw):
-            rel_src = fpath.relative_to(_REPO_ROOT)
-            errors.append(f"{rel_src}: brand-wall violation {m.group(0)!r}")
-            break
-    errors.extend(check_code_and_config_brand_wall())
-    return errors
+    return m_ver.group(1) if m_ver else "3.5.3"
 
 
-def check_code_and_config_brand_wall() -> list[str]:
-    """Scan tracked source/config files for private vertical brand leaks."""
-    errors: list[str] = []
+def _parse_semver(version_str: str) -> tuple[int, int, int]:
+    match = re.match(r"^\s*(\d+)\.(\d+)\.(\d+)", version_str)
+    if not match:
+        return (0, 0, 0)
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+
+def _iter_tracked_code_config_files(
+    *, skip_rel: set[str] | frozenset[str] = frozenset({"scripts/check_docs_integrity.py"})
+) -> list[pathlib.Path]:
+    """Return tracked/unignored source and config files eligible for static scanning."""
     candidates: list[pathlib.Path] = []
     if (_REPO_ROOT / ".git").exists():
         try:
@@ -290,19 +299,98 @@ def check_code_and_config_brand_wall() -> list[str]:
     if not candidates:
         candidates = [p for p in _REPO_ROOT.rglob("*") if p.is_file()]
 
-    skip_rel = {"scripts/check_docs_integrity.py"}
+    filtered: list[pathlib.Path] = []
+    skip_dirs = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", "dist", "build"}
     for fpath in candidates:
-        rel_posix = fpath.relative_to(_REPO_ROOT).as_posix()
+        rel_path = fpath.relative_to(_REPO_ROOT)
+        rel_posix = rel_path.as_posix()
         if rel_posix in skip_rel:
             continue
-        if any(
-            part
-            in {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", "dist", "build"}
-            for part in fpath.relative_to(_REPO_ROOT).parts
-        ):
+        if any(part in skip_dirs for part in rel_path.parts):
             continue
         if fpath.suffix.lower() not in _CODE_SCAN_SUFFIXES and fpath.name not in _CODE_SCAN_NAMES:
             continue
+        filtered.append(fpath)
+    return filtered
+
+
+def check_required_day2_docs(expected_ver: str | None = None) -> list[str]:
+    """Require Day-2 runbooks once pyproject.toml version reaches 3.7.0."""
+    ver = expected_ver or _read_pyproject_version()
+    if _parse_semver(ver) < (3, 7, 0):
+        return []
+    errors: list[str] = []
+    for rel_doc in _REQUIRED_DAY2_DOCS:
+        doc_path = _REPO_ROOT / rel_doc
+        if not doc_path.is_file():
+            errors.append(f"{rel_doc}: missing required v3.7.0 Day-2 runbook")
+        elif not doc_path.read_text(encoding="utf-8").strip():
+            errors.append(f"{rel_doc}: required v3.7.0 Day-2 runbook is empty")
+    return errors
+
+
+def check_file_uri_paths(files: list[pathlib.Path]) -> list[str]:
+    """Block local file:/// paths across Markdown documentation and code/config files."""
+    errors: list[str] = []
+    for fpath in files:
+        rel_src = fpath.relative_to(_REPO_ROOT).as_posix()
+        raw = fpath.read_text(encoding="utf-8")
+        for line_no, line in enumerate(raw.splitlines(), 1):
+            for match in _FILE_URI_RE.finditer(line):
+                uri = match.group(0).rstrip(".,;:")
+                if uri.lower() in _ALLOWED_DOC_FILE_URI_PLACEHOLDERS:
+                    continue
+                errors.append(f"{rel_src}:{line_no}: forbidden file:/// path -> {uri}")
+
+    code_skip = frozenset(
+        {
+            "scripts/check_docs_integrity.py",
+            "scripts/verify_docs_links_and_syntax.py",
+        }
+    )
+    for fpath in _iter_tracked_code_config_files(skip_rel=code_skip):
+        rel_posix = fpath.relative_to(_REPO_ROOT).as_posix()
+        raw = fpath.read_text(encoding="utf-8", errors="ignore")
+        for line_no, line in enumerate(raw.splitlines(), 1):
+            for match in _FILE_URI_RE.finditer(line):
+                uri = match.group(0).rstrip(".,;:")
+                uri_lower = uri.lower()
+                if uri_lower in _ALLOWED_DOC_FILE_URI_PLACEHOLDERS:
+                    continue
+                if rel_posix.startswith("tests/") and uri_lower == "file:///etc/passwd":
+                    continue
+                errors.append(
+                    f"{rel_posix}:{line_no}: forbidden file:/// path in code/config -> {uri}"
+                )
+    return errors
+
+
+def check_version_and_brand_wall(files: list[pathlib.Path]) -> list[str]:
+    errors: list[str] = []
+    expected_ver = _read_pyproject_version()
+
+    readme = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    if f"v{expected_ver}" not in readme and expected_ver not in readme:
+        errors.append(f"README.md does not reference current version {expected_ver}")
+    if "71" not in readme:
+        errors.append("README.md does not reference the 71 static Core MCP tools")
+
+    for fpath in files:
+        raw = fpath.read_text(encoding="utf-8")
+        for m in _BRAND_WALL_RE.finditer(raw):
+            rel_src = fpath.relative_to(_REPO_ROOT)
+            errors.append(f"{rel_src}: brand-wall violation {m.group(0)!r}")
+            break
+    errors.extend(check_code_and_config_brand_wall())
+    errors.extend(check_required_day2_docs(expected_ver))
+    return errors
+
+
+def check_code_and_config_brand_wall() -> list[str]:
+    """Scan tracked source/config files for private vertical brand leaks."""
+    errors: list[str] = []
+    for fpath in _iter_tracked_code_config_files():
+        rel_posix = fpath.relative_to(_REPO_ROOT).as_posix()
         raw = fpath.read_text(encoding="utf-8", errors="ignore")
         for m in _BRAND_WALL_RE.finditer(raw):
             errors.append(f"{rel_posix}: code/config brand-wall violation {m.group(0)!r}")
@@ -355,6 +443,7 @@ def main() -> int:
 
     errors: list[str] = []
     errors.extend(check_links_and_orphans(md_files))
+    errors.extend(check_file_uri_paths(md_files))
     errors.extend(check_stale_refs(md_files))
     errors.extend(check_config_parity())
     errors.extend(check_json_and_mermaid(md_files))
@@ -367,7 +456,7 @@ def main() -> int:
         return 1
 
     print(
-        f"[OK] Verified {len(md_files)} markdown files: 0 broken links/anchors, 0 orphan docs, 0 stale refs, 100% NCE_* config parity, valid JSON/Mermaid, 0 banned metaphors, 0 brand-wall violations."
+        f"[OK] Verified {len(md_files)} markdown files: 0 broken links/anchors, 0 file:/// paths, 0 orphan docs, 0 stale refs, 100% NCE_* config parity, valid JSON/Mermaid, 0 banned metaphors, 0 brand-wall violations."
     )
     return 0
 

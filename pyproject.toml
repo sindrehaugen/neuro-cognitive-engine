@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuro-cognitive-engine"
-version = "3.6.0"
+version = "3.7.0"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -56,6 +56,7 @@ full = [
 
 [project.scripts]
 nce-mcp-proxy = "nce.mcp_client_proxy:main"
+nce-ops = "nce.ops.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["nce", "nce.*"]

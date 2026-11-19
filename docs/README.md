@@ -2,7 +2,7 @@
 
 # NCE Documentation Index
 
-Technical specifications, systems-architecture guides, security runbooks, and API references for **NCE v3.6.0** (an ongoing personal R&D project started in early May 2026).
+Technical specifications, systems-architecture guides, security runbooks, and API references for **NCE v3.7.0** (an ongoing personal R&D project started in early May 2026).
 
 ---
 
@@ -30,7 +30,9 @@ Technical specifications, systems-architecture guides, security runbooks, and AP
 ## Configuration & Operations
 
 - [**Configuration Reference**](configuration_reference.md): Complete reference for all `NCE_*` environment variables, defaults, and launch commands.
-- [**IT Admin Guide**](it_admin_guide.md): Day-two operational procedures for self-hosted sandboxes and engineering pilots.
+- [**IT Admin Guide**](it_admin_guide.md): Day-two operational procedures, 5-tab `/admin` dual-auth console, durable `runtime_tool_governance`, and self-hosted engineering pilots.
+- [**Backup, CoW Storage & Ephemeral Restore Drills**](backup_and_recovery.md): `T_cut` catalog-watermark backups, Copy-on-Write blob immutability, two-phase `crypto_shred` tombstones (`shred_tombstones.jsonl`), and `nce_drill_*` verification (`v3.7.0`).
+- [**Day-2 Operations Caddy & Ops Console**](day2_operations_caddy.md): Zero-`docker.sock` Maintenance Caddy probes, optional `ops-elm` sidecar with secret/injection fencing, confirm-first playbooks, RQ quarantine, and `/admin` (`v3.7.0`).
 - [**Airgapped & Edge Deployment**](airgapped_deployment.md): Offline baked ONNX embedding container, OpenVINO CPU/NPU execution, and air-gapped network setup.
 - [**VRAM Monitoring**](vram_monitoring.md): Prometheus gauges and alert thresholds for GPU/VRAM usage in the re-embedding worker.
 - [**Observability Guide**](observability.md): Prometheus metrics, OpenTelemetry tracing, health endpoints, and alerting rules.
@@ -100,6 +102,7 @@ Cross-module governance and isolation primitives used by optional R&D domain plu
   - [**Security Hardening & Partition RLS Report (`v3.5.3`)**](benchmarks/HARDENING_READINESS_v3.5.3.md)
   - [**Pure-ASGI, Baked ONNX & Cron Isolation Report (`v3.5.4`)**](benchmarks/HARDENING_READINESS_v3.5.4.md)
   - [**Connector SDK & Maturity Contract Report (`v3.6.0`)**](benchmarks/HARDENING_READINESS_v3.6.0.md)
+  - [**Day-2 Operations & Chaos Hardening Report (`v3.7.0`)**](benchmarks/DAY2_OPS_HARDENING_v3.7.0.md)
 - [**API Reference (Curated)**](api_reference.md) · [**API Surface (Auto-Generated)**](API.md)
 - [**Detector Limits & AST Ratchet**](detector_limits.md) · [**Data-Source Modes**](DATA_SOURCE_MODES.md) · [**Frontend Readiness**](FRONTEND_READINESS.md)
 - [**Architecture Decision Records**](adr/README.md): Historical ADRs `0001`–`0008` preserved for design lineage.

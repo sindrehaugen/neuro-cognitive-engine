@@ -45,7 +45,7 @@ def test_cross_repo_migration_037_038_ledger_disjointness() -> None:
 
 
 def test_check_schema_drift_reconciles_33_plus_10_core_tables() -> None:
-    """schema.sql (34 tables, including 041 app_connections) + Core migrations (10 tables) = 44 Core SQL tables."""
+    """schema.sql (41 tables, incl. 041 app_connections + 042 Day-2 Ops) + Core migrations (10) = 51 SQL tables."""
     from check_schema_drift import expected_columns, expected_migration_columns
 
     schema_tables = set(expected_columns())
@@ -53,9 +53,9 @@ def test_check_schema_drift_reconciles_33_plus_10_core_tables() -> None:
     mig_only = mig_tables - schema_tables
     total_core = schema_tables | mig_tables
 
-    assert len(schema_tables) == 34
+    assert len(schema_tables) == 41
     assert len(mig_only) == 10
-    assert len(total_core) == 44
+    assert len(total_core) == 51
 
 
 def test_dek_unwrap_cache_prewarms_and_zeroes_on_clear() -> None:

@@ -17,6 +17,7 @@
   - [Hardening Report (v3.5.3)](benchmarks/HARDENING_READINESS_v3.5.3.md)
   - [Pure-ASGI & ONNX Report (v3.5.4)](benchmarks/HARDENING_READINESS_v3.5.4.md)
   - [Connector SDK Report (v3.6.0)](benchmarks/HARDENING_READINESS_v3.6.0.md)
+  - [Day-2 Ops & Chaos Report (v3.7.0)](benchmarks/DAY2_OPS_HARDENING_v3.7.0.md)
   - [Plugin & Connector SDK Guide](plugin_development.md)
   - [Plugin Overview (Non-Technical)](plugin-overview-nontechnical.md)
 
@@ -35,6 +36,8 @@
 
 - Configuration & Operations
   - [IT Admin Guide](it_admin_guide.md)
+  - [Backup & Ephemeral Restore Drills](backup_and_recovery.md)
+  - [Day-2 Maintenance Caddy & /admin](day2_operations_caddy.md)
   - [Airgapped & Edge Deployment](airgapped_deployment.md)
   - [VRAM Monitoring](vram_monitoring.md)
   - [Observability Guide](observability.md)

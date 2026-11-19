@@ -469,32 +469,22 @@ async def test_serve_index_and_styles_resolve_repo_root_admin_dir() -> None:
 
 
 def test_admin_index_html_contracts() -> None:
-    """Verify frontend contracts in admin/index.html for HMAC signing, trace filter, null guard, and MinIO totals."""
+    """Verify v3.7.0 5-tab air-gapped frontend contracts across admin/index.html and admin/console.js."""
     from pathlib import Path
 
-    html = (Path(__file__).resolve().parent.parent / "admin" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    admin_dir = Path(__file__).resolve().parent.parent / "admin"
+    html = (admin_dir / "index.html").read_text(encoding="utf-8")
+    console_js = (admin_dir / "console.js").read_text(encoding="utf-8")
 
-    # Signing credentials status passes query via options.query and signedFetch strips inline '?'
-    assert (
-        "signedFetch(\n              undefined,\n              '/api/admin/signing-credentials/status',\n              { query: { namespace_id: this.targetNs } }\n            )"
-        in html
-    )
-    assert "/api/admin/signing-credentials/status?namespace_id=" not in html
-    assert "if (pathname.includes('?') && !options.query)" in html
+    # Zero external CDNs and zero inline script execution blocks
+    assert "https://" not in html and "http://" not in html
+    assert '<script src="/admin/console.js" defer></script>' in html
+    for tab in ("overview", "backups", "ops", "tenants", "plugins"):
+        assert f'data-tab="{tab}"' in html
 
-    # Consolidation trace queries consolidation_run and shows event_type=consolidation_run in empty state
-    assert "event_type: 'consolidation_run'," in html
-    assert "event_type: 'consolidation'," not in html
-    assert "event_type=consolidation_run" in html
-
-    # Consolidation namespace details card guards both selectedNamespaceId and selectedNamespace
-    assert '<template x-if="selectedNamespaceId && selectedNamespace">' in html
-
-    # MinIO total bytes sums total_size_bytes once per bucket
-    assert (
-        "return (this.minioData.buckets || []).reduce((acc, curr) => acc + (curr.total_size_bytes || 0), 0);"
-        in html
-    )
-    assert "(curr.total_size_bytes || 0) + (curr.total_size_bytes || 0)" not in html
+    # Browser client uses HttpOnly cookie session + X-NCE-CSRF-Token via apiFetch (no HMAC secret in DOM)
+    assert "async function apiFetch(url, options)" in console_js
+    assert 'credentials: "same-origin"' in console_js
+    assert 'headers["X-NCE-CSRF-Token"] = csrf;' in console_js
+    assert "https://" not in console_js and "http://" not in console_js
+    assert "innerHTML" not in console_js

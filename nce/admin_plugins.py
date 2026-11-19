@@ -24,6 +24,18 @@ from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Respon
 from starlette.routing import Route
 
 from nce import admin_state
+from nce.admin_ops import (
+    _MUTATING_METHODS,
+    SESSION_COOKIE_NAME,
+    _check_memory_nonce,
+    _is_session_revoked_redis,
+    _parse_cookies,
+    _redis_set_governance_hydrated,
+    hydrate_governance_cache,
+    persist_governance_toggle,
+    verify_admin_csrf,
+    verify_admin_session_cookie,
+)
 from nce.auth import (
     _PBKDF2_HASH_FORMAT_PREFIX,
     _TIMESTAMP_DRIFT_SECONDS,
@@ -65,6 +77,7 @@ async def get_disabled_engines(
 
     if redis_client is not None:
         try:
+            await hydrate_governance_cache(redis_client)
             keys_raw = await redis_client.hkeys(REDIS_DISABLED_ENGINES_KEY)
             redis_disabled = {
                 k.decode("utf-8") if isinstance(k, bytes) else str(k) for k in keys_raw
@@ -116,6 +129,9 @@ def _check_admin_auth(request: Request) -> JSONResponse | None:
       - Authorization: HMAC-SHA256 <sig>
       - NCE_ADMIN_OVERRIDE (allowed only in dev/test when no admin keys are configured)
     """
+    if getattr(getattr(request, "state", None), "admin_authenticated", False):
+        return None
+
     # 1. API key in custom headers
     headers = getattr(request, "headers", None)
     if headers is None:
@@ -178,7 +194,64 @@ def _check_admin_auth(request: Request) -> JSONResponse | None:
                     if abs(int(time.time()) - ts) > _TIMESTAMP_DRIFT_SECONDS:
                         return JSONResponse({"error": "Unauthorized"}, status_code=401)
                     body_bytes = getattr(request, "_body", b"")
-                    expected_hmac_keys = [k for k in (cfg.NCE_API_KEY, live_admin_api_key()) if k]
+                    expected_hmac_keys = [
+                        k
+                        for k in (
+                            cfg.NCE_API_KEY,
+                            live_admin_api_key(),
+                            os.environ.get("NCE_API_KEY", ""),
+                            os.environ.get("NCE_ADMIN_API_KEY", ""),
+                        )
+                        if k
+                    ]
+                    for candidate_key in expected_hmac_keys:
+                        if verify_hmac(
+                            candidate_key,
+                            request.method,
+                            request.url.path,
+                            ts,
+                            body_bytes,
+                            sig_val,
+                            nonce=nonce_val,
+                        ):
+                            state = getattr(request, "state", None)
+                            if state is not None:
+                                state._matched_hmac_scope = hmac_principal_scope(candidate_key)
+                            return None
+                except Exception:
+                    pass
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    else:
+        x_sig = (headers.get("x-nce-signature") or "").strip()
+        if x_sig:
+            if (
+                getattr(request.state, "hmac_authenticated", False)
+                or getattr(request.state, "namespace_ctx", None) is not None
+            ):
+                return None
+            ts_raw = headers.get("x-nce-timestamp")
+            nonce_val = (headers.get("x-nce-nonce") or "").strip()
+            sig_val = (
+                x_sig.split(" ", 1)[1].strip()
+                if x_sig.lower().startswith("hmac-sha256 ")
+                else x_sig
+            )
+            if ts_raw and validate_hmac_nonce(nonce_val):
+                try:
+                    ts = int(ts_raw)
+                    if abs(int(time.time()) - ts) > _TIMESTAMP_DRIFT_SECONDS:
+                        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+                    body_bytes = getattr(request, "_body", b"")
+                    expected_hmac_keys = [
+                        k
+                        for k in (
+                            cfg.NCE_API_KEY,
+                            live_admin_api_key(),
+                            os.environ.get("NCE_API_KEY", ""),
+                            os.environ.get("NCE_ADMIN_API_KEY", ""),
+                        )
+                        if k
+                    ]
                     for candidate_key in expected_hmac_keys:
                         if verify_hmac(
                             candidate_key,
@@ -241,23 +314,49 @@ def _get_admin_hmac_nonce_store() -> Any:
 
 
 async def _check_admin_auth_async(request: Request) -> JSONResponse | None:
-    """Async wrapper over _check_admin_auth adding distributed HMAC replay protection."""
+    """Async wrapper over _check_admin_auth adding session/CSRF and HMAC replay protection."""
+    state = getattr(request, "state", None)
+    if state is not None and getattr(state, "admin_authenticated", False):
+        return None
+
     headers = getattr(request, "headers", None)
     auth = ((headers.get("authorization") if headers else None) or "").strip()
-    if auth.lower().startswith("hmac-sha256 ") and callable(getattr(request, "body", None)):
+    x_sig = ((headers.get("x-nce-signature") if headers else None) or "").strip()
+    has_hmac = bool(auth.lower().startswith("hmac-sha256 ") or (not auth and x_sig))
+    if has_hmac and callable(getattr(request, "body", None)):
         try:
             await request.body()
         except Exception:
             pass
 
+    if headers is not None and not (
+        auth
+        or x_sig
+        or headers.get("x-admin-api-key")
+        or headers.get("x-nce-admin-key")
+        or headers.get("x-nce-api-key")
+    ):
+        cookies = _parse_cookies(headers.get("cookie", ""))
+        if SESSION_COOKIE_NAME in cookies:
+            session = verify_admin_session_cookie(cookies.get(SESSION_COOKIE_NAME))
+            if session is None or await _is_session_revoked_redis(str(session.get("jti") or "")):
+                return JSONResponse({"error": "Invalid or expired session"}, status_code=401)
+            method = str(getattr(request, "method", "GET") or "GET").upper()
+            if method in _MUTATING_METHODS and not verify_admin_csrf(headers, cookies, session):
+                return JSONResponse({"error": "CSRF token missing or invalid"}, status_code=403)
+            if state is not None:
+                state.admin_session = session
+                state.admin_authenticated = True
+                state.admin_principal = str(session.get("sub") or "admin")
+            return None
+
     err = _check_admin_auth(request)
     if err is not None:
         return err
 
-    if headers is None or not auth.lower().startswith("hmac-sha256 "):
+    if headers is None or not has_hmac:
         return None
 
-    state = getattr(request, "state", None)
     if state is not None and (
         getattr(state, "hmac_authenticated", False)
         or getattr(state, "namespace_ctx", None) is not None
@@ -281,6 +380,8 @@ async def _check_admin_auth_async(request: Request) -> JSONResponse | None:
         if is_prod:
             logger.error("Admin plugin HMAC requires NonceStore in production (fail-closed)")
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if not _check_memory_nonce(scoped_nonce):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
         return None
 
     ping_fn = getattr(nonce_store, "ping", None)
@@ -289,7 +390,11 @@ async def _check_admin_auth_async(request: Request) -> JSONResponse | None:
         if is_prod:
             logger.error("Admin plugin HMAC NonceStore unreachable in production (fail-closed)")
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
-        logger.warning("Admin plugin HMAC NonceStore unreachable — allowing in dev/test")
+        logger.warning(
+            "Admin plugin HMAC NonceStore unreachable — enforcing in-memory nonce replay guard"
+        )
+        if not _check_memory_nonce(scoped_nonce):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
         return None
 
     if not await nonce_store.check_and_store(scoped_nonce):
@@ -631,6 +736,8 @@ async def admin_plugins_toggle(request: Request, ctx: Any = None) -> JSONRespons
     if redis_client is None and getattr(admin_state, "engine", None):
         redis_client = getattr(admin_state.engine, "redis_client", None)
 
+    actor = str(getattr(getattr(request, "state", None), "admin_principal", None) or "admin")
+
     if redis_client is None:
         if is_prod:
             return JSONResponse(
@@ -641,14 +748,24 @@ async def admin_plugins_toggle(request: Request, ctx: Any = None) -> JSONRespons
             _IN_MEMORY_DISABLED_ENGINES.discard(slug)
         else:
             _IN_MEMORY_DISABLED_ENGINES.add(slug)
+        await persist_governance_toggle(
+            scope_key="engine",
+            tool_name=slug,
+            enabled=enabled,
+            reason="admin_plugins_toggle",
+            updated_by=actor,
+            ctx=ctx,
+        )
     else:
         try:
+            await hydrate_governance_cache(redis_client, ctx=ctx)
             if enabled:
                 await redis_client.hdel(REDIS_DISABLED_ENGINES_KEY, slug)
                 _IN_MEMORY_DISABLED_ENGINES.discard(slug)
             else:
                 await redis_client.hset(REDIS_DISABLED_ENGINES_KEY, slug, "1")
                 _IN_MEMORY_DISABLED_ENGINES.add(slug)
+            await _redis_set_governance_hydrated(redis_client)
         except Exception as exc:
             if is_prod:
                 return JSONResponse(
@@ -660,6 +777,14 @@ async def admin_plugins_toggle(request: Request, ctx: Any = None) -> JSONRespons
                 _IN_MEMORY_DISABLED_ENGINES.discard(slug)
             else:
                 _IN_MEMORY_DISABLED_ENGINES.add(slug)
+        await persist_governance_toggle(
+            scope_key="engine",
+            tool_name=slug,
+            enabled=enabled,
+            reason="admin_plugins_toggle",
+            updated_by=actor,
+            ctx=ctx,
+        )
 
     updated = dict(target_descriptor)
     installed = bool(updated.get("installed", True))

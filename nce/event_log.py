@@ -312,6 +312,14 @@ EXPECTED_GLOBAL_TABLES: set[str] = {
     "embedding_models",
     "reembedding_runs",
     "applied_migrations",
+    # Day-2 Ops control-plane tables (Admin & nce_gc roles only).
+    "runtime_tool_governance",
+    "backup_leases",
+    "backup_manifests",
+    "ops_probe_runs",
+    "ops_incidents",
+    "ops_quarantine",
+    "ops_playbook_executions",
 }
 
 

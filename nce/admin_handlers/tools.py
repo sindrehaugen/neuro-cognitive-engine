@@ -7,6 +7,11 @@ from starlette.responses import JSONResponse
 
 from nce import admin_state
 from nce.admin_handlers._shared import *  # noqa: F403
+from nce.admin_ops import (
+    _redis_set_governance_hydrated,
+    hydrate_governance_cache,
+    persist_governance_toggle,
+)
 
 logger = logging.getLogger("nce-admin-tools")
 
@@ -85,10 +90,15 @@ async def api_admin_tools(request) -> JSONResponse:
     disabled_keys = set()
     try:
         if admin_state.engine.redis_client:
+            await hydrate_governance_cache(admin_state.engine.redis_client)
             keys_raw = await admin_state.engine.redis_client.hkeys("nce:tools:disabled")
             disabled_keys = {
                 k.decode("utf-8") if isinstance(k, bytes) else str(k) for k in keys_raw
             }
+        else:
+            hydrated = await hydrate_governance_cache(None)
+            if hydrated is not None:
+                disabled_keys = set(hydrated["tool"])
     except Exception as exc:
         logger.warning(
             "Failed to retrieve disabled tools from Redis (defaulting to empty): %s", exc
@@ -156,8 +166,10 @@ async def api_admin_tools_toggle(request) -> JSONResponse:
     if tool_type not in ("mcp", "a2a"):
         return JSONResponse({"error": "tool_type must be either 'mcp' or 'a2a'"}, status_code=422)
 
+    actor = str(getattr(getattr(request, "state", None), "admin_principal", None) or "admin")
     try:
         if admin_state.engine.redis_client:
+            await hydrate_governance_cache(admin_state.engine.redis_client)
             if enabled:
                 # Remove from disabled list to enable it
                 await admin_state.engine.redis_client.hdel("nce:tools:disabled", tool_name)
@@ -166,6 +178,14 @@ async def api_admin_tools_toggle(request) -> JSONResponse:
                 # Add to disabled list to disable it
                 await admin_state.engine.redis_client.hset("nce:tools:disabled", tool_name, "1")
                 logger.info("Disabled %s tool/skill dynamically: %s", tool_type.upper(), tool_name)
+            await _redis_set_governance_hydrated(admin_state.engine.redis_client)
+            await persist_governance_toggle(
+                scope_key="tool",
+                tool_name=tool_name,
+                enabled=enabled,
+                reason=f"type={tool_type}",
+                updated_by=actor,
+            )
         else:
             return JSONResponse({"error": "Redis client not available"}, status_code=503)
     except Exception as exc:

@@ -127,17 +127,17 @@ To enable the Document Bridge System (Push Architecture), you must register NCE 
 
 Provide the resulting client IDs and secrets to the NCE configuration via the `.env` file or your cloud provider's secret management service (e.g., AWS Secrets Manager, Azure Key Vault).
 
-## 4. Dynamic Tools & Skills Management Console
+## 4. Dynamic Tools, Skills & 5-Tab `/admin` Control Plane (`v3.7.0`)
 
-NCE features a dynamic administration console within the Starlette Admin panel (`admin/index.html` serviced by `admin_server.py`) for managing local stdio Model Context Protocol (MCP) tools and public Agent-to-Agent (A2A) network skills.
+NCE features an air-gapped 5-tab administration console (`admin/index.html`, `admin/plugins.html`, `admin/console.js`, `admin/console.css` served by `admin_server.py`) for Quad-Store overview metrics, `T_cut` backups/drills, Maintenance Caddy incidents & RQ quarantine, tenant/MCP onboarding, and dynamic plugin/tool governance (`MCP` tools & `A2A` network skills).
 
-### 4.1 System Architecture
-- **Control Plane**: Administrators mutate toggle states via Basic/HMAC-secured REST endpoints `/api/admin/tools` and `/api/admin/tools/toggle`.
-- **Data Plane (Redis Registry)**: Toggle states are stored inside the Redis hash key `nce:tools:disabled`.
-  - When a tool is **disabled**, its name is registered in the hash with a value of `1`.
-  - When a tool is **enabled**, its key is deleted from the hash.
+### 4.1 Control Plane & Durable PostgreSQL Storage Architecture
+- **Control Plane & Dual-Auth**: Browser sessions authenticate via `POST /admin/session/login` (`HttpOnly` signed `nce_admin_session` cookie + `X-NCE-CSRF-Token` on all mutating routes), while programmatic callers use 3-header `HMAC-SHA256` with Redis single-use nonces or strict Entra OIDC Bearer JWTs across `/admin/ops/api/*`, `/admin/plugins/api*`, and `/api/admin/tools*`.
+- **Durable PostgreSQL + Write-Through Redis Registry**: Toggle state persists in `public.runtime_tool_governance` (`042_day2_ops_backup_and_governance.sql`) under `nce_gc`, while Redis hashes (`nce:tools:disabled`, `nce:engines:disabled`, sentinel `nce:governance:cache_hydrated` TTL `300s`) serve low-latency lookups. On Redis cold-start or `FLUSHALL`, `ToolGovernanceCache` auto-hydrates from PostgreSQL via `SECURITY DEFINER` function `nce_get_disabled_runtime_tools(NULL)`.
+  - When a tool or plugin engine is **disabled**, `enabled = false` persists in PostgreSQL and is synced into Redis.
+  - When **re-enabled**, `enabled = true` is persisted and the Redis entry is removed.
 - **Routing Interceptors**:
-  - **Stdio MCP Layer**: Calls are intercepted inside `mcp_stdio_dispatch.py` via `GOVERNANCE.is_disabled(...)`. Disabled tools return JSON-RPC error code `-32005` (Scope forbidden).
+  - **Stdio & `/mcp` Gateway Layer**: Calls are intercepted via `GOVERNANCE.is_disabled(...)`. Disabled tools return JSON-RPC error code `-32005` (Scope forbidden).
   - **A2A Network Layer**: Skills are intercepted inside `_dispatch_skill` in `a2a_server.py`. Disabled skills raise `A2AScopeViolationError`, returning JSON-RPC error code `-32011` / HTTP 403 (Scope violation).
 
 ### 4.2 Fail-Closed Governance & Last-Known-Good Cache Model

@@ -37,9 +37,14 @@ FROM python:3.12-slim-bookworm AS runtime
 
 WORKDIR /app
 
-# Install OCR/PDF runtime binaries required by document ingestion workers
+# Install OCR/PDF runtime binaries + matching PostgreSQL 16 client tools (zstd pg_dump/pg_restore)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
+    && apt-get install -y --no-install-recommends tesseract-ocr poppler-utils ca-certificates curl gnupg \
+    && install -d /etc/apt/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies from wheels
@@ -71,6 +76,8 @@ RUN set -e; \
         pip install --no-cache-dir --no-index --find-links=/wheels --find-links=/core-wheel --find-links=/tmp/nce-plugin-wheels /tmp/nce-plugin-wheels/*.whl; \
     fi \
     && rm -rf /wheels /core-wheel /tmp/nce-plugin-wheels \
+    && mkdir -p /var/lib/nce/backups \
+    && chown -R 10001:10001 /var/lib/nce/backups \
     && chmod 0755 /app/entrypoint.sh
 
 USER 10001:10001

@@ -380,7 +380,7 @@ def test_dynamic_version_compose_and_retention_hygiene() -> None:
     ver_match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', project_section)
     assert ver_match is not None
     expected_version = ver_match.group(1)
-    assert expected_version == "3.6.0"
+    assert expected_version == "3.7.0"
     assert nce.__version__ == expected_version
 
     with TestClient(webhook_main.app) as client:

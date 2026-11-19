@@ -464,6 +464,15 @@ def _float_env(
     return value
 
 
+def _choice_env(name: str, default: str, *, allowed: frozenset[str]) -> str:
+    """Parse a lowercase string environment variable restricted to *allowed* values."""
+    raw = os.getenv(name)
+    value = default if raw is None or raw.strip() == "" else raw.strip().lower()
+    if value not in allowed:
+        raise RuntimeError(f"{name} must be one of {sorted(allowed)}, got {value!r}")
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Secrets-provider seam (VI.1 / R3)
 # ---------------------------------------------------------------------------
@@ -1555,6 +1564,34 @@ class _Config:
     NCE_BUSINESS_INSIGHTS_THIRD_PARTY_EGRESS_ENABLED: bool = _bool_env(
         "NCE_BUSINESS_INSIGHTS_THIRD_PARTY_EGRESS_ENABLED", False
     )
+
+    # --- Day-2 Operations, Watermark Backups & ops-elm (v3.7.0) ---
+    NCE_BACKUP_DIR: str = (
+        os.getenv("NCE_BACKUP_DIR", "/var/lib/nce/backups") or "/var/lib/nce/backups"
+    ).strip()
+    NCE_OPS_MIN_FREE_BYTES: int = _int_env("NCE_OPS_MIN_FREE_BYTES", 10 * 1024**3, minimum=0)
+    NCE_BACKUP_RETENTION_COUNT: int = _int_env("NCE_BACKUP_RETENTION_COUNT", 7, minimum=1)
+    NCE_BACKUP_MAX_AGE_HOURS: int = _int_env("NCE_BACKUP_MAX_AGE_HOURS", 26, minimum=1)
+    NCE_BACKUP_AUTO_DAILY: bool = _bool_env("NCE_BACKUP_AUTO_DAILY", False)
+    NCE_SALIENCE_BUFFER_MAX_LEN: int = _int_env("NCE_SALIENCE_BUFFER_MAX_LEN", 50000, minimum=1)
+    NCE_OPS_ELM_MODE: str = _choice_env(
+        "NCE_OPS_ELM_MODE",
+        "local",
+        allowed=frozenset({"local", "provider", "deterministic"}),
+    )
+    NCE_OPS_ELM_BASE_URL: str = (
+        (os.getenv("NCE_OPS_ELM_BASE_URL", "http://ops-elm:11434") or "http://ops-elm:11434")
+        .strip()
+        .rstrip("/")
+    )
+    NCE_OPS_ELM_MODEL: str = (
+        os.getenv("NCE_OPS_ELM_MODEL", "qwen2.5:1.5b-instruct-q4_K_M")
+        or "qwen2.5:1.5b-instruct-q4_K_M"
+    ).strip()
+    NCE_OPS_ELM_TIMEOUT_SECONDS: float = _float_env(
+        "NCE_OPS_ELM_TIMEOUT_SECONDS", 20.0, minimum=0.5
+    )
+    NCE_OPS_ELM_MAX_CALLS_PER_HOUR: int = _int_env("NCE_OPS_ELM_MAX_CALLS_PER_HOUR", 4, minimum=0)
 
     @classmethod
     def validate_minio_credentials(cls) -> None:

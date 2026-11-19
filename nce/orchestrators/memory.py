@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ from uuid import UUID
 
 import asyncpg
 import redis.asyncio as redis
+from asyncpg.pool import PoolConnectionProxy as _PoolConnProxy
 from bson import ObjectId
 from cachetools import TTLCache
 from minio import Minio
@@ -30,6 +32,11 @@ from nce import embeddings as _embeddings
 from nce.auth import set_namespace_context, validate_agent_id
 from nce.config import cfg
 from nce.db_utils import scoped_mongo_session, scoped_pg_session
+from nce.envelope import (
+    append_deferred_shred_record,
+    append_shred_tombstone,
+    clear_unwrapped_dek_cache,
+)
 from nce.models import (
     _SAFE_ID_RE,
     AssertionType,
@@ -40,9 +47,14 @@ from nce.models import (
     StoreArtifactRequest,
     StoreMemoryRequest,
 )
-from nce.mongo_bulk import fetch_episodes_raw_by_ref, normalize_payload_ref
+from nce.mongo_bulk import (
+    ensure_created_at_index,
+    fetch_episodes_raw_by_ref,
+    normalize_payload_ref,
+)
 from nce.observability import SagaMetrics, get_tracer
 from nce.orchestrators._base import OrchestratorBase
+from nce.storage import build_cow_object_metadata, put_cow_object
 
 log = logging.getLogger("nce-orchestrator.memory")
 
@@ -928,6 +940,7 @@ class MemoryOrchestrator(OrchestratorBase):
         pii_result: Any,
         *,
         episode_oid: ObjectId | None = None,
+        saga_id: str | None = None,
     ) -> tuple[str, Any, bytes | None, str | None]:
         """STEP 1: Episodic Commit (MongoDB).
 
@@ -949,6 +962,12 @@ class MemoryOrchestrator(OrchestratorBase):
 
             raw_data, wrapped_dek, dek_key_id = encrypt_raw_data(sanitized_heavy)
 
+        now_utc = datetime.now(timezone.utc)
+        resolved_saga_id = (
+            str(saga_id)
+            if saga_id
+            else str((payload.metadata or {}).get("saga_id") or uuid.uuid4())
+        )
         oid = episode_oid if episode_oid is not None else ObjectId()
         inserted_mongo_id = str(oid)
         doc = {
@@ -961,7 +980,9 @@ class MemoryOrchestrator(OrchestratorBase):
             "metadata": payload.metadata,
             "pii_redacted": pii_result.redacted,
             "pii_entities_found": pii_result.entities_found,
-            "ingested_at": datetime.now(timezone.utc),
+            "created_at": now_utc,
+            "ingested_at": now_utc,
+            "saga_id": resolved_saga_id,
         }
 
         async with scoped_mongo_session(self.mongo_client, payload.namespace_id) as db:
@@ -973,6 +994,7 @@ class MemoryOrchestrator(OrchestratorBase):
             raw_coll = db.episodes._collection
             if not hasattr(raw_coll, "_mock_self"):
                 raw_coll = raw_coll.with_options(write_concern=WriteConcern(w="majority", j=True))
+            await ensure_created_at_index(raw_coll)
             scoped_coll = ScopedMongoCollection(raw_coll, str(payload.namespace_id))
 
             inserted_result = await scoped_coll.insert_one(doc)
@@ -1198,6 +1220,7 @@ class MemoryOrchestrator(OrchestratorBase):
                         sanitized_heavy,
                         pii_result,
                         episode_oid=pre_oid,
+                        saga_id=saga_id,
                     ),
                     _embeddings.embed_batch(all_texts),
                     return_exceptions=True,
@@ -1364,6 +1387,8 @@ class MemoryOrchestrator(OrchestratorBase):
                     raise RuntimeError("MinIO client not configured — cannot store media.")
 
                 bucket_name = "nce-artifacts"
+                saga_id = str(uuid.uuid4())
+                created_at = datetime.now(timezone.utc)
                 file_ext = os.path.splitext(safe_path)[1]
                 object_name = (
                     f"{payload.namespace_id}/{payload.artifact_type}/"
@@ -1376,6 +1401,8 @@ class MemoryOrchestrator(OrchestratorBase):
                     raise PermissionError(
                         "Access denied: Object name must start with namespace prefix."
                     )
+
+                obj_meta = build_cow_object_metadata(created_at=created_at, saga_id=saga_id)
 
                 def _ensure_bucket_and_upload() -> None:
                     from minio.error import S3Error
@@ -1399,7 +1426,12 @@ class MemoryOrchestrator(OrchestratorBase):
                                 raise
                         _VERIFIED_MINIO_BUCKETS.add(cache_key)
                     try:
-                        self.minio_client.fput_object(bucket_name, object_name, safe_path)
+                        self.minio_client.fput_object(
+                            bucket_name,
+                            object_name,
+                            safe_path,
+                            metadata=obj_meta,
+                        )
                     except Exception:
                         _VERIFIED_MINIO_BUCKETS.discard(cache_key)
                         raise
@@ -1419,6 +1451,7 @@ class MemoryOrchestrator(OrchestratorBase):
                     "original_path": payload.file_path_on_disk,
                     "user_id": payload.user_id,
                     "session_id": payload.session_id,
+                    "saga_id": saga_id,
                 }
 
                 memory_req = StoreMemoryRequest(
@@ -1868,10 +1901,13 @@ class MemoryOrchestrator(OrchestratorBase):
 
         ns_uuid = UUID(str(namespace_id))
         mem_uuid = UUID(str(memory_id))
+        lease_active = False
+        is_real_pg = False
 
         # ── Durable phase: DEK destroy + derivative deletes + WORM event ──────
         # All inside one RLS-scoped transaction; append_event shares the tx.
         async with scoped_pg_session(self.pg_pool, namespace_id) as conn:
+            is_real_pg = isinstance(conn, (asyncpg.Connection, _PoolConnProxy))
             async with conn.transaction():
                 # Defence-in-depth on top of RLS: the row must live in this
                 # namespace, else the SELECT returns nothing and we abort.
@@ -1924,7 +1960,41 @@ class MemoryOrchestrator(OrchestratorBase):
                     ns_uuid,
                 )
 
-                # 2b. Delete derived embedding vectors.
+                # 2a. If encryption_deks stores a matching row, zero its wrapped_key
+                #     and stamp shredded_at inside the same PG transaction.
+                if dek_key_id:
+                    try:
+                        sp_ctx = conn.transaction() if is_real_pg else nullcontext()
+                        async with sp_ctx:
+                            await conn.execute(
+                                """
+                                UPDATE encryption_deks
+                                SET wrapped_key = decode(repeat('00', 32), 'hex'),
+                                    shredded_at = COALESCE(shredded_at, now())
+                                WHERE dek_id::text = $1 AND namespace_id = $2::uuid
+                                """,
+                                str(dek_key_id),
+                                ns_uuid,
+                            )
+                    except Exception as exc:
+                        log.debug("encryption_deks update skipped for %s: %s", dek_key_id, exc)
+
+                # 2b. Check whether an in-flight T_cut backup lease is active.
+                #     When active, we still destroy the DEK and record the
+                #     persistent zero-PII tombstone immediately, but defer
+                #     physical Mongo/MinIO ciphertext erasure until post-lease GC.
+                try:
+                    sp_ctx = conn.transaction() if is_real_pg else nullcontext()
+                    async with sp_ctx:
+                        lease_val = await conn.fetchval(
+                            "SELECT nce_is_backup_lease_active('t_cut_backup')"
+                        )
+                        lease_active = lease_val is True
+                except Exception as exc:
+                    log.debug("Backup lease status check skipped/failed: %s", exc)
+                    lease_active = False
+
+                # 2c. Delete derived embedding vectors.
                 res_emb = await conn.execute(
                     "DELETE FROM memory_embeddings WHERE memory_id = $1::uuid",
                     mem_uuid,
@@ -1972,8 +2042,6 @@ class MemoryOrchestrator(OrchestratorBase):
                 #    Carries refs + counts + key-id ONLY — never any content,
                 #    entity string, summary, or PII.  A content-free digest binds
                 #    the receipt to the destroyed artifacts without revealing them.
-                from nce.envelope import clear_unwrapped_dek_cache
-
                 clear_unwrapped_dek_cache()
                 shred_facts = {
                     "memory_id": str(mem_uuid),
@@ -2007,6 +2075,25 @@ class MemoryOrchestrator(OrchestratorBase):
                         "status": "success",
                         "cascade_count": len(cascade_set),
                     },
+                )
+
+                # 5b. Persist zero-PII HMAC-signed tombstone synchronously inside
+                #     the commit path so restores after T_cut never resurrect
+                #     crypto-shredded payloads.
+                bucket = metadata.get("bucket")
+                object_name = metadata.get("object_name")
+                ns_prefix = f"{namespace_id}/"
+                tombstone_minio_keys = (
+                    [f"{bucket}/{object_name}"]
+                    if (bucket and object_name and str(object_name).startswith(ns_prefix))
+                    else []
+                )
+                _, tombstone_path = await asyncio.to_thread(
+                    append_shred_tombstone,
+                    namespace_id=ns_uuid,
+                    dek_id=dek_key_id or "",
+                    mongo_ids=[str(payload_ref)] if payload_ref else [],
+                    minio_keys=tombstone_minio_keys,
                 )
 
         # ── Best-effort phase (post-commit): Redis, MinIO, Mongo tombstone ────
@@ -2049,44 +2136,92 @@ class MemoryOrchestrator(OrchestratorBase):
             except Exception:
                 pass
 
-        # 7. remove_object the MinIO media object(s).
+        # 7. MinIO + Mongo ciphertext erasure (or durable deferral if a T_cut backup
+        #    lease is currently active so snapshot readers never see mid-backup deletions).
         minio_objects_removed = 0
         bucket = metadata.get("bucket")
         object_name = metadata.get("object_name")
+        minio_valid = False
         if bucket and object_name:
-            if self.minio_client is None:
-                warnings.append("minio_object_present_but_client_unconfigured")
+            ns_prefix = f"{namespace_id}/"
+            if not str(object_name).startswith(ns_prefix):
+                warnings.append(
+                    f"minio_remove_failed:{bucket}/{object_name}:"
+                    "Access denied: Object name does not belong to this namespace."
+                )
             else:
-                try:
-                    # Enforce that the object name carries the namespace prefix
-                    ns_prefix = f"{namespace_id}/"
-                    if not object_name.startswith(ns_prefix):
-                        raise PermissionError(
-                            "Access denied: Object name does not belong to this namespace."
-                        )
-                    await asyncio.to_thread(self.minio_client.remove_object, bucket, object_name)
-                    minio_objects_removed = 1
-                except Exception as exc:
-                    warnings.append(f"minio_remove_failed:{bucket}/{object_name}:{exc}")
+                minio_valid = True
 
-        # 8. Overwrite the Mongo ciphertext with a tombstone (defence-in-depth).
-        if payload_ref and self.mongo_client is not None:
-            try:
-                oid = ObjectId(payload_ref)
-                async with scoped_mongo_session(self.mongo_client, namespace_id) as s_db:
-                    await s_db.episodes.update_one(
-                        {"_id": oid},
-                        {
-                            "$set": {
-                                "raw_data": None,
-                                "shredded": True,
-                                "shredded_at": datetime.now(timezone.utc),
+        deferred_during_backup = False
+        if lease_active and (minio_valid or payload_ref):
+            deferred_job = {
+                "namespace_id": str(ns_uuid),
+                "memory_id": str(mem_uuid),
+                "dek_id": str(dek_key_id or ""),
+                "mongo_ids": [str(payload_ref)] if payload_ref else [],
+                "minio_objects": (
+                    [{"bucket": str(bucket), "object_name": str(object_name)}]
+                    if minio_valid
+                    else []
+                ),
+                "queued_at": datetime.now(timezone.utc).isoformat(),
+            }
+            enqueued_redis = False
+            if self.redis_client is not None:
+                try:
+                    push_fn = getattr(self.redis_client, "rpush", None)
+                    exp_fn = getattr(self.redis_client, "expire", None)
+                    if callable(push_fn):
+                        push_res = push_fn(
+                            "nce:backup:deferred_shreds",
+                            json.dumps(deferred_job, sort_keys=True),
+                        )
+                        if inspect.isawaitable(push_res):
+                            await push_res
+                        if callable(exp_fn):
+                            exp_res = exp_fn("nce:backup:deferred_shreds", 604800)
+                            if inspect.isawaitable(exp_res):
+                                await exp_res
+                        enqueued_redis = True
+                except Exception as exc:
+                    warnings.append(f"deferred_shred_redis_failed:{exc}")
+            if not enqueued_redis:
+                try:
+                    await asyncio.to_thread(append_deferred_shred_record, deferred_job)
+                except Exception as exc:
+                    warnings.append(f"deferred_shred_file_failed:{exc}")
+            deferred_during_backup = True
+        else:
+            if minio_valid:
+                if self.minio_client is None:
+                    warnings.append("minio_object_present_but_client_unconfigured")
+                else:
+                    try:
+                        await asyncio.to_thread(
+                            self.minio_client.remove_object, bucket, object_name
+                        )
+                        minio_objects_removed = 1
+                    except Exception as exc:
+                        warnings.append(f"minio_remove_failed:{bucket}/{object_name}:{exc}")
+
+            # 8. Overwrite the Mongo ciphertext with a tombstone (defence-in-depth).
+            if payload_ref and self.mongo_client is not None:
+                try:
+                    oid = ObjectId(payload_ref)
+                    async with scoped_mongo_session(self.mongo_client, namespace_id) as s_db:
+                        await s_db.episodes.update_one(
+                            {"_id": oid},
+                            {
+                                "$set": {
+                                    "raw_data": None,
+                                    "shredded": True,
+                                    "shredded_at": datetime.now(timezone.utc),
+                                },
+                                "$unset": {"metadata": ""},
                             },
-                            "$unset": {"metadata": ""},
-                        },
-                    )
-            except Exception as exc:
-                warnings.append(f"mongo_tombstone_failed:{payload_ref}:{exc}")
+                        )
+                except Exception as exc:
+                    warnings.append(f"mongo_tombstone_failed:{payload_ref}:{exc}")
 
         # ── Build the verifiable deletion receipt ─────────────────────────────
         receipt = {
@@ -2106,6 +2241,9 @@ class MemoryOrchestrator(OrchestratorBase):
             "cascade_count": len(cascade_set),
             "redis_keys_purged": redis_keys_purged,
             "minio_objects_removed": minio_objects_removed,
+            "tombstone_persisted": True,
+            "tombstone_path": str(tombstone_path),
+            "deferred_during_backup": deferred_during_backup,
             "receipt_digest": receipt_digest,
             "worm_event": {
                 "event_id": str(append_result.event_id),
@@ -2145,6 +2283,185 @@ class MemoryOrchestrator(OrchestratorBase):
                 receipt["verified"] = False
 
         return {"status": "success", "receipt": receipt}
+
+    async def update_memory_cow(
+        self,
+        *,
+        memory_id: str,
+        namespace_id: str,
+        agent_id: str,
+        new_raw_data: str | None = None,
+        minio_payload: bytes | None = None,
+        minio_bucket: str | None = None,
+        minio_artifact_type: str = "cow",
+        minio_object_key: str | None = None,
+        minio_content_type: str = "application/octet-stream",
+        metadata_updates: dict[str, Any] | None = None,
+        saga_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Perform a strict Copy-on-Write logical memory/artifact update.
+
+        Never mutates an existing MongoDB document or overwrites a MinIO object key
+        in place. Mints a fresh MongoDB ``ObjectId`` and/or versioned MinIO key,
+        closes ``valid_to`` on the previous PG row, and inserts a new active PG
+        row with ``valid_from`` stamped so historical ``as_of`` and ``T_cut`` reads
+        always observe immutable historical blobs.
+        """
+        ns_uuid = UUID(str(namespace_id))
+        old_mem_uuid = UUID(str(memory_id))
+        cow_saga_id = saga_id or str(uuid.uuid4())
+        cow_now = datetime.now(timezone.utc)
+
+        async with scoped_pg_session(self.pg_pool, namespace_id) as conn:
+            old_row = await conn.fetchrow(
+                """
+                SELECT id, user_id, session_id, agent_id, payload_ref,
+                       assertion_type, memory_type, metadata,
+                       wrapped_dek, dek_key_id
+                FROM memories
+                WHERE id = $1::uuid AND namespace_id = $2::uuid AND valid_to IS NULL
+                """,
+                old_mem_uuid,
+                ns_uuid,
+            )
+            if not old_row:
+                raise PermissionError(f"Active memory {memory_id} not found in namespace")
+
+        old_meta = old_row["metadata"]
+        if isinstance(old_meta, str):
+            try:
+                old_meta = json.loads(old_meta)
+            except Exception:
+                old_meta = {}
+        new_meta: dict[str, Any] = dict(old_meta or {})
+        if metadata_updates:
+            new_meta.update(metadata_updates)
+        new_meta["cow_parent_id"] = str(old_mem_uuid)
+        new_meta["saga_id"] = cow_saga_id
+
+        new_payload_ref = old_row["payload_ref"]
+        new_wrapped_dek = old_row["wrapped_dek"]
+        new_dek_key_id = old_row["dek_key_id"]
+        new_mongo_oid: ObjectId | None = None
+
+        if new_raw_data is not None:
+            if self.mongo_client is None:
+                raise RuntimeError("MongoDB client not configured for CoW payload update")
+            new_mongo_oid = ObjectId()
+            stored_payload: object = new_raw_data
+            if cfg.NCE_ENVELOPE_ENCRYPTION_ENABLED:
+                from nce.envelope import encrypt_raw_data
+
+                stored_payload, new_wrapped_dek, new_dek_key_id = encrypt_raw_data(new_raw_data)
+            else:
+                new_wrapped_dek = None
+                new_dek_key_id = None
+
+            new_doc = {
+                "_id": new_mongo_oid,
+                "user_id": old_row["user_id"],
+                "session_id": old_row["session_id"],
+                "agent_id": agent_id or old_row["agent_id"],
+                "namespace_id": str(ns_uuid),
+                "raw_data": stored_payload,
+                "ingested_at": cow_now,
+                "created_at": cow_now,
+                "saga_id": cow_saga_id,
+                "cow_parent_id": str(old_mem_uuid),
+            }
+            async with scoped_mongo_session(self.mongo_client, namespace_id) as s_db:
+                await ensure_created_at_index(s_db.episodes)
+                await s_db.episodes.insert_one(new_doc)
+            new_payload_ref = str(new_mongo_oid)
+
+        stored_minio_key: str | None = None
+        if minio_payload is not None:
+            if self.minio_client is None:
+                raise RuntimeError("MinIO client not configured for CoW artifact update")
+            target_bucket = minio_bucket or str(new_meta.get("bucket") or "nce-artifacts")
+            stored_minio_key = await asyncio.to_thread(
+                put_cow_object,
+                self.minio_client,
+                target_bucket,
+                str(ns_uuid),
+                minio_artifact_type,
+                minio_payload,
+                content_type=minio_content_type,
+                saga_id=cow_saga_id,
+                created_at=cow_now,
+                metadata={"source-object-key": minio_object_key} if minio_object_key else None,
+            )
+            new_meta["bucket"] = target_bucket
+            new_meta["object_name"] = stored_minio_key
+
+        try:
+            async with scoped_pg_session(self.pg_pool, namespace_id) as conn:
+                async with conn.transaction():
+                    upd = await conn.execute(
+                        """
+                        UPDATE memories
+                        SET valid_to = $1
+                        WHERE id = $2::uuid AND namespace_id = $3::uuid AND valid_to IS NULL
+                        """,
+                        cow_now,
+                        old_mem_uuid,
+                        ns_uuid,
+                    )
+                    if upd and upd.endswith("0"):
+                        raise PermissionError(
+                            f"Concurrent CoW update or missing active memory {memory_id}"
+                        )
+                    new_memory_id = await conn.fetchval(
+                        """
+                        INSERT INTO memories (
+                            user_id, session_id, namespace_id, agent_id,
+                            content_fts, payload_ref, assertion_type, memory_type,
+                            metadata, wrapped_dek, dek_key_id, valid_from, valid_to,
+                            derived_from, change_origin
+                        )
+                        VALUES (
+                            $1, $2, $3::uuid, $4,
+                            to_tsvector('english', $5), $6, $7, $8,
+                            $9, $10, $11, $12, NULL,
+                            $13, $14
+                        )
+                        RETURNING id
+                        """,
+                        old_row["user_id"],
+                        old_row["session_id"],
+                        ns_uuid,
+                        agent_id or old_row["agent_id"],
+                        new_raw_data or "",
+                        new_payload_ref,
+                        old_row["assertion_type"],
+                        old_row["memory_type"],
+                        json.dumps(new_meta),
+                        new_wrapped_dek,
+                        new_dek_key_id,
+                        cow_now,
+                        [str(old_mem_uuid)],
+                        _saga_change_origin(agent_id or str(old_row["agent_id"] or "")),
+                    )
+        except Exception:
+            if new_mongo_oid is not None and self.mongo_client is not None:
+                try:
+                    async with scoped_mongo_session(self.mongo_client, namespace_id) as s_db:
+                        await s_db.episodes.delete_one(
+                            {"_id": new_mongo_oid, "namespace_id": str(ns_uuid)}
+                        )
+                except Exception:
+                    pass
+            raise
+
+        return {
+            "status": "success",
+            "previous_memory_id": str(old_mem_uuid),
+            "memory_id": str(new_memory_id),
+            "payload_ref": new_payload_ref,
+            "minio_object_key": stored_minio_key,
+            "valid_from": cow_now.isoformat(),
+            "saga_id": cow_saga_id,
+        }
 
     # ------------------------------------------------------------------
     # recall_memory / recall_recent
