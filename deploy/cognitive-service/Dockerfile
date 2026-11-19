@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
 # and verify 768-d unit-norm inference + PyTorch/ONNX cosine parity >= 0.9999 offline.
 RUN printf '%s\n' \
     'import json' \
+    'import os' \
     'from pathlib import Path' \
     'import numpy as np' \
     'import onnxruntime as ort' \
@@ -136,7 +137,7 @@ RUN printf '%s\n' \
     'encoded = tok(sentences, padding=True, truncation=True, max_length=max_seq_len, return_tensors="np")' \
     'feed = {"input_ids": np.asarray(encoded["input_ids"], dtype=np.int64), "attention_mask": np.asarray(encoded["attention_mask"], dtype=np.int64)}' \
     'run_opts = ort.SessionOptions()' \
-    'run_opts.intra_op_num_threads = 2' \
+    'run_opts.intra_op_num_threads = min(4, os.cpu_count() or 4)' \
     'run_opts.inter_op_num_threads = 1' \
     'run_opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL' \
     'run_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL' \
@@ -147,6 +148,7 @@ RUN printf '%s\n' \
     'fp32_min_cos = 1.0' \
     'for idx in range(5):' \
     '    norm = float(np.linalg.norm(fp32_vecs[idx]))' \
+    '    assert np.all(np.isfinite(fp32_vecs[idx])), f"Non-finite FP32 vector at {idx}"' \
     '    assert abs(norm - 1.0) < 1e-5, f"FP32 norm drift at {idx}: {norm}"' \
     '    cos = float(np.dot(pt_vecs[idx], fp32_vecs[idx]))' \
     '    fp32_min_cos = min(fp32_min_cos, cos)' \

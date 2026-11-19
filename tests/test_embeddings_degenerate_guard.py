@@ -90,6 +90,15 @@ class TestDegenerateVectorsAreRefused:
         assert degraded is True
         assert _norm_sq(out[0]) > 0.0
 
+    def test_non_finite_vector_is_refused_and_flagged_degraded(self) -> None:
+        """NaN or Inf coordinates must never pass validation unflagged."""
+        for bad_val in (float("nan"), float("inf"), float("-inf")):
+            vec = [bad_val] + [0.1] * (VECTOR_DIM - 1)
+            out, degraded = _validate_batch(["bad"], [vec], backend_name="StubProbe")
+            assert degraded is True
+            assert len(out[0]) == VECTOR_DIM
+            assert _norm_sq(out[0]) > 0.0
+
 
 class TestHealthyVectorsStillPass:
     """Guard-the-guard: the positive control.

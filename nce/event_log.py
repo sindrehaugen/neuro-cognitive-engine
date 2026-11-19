@@ -296,6 +296,7 @@ EXPECTED_TENANT_RLS_TABLES: dict[str, str] = {
     "mcp_client_tokens": "namespace_id",
     "encryption_deks": "namespace_id",
     "procedural_heuristics": "namespace_id",
+    "app_connections": "namespace_id",
     "replay_runs": "source_namespace_id",
 }
 

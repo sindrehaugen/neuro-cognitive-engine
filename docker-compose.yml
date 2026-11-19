@@ -164,7 +164,7 @@ services:
           memory: 512M
 
   cognitive:
-    image: nce-cognitive:3.5.4
+    image: nce-cognitive:3.6.0
     build:
       context: .
       dockerfile: deploy/cognitive-service/Dockerfile

@@ -88,6 +88,7 @@ PURE_CORE_NAMESPACE_ID_TABLES: frozenset[str] = frozenset(
         "mcp_client_tokens",
         "encryption_deks",
         "procedural_heuristics",
+        "app_connections",
     }
 )
 
@@ -144,12 +145,12 @@ class _AsyncCtx:
 
 
 def test_pure_core_expected_rls_tables_exact_36_forced_and_5_global() -> None:
-    """Core static RLS sets must contain strictly the 38 Pure-Core forced-RLS tables + 3 global."""
+    """Core static RLS sets must contain strictly the 39 Pure-Core forced-RLS tables + 3 global."""
     expected_tenant = {tbl: "namespace_id" for tbl in PURE_CORE_NAMESPACE_ID_TABLES}
     expected_tenant["replay_runs"] = "source_namespace_id"
 
-    assert len(PURE_CORE_NAMESPACE_ID_TABLES) == 36
-    assert len(EXPECTED_TENANT_RLS_TABLES) == 37
+    assert len(PURE_CORE_NAMESPACE_ID_TABLES) == 37
+    assert len(EXPECTED_TENANT_RLS_TABLES) == 38
     assert EXPECTED_TENANT_RLS_TABLES == expected_tenant
 
     assert EXPECTED_SPECIAL_RLS_TABLES == {
@@ -158,7 +159,7 @@ def test_pure_core_expected_rls_tables_exact_36_forced_and_5_global() -> None:
     assert set(EXPECTED_TENANT_RLS_TABLES).isdisjoint(EXPECTED_SPECIAL_RLS_TABLES)
 
     all_forced_core = set(EXPECTED_TENANT_RLS_TABLES) | set(EXPECTED_SPECIAL_RLS_TABLES)
-    assert len(all_forced_core) == 38
+    assert len(all_forced_core) == 39
 
     assert EXPECTED_GLOBAL_TABLES == PURE_CORE_GLOBAL_TABLES
     assert len(EXPECTED_GLOBAL_TABLES) == 3

@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import sys
 import time
@@ -32,6 +33,8 @@ from nce.auth import (
     verify_hmac,
 )
 from nce.config import cfg, live_admin_api_key
+from nce.connectors.guards import AllowListRedactor, BridgeURLValidationError
+from nce.connectors.vault import TenantConnectionVault
 from nce.plugins import list_plugin_engine_descriptors
 from nce.tool_governance import GovernanceUnavailable
 
@@ -322,6 +325,18 @@ def _matches_q(d: dict[str, Any], query: str) -> bool:
     )
 
 
+_VALID_MATURITIES: frozenset[str] = frozenset({"stable", "beta", "experimental"})
+_VALID_AUTH_KINDS: frozenset[str] = frozenset(
+    {"oauth2", "api_key", "entra_oidc", "webhook", "local_file", "none"}
+)
+_VALID_CONNECTION_STATUSES: frozenset[str] = frozenset(
+    {"connected", "disconnected", "error", "pending"}
+)
+_DEFAULT_NAMESPACE_ID = "00000000-0000-0000-0000-000000000001"
+_APP_SLUG_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_SAFE_META_REDACTOR = AllowListRedactor(mode="strip")
+
+
 def _matches_types(d: dict[str, Any], st: list[str]) -> bool:
     if not st:
         return True
@@ -336,16 +351,23 @@ def _matches_categories(d: dict[str, Any], sc: list[str]) -> bool:
     return bool(d_cats & set(sc))
 
 
+def _matches_maturities(d: dict[str, Any], sm: list[str]) -> bool:
+    if not sm:
+        return True
+    return str(d.get("maturity", "stable")).strip().lower() in set(sm)
+
+
 def build_plugins_catalog_payload(
     descriptors: list[dict[str, Any]],
     disabled_slugs: set[str],
     *,
     type_param: str | None = None,
     category_param: str | None = None,
+    maturity_param: str | None = None,
     status_param: str | None = None,
     q_param: str | None = None,
 ) -> dict[str, Any]:
-    """Compute dual-axis filtered engines and cross-faceted badge counts."""
+    """Compute dual-axis + maturity filtered engines and cross-faceted badge counts."""
     catalog = [dict(d) for d in descriptors]
     for d in catalog:
         slug = d["slug"]
@@ -353,13 +375,21 @@ def build_plugins_catalog_payload(
         enabled_by_env = bool(d.get("enabled_by_env", d.get("enabled", True)))
         runtime_disabled = slug in disabled_slugs
         active = installed and enabled_by_env and not runtime_disabled
+        raw_maturity = str(d.get("maturity") or "stable").strip().lower()
         d["enabled"] = active
         d["active"] = active
         d["runtime_disabled"] = runtime_disabled
+        d["maturity"] = raw_maturity if raw_maturity in _VALID_MATURITIES else "stable"
+        d["vendor_specific"] = bool(d.get("vendor_specific", False))
 
     selected_types = [t.strip().lower() for t in (type_param or "").split(",") if t.strip()]
     selected_categories = [
         c.strip().lower() for c in (category_param or "").split(",") if c.strip()
+    ]
+    selected_maturities = [
+        m.strip().lower()
+        for m in (maturity_param or "").split(",")
+        if m.strip() and m.strip().lower() != "all"
     ]
     status_filter = (status_param or "all").strip().lower()
     q = (q_param or "").strip().lower()
@@ -369,6 +399,7 @@ def build_plugins_catalog_payload(
         for d in catalog
         if _matches_types(d, selected_types)
         and _matches_categories(d, selected_categories)
+        and _matches_maturities(d, selected_maturities)
         and _matches_status(d, status_filter)
         and _matches_q(d, q)
     ]
@@ -381,6 +412,7 @@ def build_plugins_catalog_payload(
             1
             for d in catalog
             if _matches_categories(d, selected_categories)
+            and _matches_maturities(d, selected_maturities)
             and _matches_status(d, status_filter)
             and _matches_q(d, q)
             and t_lower in {str(x).lower() for x in d.get("types", ())}
@@ -396,10 +428,16 @@ def build_plugins_catalog_payload(
             1
             for d in catalog
             if _matches_types(d, selected_types)
+            and _matches_maturities(d, selected_maturities)
             and _matches_status(d, status_filter)
             and _matches_q(d, q)
             and c_lower in {str(x).lower() for x in d.get("categories", ())}
         )
+
+    maturity_counts = {
+        stage: sum(1 for d in catalog if d["maturity"] == stage)
+        for stage in ("stable", "beta", "experimental")
+    }
 
     base_pkg = "nce-vertical-engines"
     for d in catalog:
@@ -410,12 +448,18 @@ def build_plugins_catalog_payload(
                 base_pkg = candidate
                 break
 
-    if not selected_types and not selected_categories and not q and status_filter == "all":
+    if (
+        not selected_types
+        and not selected_categories
+        and not selected_maturities
+        and not q
+        and status_filter == "all"
+    ):
         pip_snippet = f'pip install "{base_pkg}[all]"'
-    elif selected_types and not selected_categories and not q:
+    elif selected_types and not selected_categories and not selected_maturities and not q:
         extras = [f"type-{t}" for t in selected_types]
         pip_snippet = f'pip install "{base_pkg}[{",".join(extras)}]"'
-    elif selected_categories and not selected_types and not q:
+    elif selected_categories and not selected_types and not selected_maturities and not q:
         extras = [f"cat-{c}" for c in selected_categories]
         pip_snippet = f'pip install "{base_pkg}[{",".join(extras)}]"'
     else:
@@ -434,7 +478,7 @@ def build_plugins_catalog_payload(
         env_snippet = f"NCE_ENGINE_TYPE_FILTER={','.join(selected_types)}"
     elif selected_categories:
         env_snippet = f"NCE_ENGINE_CATEGORY_FILTER={','.join(selected_categories)}"
-    elif q or status_filter != "all":
+    elif selected_maturities or q or status_filter != "all":
         matched_slugs = [d["slug"] for d in matched]
         env_snippet = f"NCE_ENABLED_ENGINES={','.join(matched_slugs)}"
     else:
@@ -446,10 +490,13 @@ def build_plugins_catalog_payload(
             "installed": sum(1 for d in catalog if d["installed"]),
             "active": sum(1 for d in catalog if d["enabled"]),
             "matched": len(matched),
+            "maturity": maturity_counts,
         },
+        "maturity_counts": maturity_counts,
         "filters": {
             "types": selected_types,
             "categories": selected_categories,
+            "maturity": selected_maturities,
             "status": status_filter,
             "q": q_param or "",
         },
@@ -503,7 +550,7 @@ async def admin_plugins_console(request: Request, ctx: Any = None) -> Response:
 async def admin_plugins_api(request: Request, ctx: Any = None) -> JSONResponse:
     """GET /admin/plugins/api and GET /api/admin/plugins
 
-    Dual-axis faceted catalog query API.
+    Dual-axis + maturity faceted catalog query API.
     """
     auth_err = await _check_admin_auth_async(request)
     if auth_err is not None:
@@ -521,6 +568,7 @@ async def admin_plugins_api(request: Request, ctx: Any = None) -> JSONResponse:
         disabled_slugs,
         type_param=request.query_params.get("type"),
         category_param=request.query_params.get("category"),
+        maturity_param=request.query_params.get("maturity"),
         status_param=request.query_params.get("status"),
         q_param=request.query_params.get("q"),
     )
@@ -861,8 +909,304 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
     )
 
 
+def _resolve_connection_vault(request: Request, ctx: Any = None) -> Any:
+    """Resolve an injected TenantConnectionVault or build one from admin PG pool."""
+    vault = getattr(ctx, "connection_vault", None) or getattr(ctx, "vault", None)
+    app = getattr(request, "app", None)
+    app_state = getattr(app, "state", None) if app is not None else None
+    if vault is None:
+        vault = getattr(app_state, "connection_vault", None)
+    engine = getattr(admin_state, "engine", None)
+    if vault is None:
+        vault = getattr(engine, "connection_vault", None)
+    if vault is not None:
+        return vault
+
+    pg_pool = getattr(ctx, "pg_pool", None)
+    if pg_pool is None:
+        pg_pool = getattr(app_state, "pg_pool", None)
+    if pg_pool is None:
+        pg_pool = getattr(engine, "pg_pool", None)
+    if pg_pool is None:
+        return None
+    return TenantConnectionVault(pool=pg_pool)
+
+
+def _parse_uuid_or_default(raw: Any, default_val: str | None = None) -> str:
+    if raw is None or str(raw).strip() == "":
+        if default_val is None:
+            raise ValueError("Missing required UUID")
+        return default_val
+    return str(uuid.UUID(str(raw).strip()))
+
+
+def _serialize_connection_metadata(item: Any) -> dict[str, Any]:
+    """Serialize AppConnectionMetadata strictly without encrypted_config or secret fields."""
+    raw = item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
+    raw_meta = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+    safe_meta = _SAFE_META_REDACTOR.redact(raw_meta)
+    auth_kind = str(raw.get("auth_kind") or "api_key")
+    dek_id = str(raw["dek_id"]) if raw.get("dek_id") is not None else None
+    return {
+        "connection_id": str(raw["connection_id"]),
+        "namespace_id": str(raw["namespace_id"]),
+        "app_slug": str(raw["app_slug"]),
+        "connection_name": str(raw.get("connection_name") or "default"),
+        "auth_kind": auth_kind,
+        "endpoint_url": raw.get("endpoint_url"),
+        "status": str(raw.get("status") or "connected"),
+        "scopes": [str(s) for s in (raw.get("scopes") or ())],
+        "metadata": safe_meta if isinstance(safe_meta, dict) else {},
+        "dek_id": dek_id,
+        "kek_version": str(raw["kek_version"]) if raw.get("kek_version") is not None else None,
+        "has_credentials": bool(dek_id is not None or auth_kind != "none"),
+        "credentials_masked": "••••••••" if auth_kind != "none" else None,
+        "last_verified_at": raw.get("last_verified_at"),
+        "created_at": raw.get("created_at"),
+        "updated_at": raw.get("updated_at"),
+    }
+
+
+async def admin_plugins_connections(request: Request, ctx: Any = None) -> JSONResponse:
+    """GET/POST/DELETE /admin/plugins/api/connections and /api/admin/plugins/connections.
+
+    Manage encrypted tenant connector credentials via TenantConnectionVault without
+    ever returning plaintext secrets or encrypted_config envelopes.
+    """
+    method = str(getattr(request, "method", "GET")).upper()
+    if method in ("POST", "DELETE") and callable(getattr(request, "body", None)):
+        try:
+            await request.body()
+        except Exception:
+            pass
+
+    auth_err = await _check_admin_auth_async(request)
+    if auth_err is not None:
+        return auth_err
+
+    vault = _resolve_connection_vault(request, ctx)
+    if vault is None:
+        return JSONResponse(
+            {"error": "Connection vault unavailable: PostgreSQL pool is not initialized"},
+            status_code=503,
+        )
+
+    if method == "GET":
+        try:
+            ns_id = _parse_uuid_or_default(
+                request.query_params.get("namespace_id"),
+                _DEFAULT_NAMESPACE_ID,
+            )
+        except (ValueError, TypeError, AttributeError):
+            return JSONResponse(
+                {"error": "Invalid 'namespace_id': must be a valid UUID"},
+                status_code=400,
+            )
+
+        raw_slug = request.query_params.get("app_slug")
+        app_slug = raw_slug.strip() if isinstance(raw_slug, str) and raw_slug.strip() else None
+
+        raw_status = request.query_params.get("status")
+        status_val: str | None = None
+        if isinstance(raw_status, str) and raw_status.strip():
+            status_val = raw_status.strip().lower()
+            if status_val not in _VALID_CONNECTION_STATUSES:
+                return JSONResponse(
+                    {
+                        "error": f"Invalid 'status'. Allowed: {sorted(_VALID_CONNECTION_STATUSES)}",
+                    },
+                    status_code=400,
+                )
+
+        try:
+            items = await vault.list_connections(ns_id, app_slug=app_slug, status=status_val)
+        except Exception as exc:
+            logger.error("Failed to list app connections: %s", type(exc).__name__)
+            return JSONResponse({"error": "Failed to list app connections"}, status_code=500)
+
+        serialized = [_serialize_connection_metadata(item) for item in items]
+        return JSONResponse(
+            {
+                "status": "ok",
+                "namespace_id": ns_id,
+                "connections": serialized,
+                "total": len(serialized),
+            }
+        )
+
+    if method == "POST":
+        try:
+            body = await request.json()
+            if not isinstance(body, dict):
+                return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": f"Invalid JSON body: {exc}"}, status_code=400)
+
+        try:
+            ns_id = _parse_uuid_or_default(body.get("namespace_id"), _DEFAULT_NAMESPACE_ID)
+        except (ValueError, TypeError, AttributeError):
+            return JSONResponse(
+                {"error": "Invalid 'namespace_id': must be a valid UUID"},
+                status_code=400,
+            )
+
+        raw_slug = body.get("app_slug")
+        if not isinstance(raw_slug, str) or not _APP_SLUG_RE.fullmatch(raw_slug.strip()):
+            return JSONResponse(
+                {"error": "Missing or invalid 'app_slug' (must match ^[a-z][a-z0-9_]*$)"},
+                status_code=400,
+            )
+        app_slug = raw_slug.strip()
+
+        raw_conn_name = body.get("connection_name")
+        if raw_conn_name is not None and not isinstance(raw_conn_name, str):
+            return JSONResponse({"error": "Invalid 'connection_name'"}, status_code=400)
+        connection_name = (raw_conn_name or "default").strip() or "default"
+        if len(connection_name) > 128:
+            return JSONResponse(
+                {"error": "'connection_name' exceeds 128 characters"},
+                status_code=400,
+            )
+
+        auth_kind = str(body.get("auth_kind") or "api_key").strip().lower()
+        if auth_kind not in _VALID_AUTH_KINDS:
+            return JSONResponse(
+                {"error": f"Invalid 'auth_kind'. Allowed: {sorted(_VALID_AUTH_KINDS)}"},
+                status_code=400,
+            )
+
+        status_val = str(body.get("status") or "connected").strip().lower()
+        if status_val not in _VALID_CONNECTION_STATUSES:
+            return JSONResponse(
+                {"error": f"Invalid 'status'. Allowed: {sorted(_VALID_CONNECTION_STATUSES)}"},
+                status_code=400,
+            )
+
+        raw_endpoint = body.get("endpoint_url")
+        if raw_endpoint is not None and not isinstance(raw_endpoint, str):
+            return JSONResponse({"error": "Invalid 'endpoint_url'"}, status_code=400)
+        endpoint_url = raw_endpoint.strip() if isinstance(raw_endpoint, str) else None
+        if endpoint_url == "":
+            endpoint_url = None
+
+        raw_scopes = body.get("scopes")
+        if raw_scopes is None:
+            scopes_list: list[str] = []
+        elif isinstance(raw_scopes, list):
+            scopes_list = [str(s).strip() for s in raw_scopes if str(s).strip()]
+        else:
+            return JSONResponse({"error": "'scopes' must be a list of strings"}, status_code=400)
+
+        raw_meta = body.get("metadata")
+        if raw_meta is None:
+            meta_dict: dict[str, Any] = {}
+        elif isinstance(raw_meta, dict):
+            meta_dict = dict(raw_meta)
+        else:
+            return JSONResponse({"error": "'metadata' must be a JSON object"}, status_code=400)
+
+        secret_config = body.get("secret_config")
+        if secret_config is None and "credentials" in body:
+            secret_config = body.get("credentials")
+        if secret_config is None:
+            if auth_kind == "none":
+                secret_config = {}
+            else:
+                return JSONResponse(
+                    {"error": "Missing 'secret_config' dictionary for this auth_kind"},
+                    status_code=400,
+                )
+        elif not isinstance(secret_config, dict):
+            return JSONResponse(
+                {"error": "'secret_config' must be a JSON object"},
+                status_code=400,
+            )
+        elif auth_kind != "none" and len(secret_config) == 0:
+            return JSONResponse(
+                {"error": "'secret_config' must be non-empty for this auth_kind"},
+                status_code=400,
+            )
+
+        try:
+            meta = await vault.upsert_connection(
+                ns_id,
+                app_slug,
+                secret_config,
+                connection_name=connection_name,
+                auth_kind=auth_kind,
+                endpoint_url=endpoint_url,
+                scopes=scopes_list,
+                metadata=meta_dict,
+                status=status_val,
+            )
+        except BridgeURLValidationError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            logger.error("Failed to upsert app connection: %s", type(exc).__name__)
+            return JSONResponse({"error": "Failed to save app connection"}, status_code=500)
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "connection": _serialize_connection_metadata(meta),
+            },
+            status_code=201,
+        )
+
+    if method == "DELETE":
+        body_data: dict[str, Any] = {}
+        try:
+            raw_bytes = getattr(request, "_body", b"")
+            if raw_bytes:
+                parsed = json.loads(raw_bytes.decode("utf-8"))
+                if isinstance(parsed, dict):
+                    body_data = parsed
+        except Exception:
+            body_data = {}
+
+        raw_ns = request.query_params.get("namespace_id") or body_data.get("namespace_id")
+        try:
+            ns_id = _parse_uuid_or_default(raw_ns, _DEFAULT_NAMESPACE_ID)
+        except (ValueError, TypeError, AttributeError):
+            return JSONResponse(
+                {"error": "Invalid 'namespace_id': must be a valid UUID"},
+                status_code=400,
+            )
+
+        raw_cid = request.query_params.get("connection_id") or body_data.get("connection_id")
+        try:
+            conn_id = _parse_uuid_or_default(raw_cid, None)
+        except (ValueError, TypeError, AttributeError):
+            return JSONResponse(
+                {"error": "Missing or invalid 'connection_id': must be a valid UUID"},
+                status_code=400,
+            )
+
+        try:
+            deleted = await vault.delete_connection(ns_id, conn_id)
+        except Exception as exc:
+            logger.error("Failed to delete app connection: %s", type(exc).__name__)
+            return JSONResponse({"error": "Failed to delete app connection"}, status_code=500)
+
+        if not deleted:
+            return JSONResponse({"error": "Connection not found"}, status_code=404)
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "deleted": True,
+                "connection_id": conn_id,
+                "namespace_id": ns_id,
+            }
+        )
+
+    return JSONResponse({"error": "Method not allowed"}, status_code=405)
+
+
 def register_admin_plugin_routes(routes: list[Route] | None = None, ctx: Any = None) -> list[Route]:
-    """Register all admin plugin endpoints including token minter onto route list."""
+    """Register all admin plugin endpoints including token minter and connections vault."""
 
     def _bind_local(hnd: Any) -> Any:
         async def _endpoint(req: Any) -> Any:
@@ -882,10 +1226,20 @@ def register_admin_plugin_routes(routes: list[Route] | None = None, ctx: Any = N
         Route(
             "/admin/plugins/api/mint-token", _bind_local(admin_plugins_mint_token), methods=["POST"]
         ),
+        Route(
+            "/admin/plugins/api/connections",
+            _bind_local(admin_plugins_connections),
+            methods=["GET", "POST", "DELETE"],
+        ),
         Route("/api/admin/plugins", _bind_local(admin_plugins_api), methods=["GET"]),
         Route("/api/admin/plugins/toggle", _bind_local(admin_plugins_toggle), methods=["POST"]),
         Route(
             "/api/admin/plugins/mint-token", _bind_local(admin_plugins_mint_token), methods=["POST"]
+        ),
+        Route(
+            "/api/admin/plugins/connections",
+            _bind_local(admin_plugins_connections),
+            methods=["GET", "POST", "DELETE"],
         ),
     ]
     if routes is not None:

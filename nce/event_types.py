@@ -110,6 +110,8 @@ EventType = Literal[
     "business_insights_scenario_executed",
     "business_insights_board_pack_drafted",
     "business_insights_access_audited",
+    # CONNECTOR_EVENTS — governed external connector actions (Core v3.6.0 SDK)
+    "connector_action",
 ]
 
 VALID_EVENT_TYPES: Final[frozenset[str]] = frozenset(get_args(EventType))

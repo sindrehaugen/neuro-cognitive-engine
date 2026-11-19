@@ -4,7 +4,7 @@
 > Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
 
 <p>
-  <img alt="version" src="https://img.shields.io/badge/version-3.5.4-blue">
+  <img alt="version" src="https://img.shields.io/badge/version-3.6.0-blue">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -204,7 +204,7 @@ NCE `v3.5.4` eliminates the HTTP/1.1 Delayed-ACK floor (`BaseHTTPMiddleware` rep
 | **Full 5-Tool Chained LLM Reasoning Turn** | `~1,515 ms` | `~148 ms` | **`116.94 ms` (`p50`)** | 30s verified-token cache + 2s Redis session sync + coalesced salience ring buffer |
 | **Mongo-Pause Saga Failover (`store_memory`)** | `10.10 s` | `2.36 s` | **`2.38 s` (`< 3.0s`)** | `2000ms` Motor timeouts + bounded inline rollback + `SKIP LOCKED` recovery |
 
-Full benchmark methodology and `EXPLAIN (ANALYZE, BUFFERS)` plans: [docs/benchmarks/PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · Live `v3.5.3` report: [docs/benchmarks/HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) · Live `v3.5.4` ONNX & pure-ASGI report: [docs/benchmarks/HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md).
+Full benchmark methodology and `EXPLAIN (ANALYZE, BUFFERS)` plans: [docs/benchmarks/PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · Live `v3.5.3` report: [docs/benchmarks/HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) · Live `v3.5.4` report: [docs/benchmarks/HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md) · Live `v3.6.0` release certification: [docs/benchmarks/HARDENING_READINESS_v3.6.0.md](docs/benchmarks/HARDENING_READINESS_v3.6.0.md).
 
 ---
 
@@ -345,14 +345,21 @@ Full guide: [docs/enterprise_security.md](docs/enterprise_security.md) · [docs/
 
 ## Official Plugins
 
-NCE provides a decoupled, pluggable architecture. Operational business engines, domain-specific tooling, and enterprise ERP/IT integrations are maintained as official extension packages:
+NCE `v3.6.0` introduces the vendor-neutral **Core Connector SDK (`nce.connectors`)** and a decoupled **4-repo plugin ecosystem** governed by entry points (`nce.plugins`), encrypted tenant vaults (`041_app_connections_vault.sql`), and connected-first `/mcp` compact discovery:
 
-- **[NCE Vertical Engines](https://github.com/sindrehaugen/nce-vertical-engines)**: 22 modular domain engines spanning Sales, Procurement, Product, Agreements, Vendors, Inventory, Economy, System Design, Project, Field Tech, HR, Marketing, Business Insights, Resources, Assets, Support, NetBox, Dynamics 365, Odoo, Salesforce, Diagnostics, and Customer Portal.
-  - Installable via entry points (`pip install "nce-vertical-engines[all]"` or per-engine/type/category extras).
-  - Dynamically mounts MCP tools and REST endpoints via the NCE Plugin interface (`nce.plugins`).
-  - Enables full tenant-scoped operational automation on top of the NCE cognitive memory substrate.
+1. **`neuro-cognitive-engine` (Core + Connector SDK)** — ![Stage: Stable](https://img.shields.io/badge/stage-stable-10b981)
+   - Core quad-database cognitive substrate (`71` static Core MCP tools) plus `nce.connectors` (`BaseAppConnector`, `ConnectorDescriptor`, `@governed_action`, `TenantConnectionVault`, SSRF/ZIP/XML/C8 guards, Entra OIDC verification, and canonical diagram/entity envelopes).
+   - Admin Console (`/admin/plugins`) exposes release-stage badges (`stable` / `beta` / `experimental`), `?maturity=` filtering, and `/admin/plugins/api/connections` vault CRUD without leaking plaintext secrets.
+   - Streamable HTTP `/mcp` gateway (`discover_tools`) prioritizes connected `app_slug` tools for the authenticated tenant while preserving the strict 12-tool `compact` exposure budget.
+2. **`nce-app-engines` (20 Core-Only Beta Connectors)** — ![Stage: Beta](https://img.shields.io/badge/stage-beta-orange)
+   - Standalone Core-only connector suite built strictly against `nce.connectors` (`maturity="beta"`, `vendor_specific=True`), storing per-tenant credentials in `app_connections` with zero vertical domain coupling.
+3. **[NCE Vertical Engines](https://github.com/sindrehaugen/nce-vertical-engines) (Stable / Beta Split)**
+   - 22 modular domain engines spanning Sales, Procurement, Product, Agreements, Vendors, Inventory, Economy, System Design, Project, Field Tech, HR, Marketing, Business Insights, Resources, Assets, Support, NetBox, Dynamics 365, Odoo, Salesforce, Diagnostics, and Customer Portal.
+   - Engines advertise `maturity` (`stable` for hardened core business domains, `beta` for external/preview connectors) and `vendor_specific` metadata via `nce.plugins`, installable via entry points (`pip install "nce-vertical-engines[all]"` or per-engine/type/category extras).
+4. **Private / Downstream Enterprise Extensions**
+   - Organization-specific plugin packages mount custom tools, routes, and migrations out-of-band through the same `nce.plugins` entry-point contract without modifying Core.
 
-For installation, engine documentation, and domain specifications, see the [nce-vertical-engines repository](https://github.com/sindrehaugen/nce-vertical-engines).
+See [docs/plugin_development.md](docs/plugin_development.md) for the `nce.connectors` SDK contract and [nce-vertical-engines](https://github.com/sindrehaugen/nce-vertical-engines) for vertical engine specifications.
 
 ---
 
@@ -403,7 +410,7 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 | Integrations | [service_integrations.md](docs/service_integrations.md) · [bridge_setup_guide.md](docs/bridge_setup_guide.md) · [a2a.md](docs/a2a.md) |
 | Edge | [airgapped_deployment.md](docs/airgapped_deployment.md) · [vram_monitoring.md](docs/vram_monitoring.md) |
 | Plugins & Verticals | [plugin_development.md](docs/plugin_development.md) · [shared-core/overview.md](docs/shared-core/overview.md) · [nce-vertical-engines](https://github.com/sindrehaugen/nce-vertical-engines) |
-| Benchmarks | [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · [HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) · [HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md) |
+| Benchmarks | [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · [HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) · [HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md) · [HARDENING_READINESS_v3.6.0.md](docs/benchmarks/HARDENING_READINESS_v3.6.0.md) |
 | Design decisions | [adr/](docs/adr/) |
 
 ---
@@ -420,5 +427,5 @@ The [`docs/`](docs/) tree is the source of truth. Start here:
 
 ---
 
-NCE — Neuro-Cognitive Engine · v3.5.4 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
+NCE — Neuro-Cognitive Engine · v3.6.0 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
 

@@ -571,6 +571,29 @@ CREATE POLICY tenant_isolation_policy ON procedural_heuristics
 GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON procedural_heuristics TO nce_gc;
 
+ALTER TABLE app_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_connections FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_policy ON app_connections;
+CREATE POLICY tenant_isolation_policy ON app_connections
+    FOR ALL TO nce_app
+    USING (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()))
+    WITH CHECK (namespace_id IS NOT NULL AND namespace_id = (SELECT get_nce_namespace()));
+
+REVOKE ALL ON TABLE app_connections FROM PUBLIC;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_app') THEN
+        REVOKE ALL ON TABLE app_connections FROM nce_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE app_connections TO nce_app;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nce_gc') THEN
+        REVOKE ALL ON TABLE app_connections FROM nce_gc;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE app_connections TO nce_gc;
+    END IF;
+END $$;
+
 DO $$
 DECLARE
     t text;

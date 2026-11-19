@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.6.0] - 2026-11-19
+
+### Added
+- **Core Connector SDK (`nce/connectors/`):**
+  - Added vendor-neutral connector contracts (`BaseAppConnector`, `ConnectorDescriptor`, `ConnectorMaturity`, `ConnectorAuthKind`) in `nce/connectors/base.py`, defaulting app connectors to `maturity="beta"` and `vendor_specific=True`.
+  - Added `@governed_action`, `governed_action_response`, `assert_not_replay_sandbox`, `ReplaySandboxFenceError`, `record_connector_worm_event`, and `compute_jcs_sha256` in `nce/connectors/governance.py` enforcing replay-sandbox fencing, dry-run/approval previews, C8 redaction, and signed WORM `connector_action` audit events.
+  - Added SSRF, XXE/defusedxml, zip-slip/deflate-bomb, and `AllowListRedactor` C8 guards (`nce/connectors/guards.py`), asymmetric `EntraOIDCVerifier` (`nce/connectors/entra.py`), canonical entity/diagram IR envelopes (`nce/connectors/envelopes.py`), and tenant substrate adapters (`nce/connectors/substrate.py`).
+- **Encrypted Multi-Tenant Connection Vault (`nce/connectors/vault.py`, `nce/migrations/041_app_connections_vault.sql`):**
+  - Added Core migration `041_app_connections_vault.sql` provisioning `app_connections` with `FORCE ROW LEVEL SECURITY` (`(SELECT get_nce_namespace())`) and envelope-encrypted `encrypted_config` (`dek_id`, `kek_version`).
+  - Added `TenantConnectionVault` and `AppConnectionMetadata` for tenant-scoped credential upsert, metadata listing without secret leakage, runtime secret decryption, deletion, and connected `app_slug` resolution.
+- **Admin Beta UI, Maturity Filtering & Vault API (`nce/plugins.py`, `nce/admin_plugins.py`, `admin/plugins.html`):**
+  - Normalized `maturity` (`stable` / `beta` / `experimental`) and `vendor_specific` on engine descriptors, added `?maturity=` comma-separated case-insensitive filtering and `summary.maturity` / `maturity_counts` to `/admin/plugins/api` and `/api/admin/plugins`.
+  - Added `/admin/plugins/api/connections` and `/api/admin/plugins/connections` (`GET` / `POST` / `DELETE`) behind existing admin auth, HMAC nonce, and SSRF validation, returning masked metadata only.
+  - Updated `admin/plugins.html` with air-gapped inline CSS maturity badges (`BETA` amber/orange, `STABLE` emerald, `EXPERIMENTAL` purple/slate), Stage filter controls, and the App Connections Vault modal with zero external CDN/URLs and zero `innerHTML`.
+- **Connected-First `/mcp` Compact Discovery (`nce/mcp_http_gateway.py`):**
+  - Updated `discover_tools_handler()` to resolve connected `app_slug`s for `session.namespace_id` via `TenantConnectionVault(pg_pool).get_connected_app_slugs()` (failing open silently when offline/uninitialized), boost connected app tools, and strictly preserve the 12-tool `compact` limit.
+
+### Changed
+- **Documentation & Integrity Gates (`pyproject.toml`, `README.md`, `docs/plugin_development.md`, `scripts/check_docs_integrity.py`):**
+  - Bumped package version to `3.6.0`, documented the `nce.connectors` SDK and 4-repo ecosystem (`neuro-cognitive-engine`, `nce-app-engines` Beta connectors, `nce-vertical-engines` Stable/Beta split, and private enterprise extensions), and ensured static `https://img.shields.io/badge/` badge URLs pass `scripts/check_docs_integrity.py` offline without live network fetches.
+
+---
+
 ## [3.5.4] - 2026-11-18
 
 ### Performance & Pure-ASGI Runtime

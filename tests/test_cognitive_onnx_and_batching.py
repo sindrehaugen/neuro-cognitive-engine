@@ -6,6 +6,7 @@ import ast
 import asyncio
 import importlib.util
 import json
+import os
 import sys
 import types
 from pathlib import Path
@@ -616,3 +617,360 @@ def test_dockerfile_and_requirements_onnx_contract() -> None:
         "onnxruntime-int8",
     ):
         assert expected_df in df
+
+
+# ---------------------------------------------------------------------------
+# 5. Dynamic thread defaulting, offline enforcement, parity check, & chunking
+# ---------------------------------------------------------------------------
+
+
+def test_num_threads_dynamic_default_and_clamping(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """NCE_COGNITIVE_NUM_THREADS defaults to min(4, os.cpu_count() or 4) and clamps <=0."""
+    cog_app = _load_cognitive_app()
+
+    for cpu_val, expected in ((1, 1), (2, 2), (8, 4), (16, 4), (None, 4)):
+        monkeypatch.setattr(os, "cpu_count", lambda val=cpu_val: val)
+        monkeypatch.delenv("NCE_COGNITIVE_NUM_THREADS", raising=False)
+        assert cog_app._num_threads() == expected
+
+        monkeypatch.setenv("NCE_COGNITIVE_NUM_THREADS", "")
+        assert cog_app._num_threads() == expected
+
+        monkeypatch.setenv("NCE_COGNITIVE_NUM_THREADS", "   ")
+        assert cog_app._num_threads() == expected
+
+        monkeypatch.setenv("NCE_COGNITIVE_NUM_THREADS", "invalid-int")
+        assert cog_app._num_threads() == expected
+
+    for non_positive in ("0", "-1", "-16"):
+        monkeypatch.setenv("NCE_COGNITIVE_NUM_THREADS", non_positive)
+        assert cog_app._num_threads() == 1
+
+    monkeypatch.setenv("NCE_COGNITIVE_NUM_THREADS", "6")
+    assert cog_app._num_threads() == 6
+
+    # Verify _create_ort_session passes dynamic thread count and ORT_ENABLE_ALL.
+    recorded_opts: list[object] = []
+
+    class _FakeOpts:
+        def __init__(self) -> None:
+            self.intra_op_num_threads = 0
+            self.inter_op_num_threads = 0
+            self.execution_mode = None
+            self.graph_optimization_level = None
+
+    class _FakeSess:
+        def __init__(self, _path: str, sess_options=None, providers=None) -> None:
+            recorded_opts.append(sess_options)
+
+        def get_inputs(self):
+            return [SimpleNamespace(name="input_ids"), SimpleNamespace(name="attention_mask")]
+
+        def get_outputs(self):
+            return [SimpleNamespace(name="last_hidden_state")]
+
+    fake_ort = types.ModuleType("onnxruntime")
+    fake_ort.SessionOptions = _FakeOpts  # type: ignore[attr-defined]
+    fake_ort.ExecutionMode = SimpleNamespace(ORT_SEQUENTIAL="ORT_SEQUENTIAL")  # type: ignore[attr-defined]
+    fake_ort.GraphOptimizationLevel = SimpleNamespace(ORT_ENABLE_ALL="ORT_ENABLE_ALL")  # type: ignore[attr-defined]
+    fake_ort.InferenceSession = _FakeSess  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+
+    monkeypatch.setattr(os, "cpu_count", lambda: 2)
+    monkeypatch.delenv("NCE_COGNITIVE_NUM_THREADS", raising=False)
+    cog_app._create_ort_session(tmp_path / "model.onnx")
+    assert getattr(recorded_opts[-1], "intra_op_num_threads", None) == 2
+    assert getattr(recorded_opts[-1], "graph_optimization_level", None) == "ORT_ENABLE_ALL"
+
+
+@pytest.mark.asyncio
+async def test_offline_env_enforced_and_readyz_reports_num_threads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Air-gapped HF offline flags are forced on boot and /readyz reports num_threads."""
+    cog_app = _load_cognitive_app()
+
+    onnx_dir = tmp_path / "all-mpnet-base-v2-onnx"
+    onnx_dir.mkdir(parents=True)
+    (onnx_dir / "model.onnx").write_bytes(b"fake-onnx")
+    (onnx_dir / "metadata.json").write_text(
+        json.dumps({"dimension": 768, "max_seq_length": 384}),
+        encoding="utf-8",
+    )
+
+    tok_kwargs: list[dict] = []
+
+    class _FakeOpts:
+        def __init__(self) -> None:
+            self.intra_op_num_threads = 0
+            self.inter_op_num_threads = 0
+            self.execution_mode = None
+            self.graph_optimization_level = None
+
+    class _FakeSess:
+        def __init__(self, _path: str, sess_options=None, providers=None) -> None:
+            pass
+
+        def get_inputs(self):
+            return [SimpleNamespace(name="input_ids"), SimpleNamespace(name="attention_mask")]
+
+        def get_outputs(self):
+            return [SimpleNamespace(name="last_hidden_state")]
+
+    fake_ort = types.ModuleType("onnxruntime")
+    fake_ort.SessionOptions = _FakeOpts  # type: ignore[attr-defined]
+    fake_ort.ExecutionMode = SimpleNamespace(ORT_SEQUENTIAL="ORT_SEQUENTIAL")  # type: ignore[attr-defined]
+    fake_ort.GraphOptimizationLevel = SimpleNamespace(ORT_ENABLE_ALL="ORT_ENABLE_ALL")  # type: ignore[attr-defined]
+    fake_ort.InferenceSession = _FakeSess  # type: ignore[attr-defined]
+
+    class _FakeTok:
+        @staticmethod
+        def from_pretrained(_source: str, **kwargs):
+            tok_kwargs.append(kwargs)
+            return MagicMock()
+
+    fake_tf = types.ModuleType("transformers")
+    fake_tf.AutoTokenizer = _FakeTok  # type: ignore[attr-defined]
+    fake_spacy = types.ModuleType("spacy")
+    fake_spacy.load = lambda _name: MagicMock()  # type: ignore[attr-defined]
+
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+    monkeypatch.setitem(sys.modules, "transformers", fake_tf)
+    monkeypatch.setitem(sys.modules, "spacy", fake_spacy)
+    monkeypatch.setenv("NCE_MODEL_DIR", str(tmp_path))
+    monkeypatch.setenv("NCE_COGNITIVE_BACKEND", "onnx")
+    monkeypatch.setattr(os, "cpu_count", lambda: 2)
+    monkeypatch.delenv("NCE_COGNITIVE_NUM_THREADS", raising=False)
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "")
+
+    cog_app._load_models()
+    assert cog_app._state.ready_event.is_set()
+    assert os.environ["HF_HUB_OFFLINE"] == "1"
+    assert os.environ["TRANSFORMERS_OFFLINE"] == "1"
+    assert tok_kwargs[-1] == {"local_files_only": True}
+
+    transport = httpx.ASGITransport(app=cog_app.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        rz = await client.get("/readyz")
+    assert rz.status_code == 200
+    payload = rz.json()
+    assert payload["offline"] is True
+    assert payload["num_threads"] == 2
+
+
+def test_verify_onnx_pytorch_parity_thresholds_and_cli(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """verify_onnx_pytorch_parity enforces >=0.9999 cosine parity, rejects drift/NaN, and supports CLI."""
+    cog_app = _load_cognitive_app()
+
+    st_dir = tmp_path / "all-mpnet-base-v2"
+    onnx_dir = tmp_path / "all-mpnet-base-v2-onnx"
+    st_dir.mkdir(parents=True)
+    onnx_dir.mkdir(parents=True)
+    (onnx_dir / "model.onnx").write_bytes(b"fake-fp32")
+    (onnx_dir / "metadata.json").write_text(
+        json.dumps({"dimension": 768, "max_seq_length": 384}),
+        encoding="utf-8",
+    )
+
+    def _vecs_for(n: int, offset: int = 1) -> np.ndarray:
+        return np.array([_unit_vec(i + offset) for i in range(n)], dtype=np.float32)
+
+    mode = {"behavior": "match"}
+    st_kwargs: list[dict] = []
+    tok_kwargs: list[dict] = []
+    ort_levels: list[object] = []
+
+    class _FakeST:
+        def __init__(self, _source: str, **kwargs) -> None:
+            st_kwargs.append(kwargs)
+
+        def encode(self, encode_samples, **_kwargs):
+            return _vecs_for(len(encode_samples), offset=1)
+
+    class _FakeTok:
+        @staticmethod
+        def from_pretrained(_source: str, **kwargs):
+            tok_kwargs.append(kwargs)
+            return lambda texts, **_kw: {
+                "input_ids": np.ones((len(texts), 2), dtype=np.int64),
+                "attention_mask": np.ones((len(texts), 2), dtype=np.int64),
+            }
+
+    class _FakeOpts:
+        def __init__(self) -> None:
+            self.intra_op_num_threads = 0
+            self.inter_op_num_threads = 0
+            self.execution_mode = None
+            self.graph_optimization_level = None
+
+    class _FakeSess:
+        def __init__(self, _path: str, sess_options=None, providers=None) -> None:
+            ort_levels.append(getattr(sess_options, "graph_optimization_level", None))
+
+        def get_inputs(self):
+            return [SimpleNamespace(name="input_ids"), SimpleNamespace(name="attention_mask")]
+
+        def get_outputs(self):
+            return [SimpleNamespace(name="last_hidden_state")]
+
+        def run(self, _out_names, feed):
+            n = int(feed["input_ids"].shape[0])
+            base = _vecs_for(n, offset=1)
+            if mode["behavior"] == "match":
+                out = np.repeat(base[:, None, :], 2, axis=1)
+            elif mode["behavior"] == "drift":
+                drifted = _vecs_for(n, offset=10)
+                out = np.repeat(drifted[:, None, :], 2, axis=1)
+            else:
+                out = np.repeat(base[:, None, :], 2, axis=1).copy()
+                out[min(1, n - 1), :, 0] = np.nan
+            return [out]
+
+    fake_st = types.ModuleType("sentence_transformers")
+    fake_st.SentenceTransformer = _FakeST  # type: ignore[attr-defined]
+    fake_tf = types.ModuleType("transformers")
+    fake_tf.AutoTokenizer = _FakeTok  # type: ignore[attr-defined]
+    fake_ort = types.ModuleType("onnxruntime")
+    fake_ort.SessionOptions = _FakeOpts  # type: ignore[attr-defined]
+    fake_ort.ExecutionMode = SimpleNamespace(ORT_SEQUENTIAL="ORT_SEQUENTIAL")  # type: ignore[attr-defined]
+    fake_ort.GraphOptimizationLevel = SimpleNamespace(ORT_ENABLE_ALL="ORT_ENABLE_ALL")  # type: ignore[attr-defined]
+    fake_ort.InferenceSession = _FakeSess  # type: ignore[attr-defined]
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_st)
+    monkeypatch.setitem(sys.modules, "transformers", fake_tf)
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+
+    samples = ["alpha text", "beta text"]
+    ok_report = cog_app.verify_onnx_pytorch_parity(
+        samples, model_dir=tmp_path, backend="onnx", min_cosine=0.9999
+    )
+    assert ok_report["ok"] is True
+    assert ok_report["min_cosine"] >= 0.9999
+    assert ok_report["max_norm_err"] < 1e-5
+    assert st_kwargs[-1] == {"device": "cpu", "local_files_only": True}
+    assert tok_kwargs[-1] == {"local_files_only": True}
+    assert ort_levels[-1] == "ORT_ENABLE_ALL"
+
+    mode["behavior"] = "drift"
+    drift_report = cog_app.verify_onnx_pytorch_parity(
+        samples, model_dir=tmp_path, backend="onnx", min_cosine=0.9999
+    )
+    assert drift_report["ok"] is False
+    assert drift_report["min_cosine"] < 0.9999
+
+    mode["behavior"] = "nan"
+    nan_report = cog_app.verify_onnx_pytorch_parity(
+        samples, model_dir=tmp_path, backend="onnx", min_cosine=0.9999
+    )
+    assert nan_report["ok"] is False
+
+    mode["behavior"] = "match"
+    rc_ok = cog_app.main(["--verify-parity", "--model-dir", str(tmp_path), "--backend", "onnx"])
+    assert rc_ok == 0
+    cli_ok = json.loads(capsys.readouterr().out)
+    assert cli_ok["ok"] is True
+    assert cli_ok["min_cosine"] >= 0.9999
+
+    mode["behavior"] = "drift"
+    rc_fail = cog_app.main(["--verify-parity", "--model-dir", str(tmp_path), "--backend", "onnx"])
+    assert rc_fail == 1
+    cli_fail = json.loads(capsys.readouterr().out)
+    assert cli_fail["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_embed_batch_delegation_single_post_bounded_chunking_and_no_torch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multi-text delegation sends one batched POST (or bounded chunks) without importing torch."""
+    from nce import embeddings
+    from nce.config import cfg
+
+    embeddings.reset_backend_singleton_for_tests()
+    monkeypatch.setattr(cfg, "NCE_BACKEND", "")
+    monkeypatch.setattr(cfg, "NCE_COGNITIVE_BASE_URL", "http://127.0.0.1:11435")
+    monkeypatch.setattr(cfg, "NCE_COGNITIVE_API_KEY", "")
+    monkeypatch.setattr(cfg, "EMBED_BATCH_CHUNK", 64)
+    # Poison torch so any in-process torch import raises ModuleNotFoundError.
+    monkeypatch.setitem(sys.modules, "torch", None)
+
+    with patch(
+        "httpx.Client.get",
+        return_value=SimpleNamespace(json=lambda: {"engine": "onnxruntime"}),
+    ):
+        detected = embeddings.detect_backend()
+    assert isinstance(detected, embeddings.CognitiveRemoteBackend)
+
+    async_posts: list[list[str]] = []
+    sync_posts: list[list[str]] = []
+
+    async def fake_async_retry(_client, method, url, **kwargs):
+        assert method == "POST"
+        assert url.endswith("/v1/embeddings")
+        batch = list(kwargs["json"]["input"])
+        async_posts.append(batch)
+        return SimpleNamespace(
+            json=lambda: {
+                "data": [{"index": i, "embedding": _unit_vec(i + 1)} for i in range(len(batch))]
+            }
+        )
+
+    def fake_sync_retry(_client, method, url, **kwargs):
+        assert method == "POST"
+        assert url.endswith("/v1/embeddings")
+        batch = list(kwargs["json"]["input"])
+        sync_posts.append(batch)
+        return SimpleNamespace(
+            json=lambda: {
+                "data": [{"index": i, "embedding": _unit_vec(i + 5)} for i in range(len(batch))]
+            }
+        )
+
+    with (
+        patch("nce.http_resilience.request_with_retry", side_effect=fake_async_retry),
+        patch("nce.http_resilience.request_with_retry_sync", side_effect=fake_sync_retry),
+        patch.object(embeddings, "get_backend", return_value=detected),
+    ):
+        # 5 texts within chunk cap -> single batched HTTP POST (no per-item round-trips).
+        vecs_5 = await embeddings.embed_batch(["t0", "t1", "t2", "t3", "t4"])
+        assert len(vecs_5) == 5
+        assert async_posts == [["t0", "t1", "t2", "t3", "t4"]]
+
+        # 8 texts with chunk cap 3 -> bounded chunks [3, 3, 2].
+        async_posts.clear()
+        monkeypatch.setattr(cfg, "EMBED_BATCH_CHUNK", 3)
+        vecs_8 = await embeddings.embed_batch([f"doc-{i}" for i in range(8)])
+        assert len(vecs_8) == 8
+        assert [len(b) for b in async_posts] == [3, 3, 2]
+
+        # Direct CognitiveRemoteBackend with max_batch_size=3 also bounds async & sync POSTs.
+        with patch(
+            "httpx.Client.get",
+            return_value=SimpleNamespace(json=lambda: {"engine": "onnxruntime"}),
+        ):
+            bounded_backend = embeddings.CognitiveRemoteBackend(
+                batch_window_ms=0.0, max_batch_size=3
+            )
+        async_posts.clear()
+        direct_vecs = await bounded_backend.embed([f"direct-{i}" for i in range(8)])
+        assert len(direct_vecs) == 8
+        assert [len(b) for b in async_posts] == [3, 3, 2]
+
+        sync_vecs, degraded = bounded_backend._sync_embed_batch([f"sync-{i}" for i in range(8)])
+        assert degraded is False
+        assert len(sync_vecs) == 8
+        assert [len(b) for b in sync_posts] == [3, 3, 2]
+
+        await bounded_backend.aclose()
+
+    await embeddings.close_embedding_http_clients()
+    embeddings.reset_backend_singleton_for_tests()

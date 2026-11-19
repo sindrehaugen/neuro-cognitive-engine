@@ -1,4 +1,4 @@
-> **Status:** shipped · **Verified-against:** `535ce71` (public `main`) · **Last-audited:** generated
+> **Status:** shipped · **Verified-against:** `e96478c` (public `main`) · **Last-audited:** generated
 
 # NCE Engine Figures — Inventory & Counters
 
@@ -15,10 +15,10 @@
 | Counter | Value | Source of Truth |
 |---|---|---|
 | `TOOL_REGISTRY` entries | **71** MCP tools (71 shared + 0 across 0 engines) | AST of [`nce/tool_registry.py`](../../nce/tool_registry.py), pinned by `_EXPECTED_TOTAL = 71` in [`tests/test_tool_registry.py`](../../tests/test_tool_registry.py) |
-| SQL migrations | 40 files (+1 optional), `001` → `040` — no gaps | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
+| SQL migrations | 41 files (+1 optional), `001` → `041` — no gaps | Files in [`nce/migrations/`](../../nce/migrations/) and [`nce/migrations/optional/`](../../nce/migrations/optional/) |
 | Golden Thread seam burndown | **0 of 37** lifecycle steps broken (0 distinct seams) | Generated in [`docs/_generated/golden_thread_seams.md`](golden_thread_seams.md) from [`tests/integration/test_golden_thread.py`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/tests/integration/test_golden_thread.py) |
 | v1.6 C12 resource-surface registrations | **0 of 0** engines have `resources.py` | AST of `nce/vertical_modules/<engine>/resources.py` per engine — see the v1.6 section below |
-| `EXPECTED_TENANT_RLS_TABLES` | **37** | AST of [`nce/event_log.py`](../../nce/event_log.py) |
+| `EXPECTED_TENANT_RLS_TABLES` | **38** | AST of [`nce/event_log.py`](../../nce/event_log.py) |
 
 ## v1.6 — C12 Resource Surface Registration (Lane E)
 
@@ -41,10 +41,10 @@
 
 ## SQL Migration Census
 
-- **Base Migrations:** 40 files (`001` → `040`)
+- **Base Migrations:** 41 files (`001` → `041`)
 - **Optional Migrations:** 1 files (`010_citus_sharding.sql`)
 - **Unallocated / Skipped Prefixes in Base:** 
-- **Total SQL Migration Files:** 41
+- **Total SQL Migration Files:** 42
 
 ## Golden Thread Seam Status
 

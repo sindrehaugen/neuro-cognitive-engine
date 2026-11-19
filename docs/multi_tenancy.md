@@ -41,15 +41,15 @@ USING (namespace_id = (SELECT get_nce_namespace()))
 WITH CHECK (namespace_id = (SELECT get_nce_namespace()));
 ```
 
-### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (37 Tables)
+### 2a. Authoritative Source of Truth: `EXPECTED_TENANT_RLS_TABLES` (38 Tables)
 
-**The definitive source of truth for Core single-namespace RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (37 tables), rather than the partial `schema.sql` loop (19 tables) or the initial migration 001 seed (14 tables).**
+**The definitive source of truth for Core single-namespace RLS-protected tables across NCE is `EXPECTED_TENANT_RLS_TABLES` defined in [`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py) (38 tables), rather than the partial `schema.sql` loop (19 tables) or the initial migration 001 seed (14 tables).**
 
-At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 37 tenant tables (plus `a2a_grants` in `EXPECTED_SPECIAL_RLS_TABLES` = 38 Pure-Core forced-RLS tables, and any plugin-registered tables via `nce.plugins`) against the active schema.
+At runtime, NCE executes `verify_rls_catalog_consistency()` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py)) during server startup, inspecting PostgreSQL's `pg_tables`, `pg_class.relrowsecurity`, and `pg_policies` catalogs to strictly validate all 38 tenant tables (plus `a2a_grants` in `EXPECTED_SPECIAL_RLS_TABLES` = 39 Pure-Core forced-RLS tables, and any plugin-registered tables via `nce.plugins`) against the active schema.
 
 The catalog consistency validator categorizes all Pure-Core tables in the engine into three exhaustive sets (dynamically extended at runtime by installed plugins via `nce.plugins`):
 
-1. **`EXPECTED_TENANT_RLS_TABLES` (37 tables)**: All standard Pure-Core single-namespace tenant-isolated tables (36 `namespace_id` tables plus `replay_runs` scoped on `source_namespace_id`). Installed plugins (such as `nce-vertical-engines`) extend this dynamically via `get_all_plugin_tenant_rls_tables()`.
+1. **`EXPECTED_TENANT_RLS_TABLES` (38 tables)**: All standard Pure-Core single-namespace tenant-isolated tables (37 `namespace_id` tables plus `replay_runs` scoped on `source_namespace_id`). Installed plugins (such as `nce-vertical-engines`) extend this dynamically via `get_all_plugin_tenant_rls_tables()`.
 2. **`EXPECTED_SPECIAL_RLS_TABLES` (1 table)**: `a2a_grants`, which enforces a dual-namespace ownership policy (`owner_namespace_id` and `target_namespace_id`) with `FORCE ROW LEVEL SECURITY`.
 3. **`EXPECTED_GLOBAL_TABLES` (3 tables)**: Shared Pure-Core platform tables intentionally without RLS across all tenants (`embedding_models`, `reembedding_runs`, `applied_migrations`). A table in `EXPECTED_GLOBAL_TABLES` carries no `namespace_id` and no RLS by design; installed plugins dynamically register plugin global tables via `get_all_plugin_global_tables()`. `applied_migrations` is deployment state — which migration files this database has applied — not tenant data, which is why it carries no `namespace_id` (see `nce/migration_ledger.py`).
 
@@ -59,14 +59,14 @@ The catalog consistency validator categorizes all Pure-Core tables in the engine
 ```
                               ┌─────────────────────────────────────────────────────────┐
                               │          NCE Pure-Core RLS Schema Surface               │
-                              │         (38 Forced-RLS + 3 Global Core Tables)          │
+                              │         (39 Forced-RLS + 3 Global Core Tables)          │
                               └────────────────────────────┬────────────────────────────┘
                                                            │
                      ┌─────────────────────────────────────┼─────────────────────────────────────┐
                      ▼                                     ▼                                     ▼
         ┌─────────────────────────┐           ┌─────────────────────────┐           ┌─────────────────────────┐
         │EXPECTED_TENANT_RLS_TABLES│          │EXPECTED_SPECIAL_RLS_TBLS│           │ EXPECTED_GLOBAL_TABLES  │
-        │       (37 Tables)       │           │        (1 Table)        │           │       (3 Tables)        │
+        │       (38 Tables)       │           │        (1 Table)        │           │       (3 Tables)        │
         │ Single-Namespace RLS    │           │  a2a_grants (Dual-NS)   │           │ Intentionally Global    │
         └─────────────────────────┘           └─────────────────────────┘           └─────────────────────────┘
 ```
@@ -75,13 +75,13 @@ The catalog consistency validator categorizes all Pure-Core tables in the engine
 
 | Surface Definition | Table Count | Scope / Description | Why It Is Not the Source of Truth |
 | :--- | :---: | :--- | :--- |
-| **Migration [`001_enable_rls.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/001_enable_rls.sql)** | 14 | Initial baseline seed (`memories`, `kg_nodes`, `kg_edges`, `pii_redactions`, `memory_salience`, `contradictions`, `snapshots`, `event_log`, `resource_quotas`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue`, `embedding_migrations`, `memory_embeddings`) + `a2a_grants`. | Only seeds initial v1 tables; omits post-v1 Core migrations ([`002`–`040`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/)). |
-| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 19 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional Core tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `signing_credentials`, `principal_bindings`, `outbound_webhooks`, `mcp_client_tokens`, `encryption_deks`, `procedural_heuristics`, `kg_node_embeddings`, `event_sequences`, etc.) receive policy statements inline or in migrations `001`–`040`. | Incomplete as a standalone list; lacks 18 tables (37 − 19) handled inline or in later Core migrations. |
-| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **37** | Authoritative Pure-Core programmatic specification covering all 37 single-namespace forced-RLS Core tables (38 total with `a2a_grants`; dynamically extended by plugins via `nce.plugins`). Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
+| **Migration [`001_enable_rls.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/001_enable_rls.sql)** | 14 | Initial baseline seed (`memories`, `kg_nodes`, `kg_edges`, `pii_redactions`, `memory_salience`, `contradictions`, `snapshots`, `event_log`, `resource_quotas`, `consolidation_runs`, `bridge_subscriptions`, `dead_letter_queue`, `embedding_migrations`, `memory_embeddings`) + `a2a_grants`. | Only seeds initial v1 tables; omits post-v1 Core migrations ([`002`–`041`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/)). |
+| **[`schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) `tenant_tables` loop** | 19 | Dynamic PL/pgSQL array loop in `nce/schema.sql`. Additional Core tables (`replay_runs`, `outbox_events`, `saga_execution_log`, `topology_graph`, `signing_credentials`, `principal_bindings`, `outbound_webhooks`, `mcp_client_tokens`, `encryption_deks`, `procedural_heuristics`, `app_connections`, `kg_node_embeddings`, `event_sequences`, etc.) receive policy statements inline or in migrations `001`–`041`. | Incomplete as a standalone list; lacks 19 tables (38 − 19) handled inline or in later Core migrations. |
+| **`EXPECTED_TENANT_RLS_TABLES` ([`nce/event_log.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/event_log.py))** | **38** | Authoritative Pure-Core programmatic specification covering all 38 single-namespace forced-RLS Core tables (39 total with `a2a_grants`; dynamically extended by plugins via `nce.plugins`). Validated by `verify_rls_catalog_consistency()` at startup. | **Definitive source of truth**: Enforced by automated runtime assertions against live database catalog metadata. |
 
-### 2c. Complete Inventory of the 37 Tenant RLS Tables
+### 2c. Complete Inventory of the 38 Tenant RLS Tables
 
-The 37 tables in `EXPECTED_TENANT_RLS_TABLES` span all 10 Pure-Core functional domains of NCE:
+The 38 tables in `EXPECTED_TENANT_RLS_TABLES` span all 11 Pure-Core functional domains of NCE:
 
 | Subsystem Domain | Count | Table Names | Description |
 | :--- | :---: | :--- | :--- |
@@ -95,6 +95,7 @@ The 37 tables in `EXPECTED_TENANT_RLS_TABLES` span all 10 Pure-Core functional d
 | **Outbound Webhooks** | 1 | `outbound_webhooks` | Outbound webhook subscriptions with event selector matching, HMAC-SHA256 request signing, and transactional outbox relay delivery (migration 034). |
 | **MCP Gateway & Envelope Crypto** | 2 | `mcp_client_tokens`, `encryption_deks` | Scoped SHA-256 hashed MCP client bearer tokens and versioned KEK-wrapped tenant/subject AES-256-GCM DEKs (migration 035). |
 | **Procedural Memory** | 1 | `procedural_heuristics` | Distilled procedural guardrails and heuristics with tenant RLS and trigger-maintained `search_tsv` (migration 036). |
+| **App Connectors Vault** | 1 | `app_connections` | Envelope-encrypted per-tenant external connector credentials with forced RLS bound to `(SELECT get_nce_namespace())` (migration 041). |
 
 ---
 
