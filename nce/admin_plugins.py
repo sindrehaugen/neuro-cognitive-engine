@@ -18,7 +18,6 @@ from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from unittest.mock import NonCallableMock
 
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
@@ -910,33 +909,24 @@ async def admin_plugins_mint_token(request: Request, ctx: Any = None) -> JSONRes
     )
 
 
-def _get_explicit_attr(obj: Any, attr: str) -> Any:
-    """Read an attribute without triggering auto-creation on unittest mock objects."""
-    if obj is None:
-        return None
-    if isinstance(obj, NonCallableMock):
-        return obj.__dict__.get(attr)
-    return getattr(obj, attr, None)
-
-
 def _resolve_connection_vault(request: Request, ctx: Any = None) -> Any:
     """Resolve an injected TenantConnectionVault or build one from admin PG pool."""
-    vault = _get_explicit_attr(ctx, "connection_vault") or _get_explicit_attr(ctx, "vault")
+    vault = getattr(ctx, "connection_vault", None) or getattr(ctx, "vault", None)
     app = getattr(request, "app", None)
     app_state = getattr(app, "state", None) if app is not None else None
     if vault is None:
-        vault = _get_explicit_attr(app_state, "connection_vault")
+        vault = getattr(app_state, "connection_vault", None)
     engine = getattr(admin_state, "engine", None)
     if vault is None:
-        vault = _get_explicit_attr(engine, "connection_vault")
+        vault = getattr(engine, "connection_vault", None)
     if vault is not None:
         return vault
 
-    pg_pool = _get_explicit_attr(ctx, "pg_pool")
+    pg_pool = getattr(ctx, "pg_pool", None)
     if pg_pool is None:
-        pg_pool = _get_explicit_attr(app_state, "pg_pool")
+        pg_pool = getattr(app_state, "pg_pool", None)
     if pg_pool is None:
-        pg_pool = _get_explicit_attr(engine, "pg_pool")
+        pg_pool = getattr(engine, "pg_pool", None)
     if pg_pool is None:
         return None
     return TenantConnectionVault(pool=pg_pool)

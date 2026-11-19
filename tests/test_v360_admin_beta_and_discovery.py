@@ -399,9 +399,8 @@ def test_admin_plugins_connections_vault_crud_auth_and_zero_secret_leak() -> Non
             assert r_after.json()["total"] == 0
 
     # 3. Pool resolution from admin_state.engine.pg_pool cleanly constructs TenantConnectionVault(pool=pg_pool)
-    fake_pool = MagicMock()
-    mock_engine = MagicMock()
-    mock_engine.pg_pool = fake_pool
+    fake_pool = object()
+    mock_engine = SimpleNamespace(pg_pool=fake_pool)
     mock_vault_inst = MagicMock()
     mock_vault_inst.list_connections = AsyncMock(return_value=[])
     pool_app = Starlette(routes=register_admin_plugin_routes())
