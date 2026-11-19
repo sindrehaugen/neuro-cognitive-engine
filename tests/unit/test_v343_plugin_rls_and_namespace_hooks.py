@@ -97,6 +97,14 @@ PURE_CORE_GLOBAL_TABLES: frozenset[str] = frozenset(
         "embedding_models",
         "reembedding_runs",
         "applied_migrations",
+        # 042 Day-2 Ops global control-plane tables (admin / nce_gc roles)
+        "runtime_tool_governance",
+        "backup_leases",
+        "backup_manifests",
+        "ops_probe_runs",
+        "ops_incidents",
+        "ops_quarantine",
+        "ops_playbook_executions",
     }
 )
 
@@ -162,7 +170,7 @@ def test_pure_core_expected_rls_tables_exact_36_forced_and_5_global() -> None:
     assert len(all_forced_core) == 39
 
     assert EXPECTED_GLOBAL_TABLES == PURE_CORE_GLOBAL_TABLES
-    assert len(EXPECTED_GLOBAL_TABLES) == 3
+    assert len(EXPECTED_GLOBAL_TABLES) == 10
     assert EXPECTED_GLOBAL_TABLES.isdisjoint(all_forced_core)
 
     # Zero 037+ vertical tables in Core static catalog sets.

@@ -618,7 +618,7 @@ Processes asynchronous background queues (`nce-tasks`), including source code AS
 - `NCE_DISABLE_MIGRATION_MCP=false` without `NCE_ALLOW_MIGRATION_MCP_IN_PROD=true`.
 - `WEBHOOK_DEDUP_FAIL_OPEN=true`.
 - `NCE_D365_ORG_URL` or `NCE_D365_WEBHOOK_SECRET` absent when `NCE_D365_ENABLED=true`.
-- `NCE_ENTRA_TENANT_ID` non-empty while `NCE_ENTRA_ENFORCE_MODE` is not `"strict"` (`assert_entra_strict_in_production()` raises `RuntimeError` at config import, `validate()`, and admin startup).
+| `NCE_ENTRA_TENANT_ID` non-empty while `NCE_ENTRA_ENFORCE_MODE` is not `"strict"` (`assert_entra_strict_in_production()` raises `RuntimeError` at config import, `validate()`, and admin startup).
 - Server mTLS disabled without operator acknowledgement: `assert_server_mtls_or_acknowledged()` raises `MTLSNotConfiguredError` during `admin_server` and `a2a_server` boot lifespans if `NCE_ADMIN_MTLS_ENABLED=false` or `NCE_A2A_MTLS_ENABLED=false`, unless `NCE_MTLS_ACKNOWLEDGE_DISABLED=true` is set.
 
 ### Non-Halting Warnings in Development / Non-Production
@@ -628,3 +628,21 @@ Processes asynchronous background queues (`nce-tasks`), including source code AS
 - `NCE_MCP_API_KEY` absent (MCP tenant tools accept unauthenticated invocations; setting it does not add caller authentication either — see `docs/enterprise_security.md` §2b).
 - `NCE_MCP_NAMESPACE_ID` absent when `NCE_MCP_API_KEY` is set (accepts caller-supplied `namespace_id`).
 - Incomplete admin credentials (`NCE_ADMIN_API_KEY`, `NCE_ADMIN_USERNAME`, `NCE_ADMIN_PASSWORD`).
+
+---
+
+## 22. Day-2 Operations, Watermark Backups & Maintenance Caddy (`v3.7.0`)
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `NCE_BACKUP_DIR` | `str` | `/var/lib/nce/backups` | Filesystem directory holding `T_cut` backup archives (`.tar.zst`/`.tar.gz`), `shred_tombstones.jsonl`, and ephemeral staging dirs. |
+| `NCE_OPS_MIN_FREE_BYTES` | `int` | `10737418240` (`10 GiB`) | Minimum free filesystem bytes required on `NCE_BACKUP_DIR` before creating a backup or ephemeral drill (`OpsDiskHeadroomError`). |
+| `NCE_BACKUP_RETENTION_COUNT` | `int` | `7` | Number of verified `T_cut` backup archives retained before pruning the oldest archives after a verified capture. |
+| `NCE_BACKUP_MAX_AGE_HOURS` | `int` | `26` | Freshness SLA threshold in hours evaluated by the Maintenance Caddy probe before opening an incident in `ops_incidents`. |
+| `NCE_BACKUP_AUTO_DAILY` | `bool` | `false` | When `true`, schedules daily automated `T_cut` watermark backups in `nce/cron.py` in addition to the weekly backup + restore drill cadence. |
+| `NCE_SALIENCE_BUFFER_MAX_LEN` | `int` | `50000` | Maximum buffered entries allowed in the bounded Redis salience hash (`nce:ns:<id>:salience_buffer`, `24h` TTL). |
+| `NCE_OPS_ELM_MODE` | `str` | `local` | Diagnostic synthesis backend for open incidents: `local` (isolated `ops-elm` Ollama sidecar), `provider`, or `deterministic`. |
+| `NCE_OPS_ELM_BASE_URL` | `str` | `http://ops-elm:11434` | Base HTTP URL for the optional isolated `ops-elm` sidecar container (`docker compose --profile ops-elm`). |
+| `NCE_OPS_ELM_MODEL` | `str` | `qwen2.5:1.5b-instruct-q4_K_M` | Quantized model identifier requested from the `ops-elm` sidecar (`OLLAMA_KEEP_ALIVE=2m`). |
+| `NCE_OPS_ELM_TIMEOUT_SECONDS` | `float` | `20.0` | Network timeout in seconds before aborting an `ops-elm` request and falling back to deterministic incident briefs (`minimum 0.5`). |
+| `NCE_OPS_ELM_MAX_CALLS_PER_HOUR` | `int` | `4` | Rate cap on `ops-elm` diagnostic synthesis calls per hour (`0` disables LLM calls and uses deterministic synthesis directly). |

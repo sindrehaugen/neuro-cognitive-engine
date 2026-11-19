@@ -11,11 +11,35 @@ Served by the admin Starlette app (HMAC/mTLS auth). Callable by any HTTP client
 | Method | Path | Handler |
 |---|---|---|
 | GET | `/` | `serve_index` |
+| GET | `/admin` | `serve_admin_console` |
+| GET | `/admin/app.js` | `serve_admin_console_js` |
+| GET | `/admin/console.css` | `serve_admin_console_css` |
+| GET | `/admin/console.js` | `serve_admin_console_js` |
+| GET | `/admin/index.html` | `serve_admin_console` |
+| GET | `/admin/ops/api/backups` | `ops_backups_list` |
+| POST | `/admin/ops/api/backups/trigger` | `ops_backups_trigger` |
+| POST | `/admin/ops/api/backups/{backup_id}/drill` | `ops_backups_drill` |
+| GET | `/admin/ops/api/incidents` | `ops_incidents_list` |
+| GET | `/admin/ops/api/overview` | `ops_overview` |
+| POST | `/admin/ops/api/playbooks/{playbook_id}/execute` | `ops_playbook_execute` |
+| POST | `/admin/ops/api/playbooks/{playbook_id}/preview` | `ops_playbook_preview` |
+| GET | `/admin/ops/api/quarantine` | `ops_quarantine_list` |
+| POST | `/admin/ops/api/quarantine/{quarantine_id}/dismiss` | `ops_quarantine_dismiss` |
+| POST | `/admin/ops/api/quarantine/{quarantine_id}/requeue` | `ops_quarantine_requeue` |
+| GET | `/admin/ops/api/tenants` | `ops_tenants_list` |
+| POST | `/admin/ops/api/tokens/mint` | `ops_tokens_mint` |
+| POST | `/admin/ops/api/tokens/{token_id}/revoke` | `ops_tokens_revoke` |
+| GET | `/admin/ops/api/tools` | `api_admin_tools` |
+| POST | `/admin/ops/api/tools/toggle` | `api_admin_tools_toggle` |
 | GET | `/admin/plugins` | `admin_plugins_console` |
 | GET | `/admin/plugins/api` | `admin_plugins_api` |
 | DELETE,GET,POST | `/admin/plugins/api/connections` | `admin_plugins_connections` |
 | POST | `/admin/plugins/api/mint-token` | `admin_plugins_mint_token` |
 | POST | `/admin/plugins/api/toggle` | `admin_plugins_toggle` |
+| POST | `/admin/session/login` | `post_admin_session_login` |
+| POST | `/admin/session/logout` | `post_admin_session_logout` |
+| GET | `/admin/session/status` | `get_admin_session_status` |
+| GET | `/admin/styles.css` | `serve_admin_console_css` |
 | GET | `/api/a2a/grants` | `api_a2a_list_grants` |
 | POST | `/api/a2a/grants/create` | `api_a2a_create_grant` |
 | POST | `/api/a2a/grants/{grant_id}/revoke` | `api_a2a_revoke_grant` |
@@ -190,4 +214,4 @@ Dispatched via the MCP JSON-RPC server. Gating columns drive dispatch behavior.
 | `validate_migration` |  |  |  | yes |
 | `verify_memory` |  |  |  |  |
 
-_Totals: 101 REST endpoints, 71 MCP tools._
+_Totals: 125 REST endpoints, 71 MCP tools._

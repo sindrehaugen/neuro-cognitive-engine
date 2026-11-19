@@ -1,10 +1,10 @@
 > **Status:** shipped · **Verified-against:** 66c18f2 (main) · **Last-audited:** 2026-09-10
 
-# NCE v3.6.0 — System Architecture & C4 Context (Spec v1.0)
+# NCE v3.7.0 — System Architecture & C4 Context (Spec v1.0)
 
-This document provides a comprehensive, code-aligned specification of the **Neuro Cognitive Engine (NCE) version 3.6.0** runtime architecture. It details the C4 System Context and Container structures, the primary processes and entry points, the Quad-Database stack, the transactional Saga pattern, the GraphRAG query hydration pipeline, and background asynchronous/scheduled tasks.
+This document provides a comprehensive, code-aligned specification of the **Neuro Cognitive Engine (NCE) version 3.7.0** runtime architecture. It details the C4 System Context and Container structures, the primary processes and entry points, the Quad-Database stack, the transactional Saga pattern, the GraphRAG query hydration pipeline, and background asynchronous/scheduled tasks.
 
-> **Version note:** The software version is `3.6.0` (authoritative source: `pyproject.toml:3`). This document is the v1.0 revision of the architecture specification (as listed in the sidebar). No authoritative in-code constant tracks the doc-spec revision separately from the package version.
+> **Version note:** The software version is `3.7.0` (authoritative source: `pyproject.toml`). This document is the v1.0 revision of the architecture specification (as listed in the sidebar). No authoritative in-code constant tracks the doc-spec revision separately from the package version.
 
 ---
 
@@ -22,7 +22,7 @@ flowchart TB
   end
 
   subgraph System["Multi-Tenant Retrieval & Governance Boundary"]
-    NCE["Neuro Cognitive Engine (NCE)\nv3.6.0"]
+    NCE["Neuro Cognitive Engine (NCE)\nv3.7.0"]
   end
 
   subgraph Downstream["External & Edge Dependencies"]
@@ -104,7 +104,7 @@ flowchart TB
 
 ## 2. Primary Entry Points
 
-NCE version 3.6.0 exposes six distinct entry points, isolating workloads across dedicated runtimes:
+NCE version 3.7.0 exposes six distinct entry points, isolating workloads across dedicated runtimes:
 
 ### 2.1 `server.py` — MCP stdio Server
 - **Role**: Entry point for IDE integration (Cursor, Claude Desktop). Exposes the retrieval, graph, and governance engine over Model Context Protocol (MCP) stdio transport (complemented by `mcp_gateway_server.py` for remote Streamable HTTP `/mcp` sessions).

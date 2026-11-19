@@ -7,17 +7,22 @@ session management (scoped_pg_session).
 
 from __future__ import annotations
 
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Final
 from uuid import UUID
 
 import asyncpg  # type: ignore[import-untyped]
+from asyncpg.pool import PoolConnectionProxy as _PoolConnProxy  # type: ignore[import-untyped]
 
 from nce.observability import SCOPED_SESSION_LATENCY
 
+log = logging.getLogger(__name__)
+
 # Pool checkout timeout — prevents indefinite event-loop stall on exhaustion (FIX-010).
 POOL_ACQUIRE_TIMEOUT: Final[float] = 10.0
+DEFAULT_IDLE_IN_TX_TIMEOUT_MS: Final[int] = 30_000
 
 # Cached pgvector HNSW iterative scan capability flag
 _HNSW_ITERATIVE_SCAN_SUPPORTED: bool | None = None
@@ -114,8 +119,116 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
         # namespace_id to scope against.
         "pricing.fx.persist",
         "pricing.fx.load",
+        # v3.7.0 Day-2 Ops global control-plane tables (backup_leases, backup_manifests, ops_quarantine, governance).
+        "ops.backup.control_plane",
+        "ops.quarantine.control_plane",
+        "ops.governance.control_plane",
     }
 )
+
+
+def resolve_ops_dsn() -> str:
+    """Return the PostgreSQL DSN for Day-2 operational tooling (backup, drill, quarantine).
+
+    Precedence:
+      1. ``NCE_GC_DSN`` (explicit cfg override or live env / *_FILE)
+      2. ``NCE_MIGRATION_PG_DSN`` (explicit cfg override or live env / *_FILE)
+      3. ``PG_DSN`` / ``DATABASE_URL`` (explicit cfg override or live env / *_FILE)
+      4. Import-time ``cfg`` attributes fallback.
+    """
+    from nce.config import cfg, secret_env
+
+    cfg_dict = getattr(cfg, "__dict__", {})
+
+    def _pick(key: str, *, allow_fallback_attr: bool = True) -> str:
+        live = (secret_env(key) or "").strip()
+        if live:
+            return live
+        if key in cfg_dict:
+            cfg_val = str(cfg_dict[key] or "").strip()
+            if cfg_val:
+                return cfg_val
+        if allow_fallback_attr:
+            return str(getattr(cfg, key, "") or "").strip()
+        return ""
+
+    # Check live/explicit NCE_GC_DSN first; only trust cfg.NCE_GC_DSN without live env
+    # when NCE_MIGRATION_PG_DSN is unset (because config.py aliases NCE_GC_DSN -> PG_DSN at import).
+    gc_explicit = _pick("NCE_GC_DSN", allow_fallback_attr=False)
+    if gc_explicit:
+        return gc_explicit
+
+    mig_dsn = _pick("NCE_MIGRATION_PG_DSN", allow_fallback_attr=True)
+    if mig_dsn:
+        return mig_dsn
+
+    pg_live = (
+        _pick("PG_DSN", allow_fallback_attr=False) or (secret_env("DATABASE_URL") or "").strip()
+    )
+    if pg_live:
+        return pg_live
+
+    return (
+        str(getattr(cfg, "NCE_GC_DSN", "") or "").strip()
+        or str(getattr(cfg, "PG_DSN", "") or "").strip()
+    )
+
+
+def resolve_pg_admin_dsn() -> str:
+    """Return the highest-privilege PG DSN available for dump/restore/ephemeral drill DB DDL.
+
+    Precedence:
+      1. ``NCE_MIGRATION_PG_DSN`` (superuser / CREATEDB owner role for pg_dump/CREATE DATABASE)
+      2. ``resolve_ops_dsn()`` fallback.
+    """
+    from nce.config import cfg, secret_env
+
+    cfg_dict = getattr(cfg, "__dict__", {})
+    live = (secret_env("NCE_MIGRATION_PG_DSN") or "").strip()
+    if live:
+        return live
+    if "NCE_MIGRATION_PG_DSN" in cfg_dict:
+        cfg_val = str(cfg_dict["NCE_MIGRATION_PG_DSN"] or "").strip()
+        if cfg_val:
+            return cfg_val
+    attr_val = str(getattr(cfg, "NCE_MIGRATION_PG_DSN", "") or "").strip()
+    if attr_val:
+        return attr_val
+    return resolve_ops_dsn()
+
+
+async def create_guarded_pg_pool(
+    dsn: str,
+    *,
+    min_size: int = 1,
+    max_size: int = 4,
+    command_timeout: float = 30.0,
+    idle_in_transaction_timeout_ms: int = DEFAULT_IDLE_IN_TX_TIMEOUT_MS,
+    server_settings: dict[str, str] | None = None,
+    **kwargs: Any,
+) -> asyncpg.Pool:
+    """Create a bounded asyncpg pool with idle-in-transaction session protection."""
+    from nce.config import cfg
+
+    cfg_max = int(getattr(cfg, "PG_MAX_POOL", 20) or 20)
+    bounded_max = max(1, min(int(max_size), max(1, cfg_max)))
+    bounded_min = max(1, min(int(min_size), bounded_max))
+
+    merged_settings = {
+        "lock_timeout": "10s",
+        "idle_in_transaction_session_timeout": str(max(1000, int(idle_in_transaction_timeout_ms))),
+    }
+    if server_settings:
+        merged_settings.update(server_settings)
+
+    return await asyncpg.create_pool(
+        dsn,
+        min_size=bounded_min,
+        max_size=bounded_max,
+        command_timeout=command_timeout,
+        server_settings=merged_settings,
+        **kwargs,
+    )
 
 
 def resolve_worker_dsn() -> str:
@@ -467,6 +580,11 @@ async def scoped_pg_session(
                     await enable_hnsw_iterative_scan(conn)
                 except Exception:
                     pass
+            if isinstance(conn, (asyncpg.Connection, _PoolConnProxy)):
+                try:
+                    await conn.execute("SET LOCAL idle_in_transaction_session_timeout = '30s'")
+                except Exception:
+                    pass
             SCOPED_SESSION_LATENCY.observe(time.perf_counter() - t0)
             yield conn
             # SET LOCAL is automatically cleared at transaction end.
@@ -569,31 +687,40 @@ class ScopedMongoCollection:
         scoped_docs = [self._scope_document(doc) for doc in documents]
         return await self._collection.insert_many(scoped_docs, *args, **kwargs)
 
+    def _validate_cow_update(self, update: Any) -> None:
+        """Forbid in-place payload mutation while allowing shred_memory tombstone erasure."""
+        if not isinstance(update, dict):
+            return
+        for op, val in update.items():
+            if op == "$set" and isinstance(val, dict):
+                if "namespace_id" in val and str(val["namespace_id"]) != self._namespace_id:
+                    raise ValueError(
+                        f"Cannot update namespace_id to '{val['namespace_id']}'; session scope is '{self._namespace_id}'"
+                    )
+                is_shred_tombstone = val.get("shredded") is True and val.get("raw_data") is None
+                if not is_shred_tombstone and (
+                    ("raw_data" in val and val["raw_data"] is not None)
+                    or ("raw_code" in val and val["raw_code"] is not None)
+                ):
+                    raise ValueError(
+                        "CoW violation: in-place mutation of raw_data/raw_code is forbidden; "
+                        "mint a new ObjectId and update PG valid_from/valid_to pointers instead."
+                    )
+
     async def update_one(self, filter: Any, update: Any, *args: Any, **kwargs: Any) -> Any:
         scoped_filter = self._scope_filter(filter)
-        if isinstance(update, dict):
-            for op, val in update.items():
-                if op == "$set" and isinstance(val, dict) and "namespace_id" in val:
-                    if str(val["namespace_id"]) != self._namespace_id:
-                        raise ValueError(
-                            f"Cannot update namespace_id to '{val['namespace_id']}'; session scope is '{self._namespace_id}'"
-                        )
+        self._validate_cow_update(update)
         return await self._collection.update_one(scoped_filter, update, *args, **kwargs)
 
     async def update_many(self, filter: Any, update: Any, *args: Any, **kwargs: Any) -> Any:
         scoped_filter = self._scope_filter(filter)
-        if isinstance(update, dict):
-            for op, val in update.items():
-                if op == "$set" and isinstance(val, dict) and "namespace_id" in val:
-                    if str(val["namespace_id"]) != self._namespace_id:
-                        raise ValueError(
-                            f"Cannot update namespace_id to '{val['namespace_id']}'; session scope is '{self._namespace_id}'"
-                        )
+        self._validate_cow_update(update)
         return await self._collection.update_many(scoped_filter, update, *args, **kwargs)
 
     async def replace_one(self, filter: Any, replacement: Any, *args: Any, **kwargs: Any) -> Any:
         scoped_filter = self._scope_filter(filter)
         scoped_replacement = self._scope_document(replacement)
+        self._validate_cow_update({"$set": scoped_replacement})
         return await self._collection.replace_one(
             scoped_filter, scoped_replacement, *args, **kwargs
         )
@@ -628,7 +755,8 @@ class ScopedMongoDatabase:
         from motor.core import AgnosticCollection
 
         if isinstance(attr, AgnosticCollection) or (
-            hasattr(attr, "__class__") and "Mock" in attr.__class__.__name__
+            callable(getattr(attr, "find_one", None))
+            and callable(getattr(attr, "insert_one", None))
         ):
             return ScopedMongoCollection(attr, self._namespace_id)
         return attr

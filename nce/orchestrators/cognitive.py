@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid as _uuid_mod
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -30,8 +31,17 @@ def _is_valid_uuid_str(val: str) -> bool:
 class CognitiveOrchestrator(OrchestratorBase):
     """Domain orchestrator for salience management and contradiction resolution."""
 
-    def __init__(self, pg_pool: asyncpg.Pool):
+    def __init__(
+        self,
+        pg_pool: asyncpg.Pool,
+        mongo_client: Any = None,
+        redis_client: Any = None,
+        minio_client: Any = None,
+    ):
         super().__init__(pg_pool)
+        self.mongo_client = mongo_client
+        self.redis_client = redis_client
+        self.minio_client = minio_client
 
     # ------------------------------------------------------------------
     # Salience — boost_memory
@@ -81,12 +91,39 @@ class CognitiveOrchestrator(OrchestratorBase):
         namespace_id: str,
         crypto_shred: bool = False,
     ) -> dict:
-        """[Phase 1.1] Set salience to 0.0 for the calling agent.
+        """[Phase 1.1] Set salience to 0.0 for the calling agent, or crypto-shred.
+
+        When ``crypto_shred=True``, delegates directly to
+        :meth:`MemoryOrchestrator.shred_memory` so DEK destruction, derivative
+        cleanup, signed persistent tombstone logging, and active-lease deferral
+        execute atomically on both the cognitive and engine paths.
 
         Uses scoped_session to enforce RLS — the caller can only forget
         memories within their own namespace (defense-in-depth on top of
         the namespace_isolation_policy).
         """
+        if crypto_shred:
+            from nce.orchestrators.memory import MemoryOrchestrator
+
+            mem_orch = MemoryOrchestrator(
+                pg_pool=self.pg_pool,
+                mongo_client=self.mongo_client,
+                redis_client=self.redis_client,
+                minio_client=self.minio_client,
+            )
+            shred_res = await mem_orch.shred_memory(
+                memory_id=str(memory_id),
+                namespace_id=str(namespace_id),
+                agent_id=agent_id,
+            )
+            return {
+                "status": shred_res.get("status", "success"),
+                "forgotten": True,
+                "crypto_shred": True,
+                "memory_id": str(memory_id),
+                "namespace_id": str(namespace_id),
+                "receipt": shred_res.get("receipt"),
+            }
         async with self.scoped_session(namespace_id) as conn:
             async with conn.transaction():
                 await conn.execute(

@@ -8,16 +8,43 @@ Redis increments and periodic batched database flushes.
 
 from __future__ import annotations
 
+import inspect
 import logging
+import os
 from typing import Any
 from uuid import UUID
 
+from nce.config import cfg
 from nce.db_utils import scoped_pg_session, validate_redis_namespace_key
 from nce.salience import reinforce
 
 log = logging.getLogger(__name__)
 
 _SALIENCE_BUFFER_SUBKEY = "salience_buffer"
+_SALIENCE_ORDER_SUBKEY = "salience_buffer_order"
+_SALIENCE_BUFFER_TTL_SEC = 86400
+_DEFAULT_SALIENCE_BUFFER_MAX_LEN = 50000
+
+
+def _resolve_salience_buffer_max_len() -> int:
+    cfg_dict = getattr(cfg, "__dict__", {})
+    raw = cfg_dict.get("NCE_SALIENCE_BUFFER_MAX_LEN")
+    if raw is None:
+        raw = os.getenv("NCE_SALIENCE_BUFFER_MAX_LEN")
+    if raw is None:
+        raw = getattr(cfg, "NCE_SALIENCE_BUFFER_MAX_LEN", _DEFAULT_SALIENCE_BUFFER_MAX_LEN)
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_SALIENCE_BUFFER_MAX_LEN
+    return max(1, val)
+
+
+async def _maybe_await(val: Any) -> Any:
+    if inspect.isawaitable(val):
+        return await val
+    return val
+
 
 _SUBTRACT_FLUSHED_LUA: str = """
 for i = 1, #ARGV, 2 do
@@ -77,15 +104,54 @@ async def buffer_salience_boost(
         )
         cleaned_agent = (agent_id or "").strip()[:128] or "default"
         redis_key = f"nce:ns:{ns_uuid}:{_SALIENCE_BUFFER_SUBKEY}"
+        order_key = f"nce:ns:{ns_uuid}:{_SALIENCE_ORDER_SUBKEY}"
         field = f"{mem_id_str}:{cleaned_agent}"
 
         hincr_fn = getattr(redis_client, "hincrbyfloat", None)
         if hincr_fn is None:
             return False
 
-        res = hincr_fn(redis_key, field, float(delta))
-        if hasattr(res, "__await__"):
-            await res
+        await _maybe_await(hincr_fn(redis_key, field, float(delta)))
+
+        # Bound hash cardinality via accompanying order list + TTL so Redis
+        # memory stays capped even under sustained boost bursts.
+        try:
+            max_len = _resolve_salience_buffer_max_len()
+            lrem_fn = getattr(redis_client, "lrem", None)
+            rpush_fn = getattr(redis_client, "rpush", None)
+            llen_fn = getattr(redis_client, "llen", None)
+            lrange_fn = getattr(redis_client, "lrange", None)
+            ltrim_fn = getattr(redis_client, "ltrim", None)
+            hdel_fn = getattr(redis_client, "hdel", None)
+            expire_fn = getattr(redis_client, "expire", None)
+
+            if callable(lrem_fn):
+                await _maybe_await(lrem_fn(order_key, 0, field))
+            if callable(rpush_fn):
+                await _maybe_await(rpush_fn(order_key, field))
+            if callable(llen_fn):
+                cur_len = await _maybe_await(llen_fn(order_key))
+                if isinstance(cur_len, int) and not isinstance(cur_len, bool) and cur_len > max_len:
+                    excess = cur_len - max_len
+                    evict_fields: list[Any] = []
+                    if callable(lrange_fn):
+                        raw_evict = await _maybe_await(lrange_fn(order_key, 0, excess - 1))
+                        if isinstance(raw_evict, (list, tuple)):
+                            evict_fields = [
+                                f.decode("utf-8") if isinstance(f, bytes) else str(f)
+                                for f in raw_evict
+                            ]
+                    if callable(ltrim_fn):
+                        await _maybe_await(ltrim_fn(order_key, excess, -1))
+                    if evict_fields and callable(hdel_fn):
+                        await _maybe_await(hdel_fn(redis_key, *evict_fields))
+
+            if callable(expire_fn):
+                await _maybe_await(expire_fn(redis_key, _SALIENCE_BUFFER_TTL_SEC))
+                await _maybe_await(expire_fn(order_key, _SALIENCE_BUFFER_TTL_SEC))
+        except Exception as cap_exc:
+            log.debug("Salience buffer bound/TTL update skipped: %s", cap_exc)
+
         return True
     except Exception as exc:
         log.warning("buffer_salience_boost failed to write to Redis (non-fatal): %s", exc)
@@ -216,6 +282,21 @@ async def flush_salience_buffer(
                     del_res = hdel_fn(redis_key, *fields_to_delete)
                     if hasattr(del_res, "__await__"):
                         await del_res
+
+            # Keep accompanying order list pruned and TTLs refreshed cleanly.
+            order_key = f"nce:ns:{ns}:{_SALIENCE_ORDER_SUBKEY}"
+            try:
+                lrem_fn = getattr(redis_client, "lrem", None)
+                if callable(lrem_fn) and fields_to_delete:
+                    for f_raw in fields_to_delete:
+                        f_str = f_raw.decode("utf-8") if isinstance(f_raw, bytes) else str(f_raw)
+                        await _maybe_await(lrem_fn(order_key, 0, f_str))
+                expire_fn = getattr(redis_client, "expire", None)
+                if callable(expire_fn):
+                    await _maybe_await(expire_fn(redis_key, _SALIENCE_BUFFER_TTL_SEC))
+                    await _maybe_await(expire_fn(order_key, _SALIENCE_BUFFER_TTL_SEC))
+            except Exception:
+                pass
 
             total_flushed += len(items_to_process)
         except Exception as exc:

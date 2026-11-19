@@ -10,7 +10,8 @@ import io
 import logging
 import mimetypes
 import re
-from datetime import timedelta
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -219,6 +220,63 @@ def build_write_once_object_key(
     return f"{ns_uuid}/{artifact_type}/{digest}"
 
 
+def build_cow_object_metadata(
+    *,
+    created_at: datetime | None = None,
+    saga_id: str | None = None,
+    extra_metadata: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build MinIO user metadata headers (``created-at``, ``saga-id`` -> ``x-amz-meta-*``)."""
+    ts = created_at or datetime.now(timezone.utc)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    else:
+        ts = ts.astimezone(timezone.utc)
+
+    meta: dict[str, str] = {}
+    if extra_metadata:
+        for k, v in extra_metadata.items():
+            clean_key = str(k).strip()
+            if clean_key.lower().startswith("x-amz-meta-"):
+                clean_key = clean_key[len("x-amz-meta-") :]
+            meta[clean_key] = str(v)
+
+    meta["created-at"] = ts.isoformat()
+    meta["saga-id"] = str(saga_id) if saga_id else uuid.uuid4().hex
+    return meta
+
+
+def _object_exists(minio_client: Any, bucket: str, key: str) -> bool:
+    """Return True if an object already exists at ``bucket/key``."""
+    try:
+        minio_client.stat_object(bucket, key)
+        return True
+    except S3Error as exc:
+        if exc.code in ("NoSuchKey", "404", "NoSuchBucket"):
+            return False
+        log.warning("stat_object unexpected error for %s/%s: %s", bucket, key, exc)
+        return False
+    except Exception as exc:
+        exc_str = str(exc).lower()
+        if "nosuchkey" in exc_str or "not found" in exc_str or "404" in exc_str:
+            return False
+        log.debug("stat_object returned: %s", exc)
+        return False
+
+
+def build_versioned_cow_object_key(
+    namespace_id: str | UUID,
+    artifact_type: str,
+    content_bytes: bytes | str,
+    *,
+    version_id: str | None = None,
+) -> str:
+    """Build a versioned copy-on-write object key that never collides with prior versions."""
+    base_key = build_write_once_object_key(namespace_id, artifact_type, content_bytes)
+    ver = (version_id or uuid.uuid4().hex).strip()
+    return f"{base_key}_v_{ver}"
+
+
 def put_write_once_object(
     minio_client: Any,
     bucket: str,
@@ -226,6 +284,10 @@ def put_write_once_object(
     artifact_type: str,
     data: bytes,
     content_type: str = "application/octet-stream",
+    *,
+    saga_id: str | None = None,
+    created_at: datetime | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> str:
     """Upload data to a write-once content-addressed object key idempotently.
 
@@ -234,28 +296,53 @@ def put_write_once_object(
     """
     key = build_write_once_object_key(namespace_id, artifact_type, data)
 
-    # Check if object already exists (write-once immutability)
-    try:
-        minio_client.stat_object(bucket, key)
+    if _object_exists(minio_client, bucket, key):
         log.debug("Write-once object already exists: %s/%s", bucket, key)
         return key
-    except S3Error as exc:
-        if exc.code not in ("NoSuchKey", "404"):
-            # Unexpected S3 error
-            log.warning("stat_object unexpected error for %s/%s: %s", bucket, key, exc)
-    except Exception as exc:
-        # Client or mock without S3Error code, or error indicating missing object
-        exc_str = str(exc).lower()
-        if "nosuchkey" not in exc_str and "not found" not in exc_str and "404" not in exc_str:
-            log.debug("stat_object returned: %s", exc)
 
-    # Upload via put_object
+    obj_meta = build_cow_object_metadata(
+        created_at=created_at,
+        saga_id=saga_id,
+        extra_metadata=metadata,
+    )
     minio_client.put_object(
         bucket,
         key,
         io.BytesIO(data),
         len(data),
         content_type=content_type,
+        metadata=obj_meta,
     )
     log.info("Uploaded write-once object: %s/%s", bucket, key)
+    return key
+
+
+def put_cow_object(
+    minio_client: Any,
+    bucket: str,
+    namespace_id: str | UUID,
+    artifact_type: str,
+    data: bytes,
+    *,
+    content_type: str = "application/octet-stream",
+    saga_id: str | None = None,
+    created_at: datetime | None = None,
+    metadata: dict[str, str] | None = None,
+) -> str:
+    """Mint a brand-new CoW versioned key and upload without mutating prior blobs."""
+    key = build_versioned_cow_object_key(namespace_id, artifact_type, data)
+    obj_meta = build_cow_object_metadata(
+        created_at=created_at,
+        saga_id=saga_id,
+        extra_metadata=metadata,
+    )
+    minio_client.put_object(
+        bucket,
+        key,
+        io.BytesIO(data),
+        len(data),
+        content_type=content_type,
+        metadata=obj_meta,
+    )
+    log.info("Uploaded versioned CoW object: %s/%s", bucket, key)
     return key

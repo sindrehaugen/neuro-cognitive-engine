@@ -39,8 +39,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -89,8 +89,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -122,8 +122,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -156,15 +156,15 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
           memory: 512M
 
   cognitive:
-    image: nce-cognitive:3.6.0
+    image: nce-cognitive:3.7.0
     build:
       context: .
       dockerfile: deploy/cognitive-service/Dockerfile
@@ -195,8 +195,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -252,6 +252,9 @@ services:
       NCE_MASTER_KEY: ""
       NCE_API_KEY: ""
       NCE_ADMIN_API_KEY: ""
+      NCE_BACKUP_DIR: ${NCE_BACKUP_DIR:-/var/lib/nce/backups}
+    volumes:
+      - nce_backups:/var/lib/nce/backups
     secrets:
       - nce_master_key
     tmpfs:
@@ -312,8 +315,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
 
   # APScheduler: bridge subscription renewal + re-embedding sweeps (cognitive maintenance).
   cron:
@@ -353,6 +356,9 @@ services:
       NCE_MASTER_KEY: ""
       NCE_API_KEY: ""
       NCE_ADMIN_API_KEY: ""
+      NCE_BACKUP_DIR: ${NCE_BACKUP_DIR:-/var/lib/nce/backups}
+    volumes:
+      - nce_backups:/var/lib/nce/backups
     secrets:
       - nce_master_key
     tmpfs:
@@ -386,8 +392,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
 
   admin:
     build:
@@ -442,6 +448,7 @@ services:
       NCE_MASTER_KEY: ""
       NCE_API_KEY_FILE: /run/secrets/nce_api_key
       NCE_API_KEY: ""
+      NCE_BACKUP_DIR: ${NCE_BACKUP_DIR:-/var/lib/nce/backups}
       # --- Zero-trust transport (mTLS) — see deploy/ and the caddy service below.
       # In production (NCE_ENV=prod) the admin server REFUSES to boot when its mTLS
       # middleware is disabled, unless NCE_MTLS_ACKNOWLEDGE_DISABLED=true (which is
@@ -459,8 +466,9 @@ services:
     security_opt:
       - "no-new-privileges:true"
     # mTLS cert mount (commented — mounts read-only when you enable mTLS above):
-    # volumes:
-    #   - ./deploy/certs:/etc/nce/certs:ro
+    volumes:
+      - nce_backups:/var/lib/nce/backups
+      # - ./deploy/certs:/etc/nce/certs:ro
     secrets:
       - nce_master_key
       - nce_api_key
@@ -500,8 +508,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -615,8 +623,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -665,6 +673,9 @@ services:
       NCE_API_KEY: ""
       NCE_ADMIN_API_KEY: ""
       NCE_DISABLE_MIGRATION_MCP: "true"
+      NCE_BACKUP_DIR: ${NCE_BACKUP_DIR:-/var/lib/nce/backups}
+    volumes:
+      - nce_backups:/var/lib/nce/backups
     tmpfs:
       - /dev/shm/nce-staging:size=256m,mode=1777,noexec,nosuid,nodev
     security_opt:
@@ -707,8 +718,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -800,8 +811,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -830,8 +841,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -889,12 +900,47 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
           memory: 256M
+
+  ops-elm:
+    image: ollama/ollama:0.6.2
+    profiles:
+      - ops-elm
+    container_name: nce-ops-elm
+    networks:
+      - nce_data
+    environment:
+      OLLAMA_KEEP_ALIVE: "2m"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes:
+      - ops_elm_models:/root/.ollama
+    mem_limit: 2g
+    cpus: 2.0
+    security_opt:
+      - "no-new-privileges:true"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
 
   # ---------------------------------------------------------------------------
   # Citus profile — DESCOPED (Batch 122)
@@ -930,6 +976,11 @@ services:
       timeout: 5s
       retries: 10
     restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     deploy:
       resources:
         limits:
@@ -943,6 +994,8 @@ volumes:
   caddy_data:
   jaeger_data:
   caddy_config:
+  ops_elm_models:
+  nce_backups:
 
 # --- Docker secrets (file-based) -------------------------------------------
 # File-based secrets are mounted at /run/secrets/<name> inside the container

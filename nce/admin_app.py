@@ -17,6 +17,7 @@ from nce import admin_http_handlers as h
 from nce import admin_state
 from nce.admin_handlers import entity_resolution as entity_resolution_handlers
 from nce.admin_handlers import pricing as pricing_handlers
+from nce.admin_ops import AdminDualAuthMiddleware, register_admin_ops_routes
 from nce.admin_plugins import (
     admin_plugins_api,
     admin_plugins_connections,
@@ -27,7 +28,6 @@ from nce.admin_plugins import (
 from nce.auth import (
     AdminHTTPRateLimitMiddleware,
     BasicAuthMiddleware,
-    HMACAuthMiddleware,
     optional_hmac_nonce_store,
 )
 from nce.config import cfg
@@ -181,7 +181,10 @@ def build_admin_middleware() -> list[Middleware]:
             protected_prefix="/",
             excluded_prefixes=(
                 "/api/",
+                "/admin",
                 "/admin/plugins/api",
+                "/admin/ops/api",
+                "/admin/session",
                 "/healthz",
                 "/readyz",
                 "/public-api/",
@@ -191,7 +194,7 @@ def build_admin_middleware() -> list[Middleware]:
             realm="NCE Admin",
         ),
         Middleware(
-            HMACAuthMiddleware,
+            AdminDualAuthMiddleware,
             protected_prefix="/api/",
             api_key=cfg.NCE_API_KEY,
             nonce_store=_hmac_nonce_store,
@@ -590,6 +593,7 @@ def build_admin_routes(ctx: Any = None) -> list[Route]:
         ),
         *build_all_resource_routes(),
     ]
+    register_admin_ops_routes(routes, ctx=ctx)
     try:
         from nce.plugins import register_all_plugin_routes
 

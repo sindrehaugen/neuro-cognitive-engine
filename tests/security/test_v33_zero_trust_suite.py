@@ -18,6 +18,8 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
+import sys
 import uuid
 import zipfile
 from pathlib import Path
@@ -373,7 +375,16 @@ async def test_jwt_algorithm_confusion_and_sandbox_and_replay_fencing(
     assert "PG_DSN" not in clean_env
     assert "OPENAI_API_KEY" not in clean_env
 
-    proc = run_sandboxed_extractor(["/usr/bin/env"])
+    env_cmd = (
+        ["/usr/bin/env"]
+        if os.name == "posix"
+        else [
+            sys.executable,
+            "-c",
+            "import os; print('\\n'.join(f'{k}={v}' for k, v in os.environ.items()))",
+        ]
+    )
+    proc = run_sandboxed_extractor(env_cmd)
     stdout_str = (
         proc.stdout.decode("utf-8", errors="replace")
         if isinstance(proc.stdout, bytes)
@@ -439,9 +450,6 @@ async def test_jwt_algorithm_confusion_and_sandbox_and_replay_fencing(
     # 7. Replay sandbox outbox & vertical connector fencing
     monkeypatch.setenv("NCE_REPLAY_SANDBOX", "true")
     assert await is_namespace_replay_sandbox(None, uuid.uuid4()) is True
-
-    import os
-    import sys
 
     vert_root = _VERT_ROOT
     added_path = False

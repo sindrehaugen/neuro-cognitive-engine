@@ -4,9 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NCE Admin — Unified Control Plane & Engine Studio (v16)</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ──────────────────────────────────────────────────────────────────────────
    NCE Engine Studio & Unified Admin Control Plane (v16)
@@ -1026,9 +1023,18 @@ function renderAdminWorkspace(wsKey) {
 
   titleEl.textContent = ws.title;
   metaEl.textContent = ws.meta;
-  kpiStripEl.innerHTML = '';
-  adminWorkspaceContainer.innerHTML = ws.html;
+  kpiStripEl.replaceChildren();
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(ws.html, 'text/html');
+  adminWorkspaceContainer.replaceChildren(...Array.from(doc.body.childNodes));
   footSummaryEl.textContent = `Workspace: ${wsKey}`;
+}
+
+function elWithText(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
 }
 
 // Render active engine table & KPIs
@@ -1050,32 +1056,38 @@ function renderEngine(engineKey) {
   testerPath.value = data.restPath;
 
   // KPI Strip
-  kpiStripEl.innerHTML = data.kpis.map((k) => `
-    <div class="st">
-      <div class="k">${k.k}</div>
-      <div class="v">${k.v}</div>
-      <div class="d ${k.up ? 'up' : k.down ? 'down' : ''}">${k.d}</div>
-    </div>
-  `).join('');
+  kpiStripEl.replaceChildren(
+    ...data.kpis.map((k) => {
+      const card = elWithText('div', 'st');
+      card.appendChild(elWithText('div', 'k', k.k));
+      card.appendChild(elWithText('div', 'v', k.v));
+      card.appendChild(elWithText('div', `d ${k.up ? 'up' : k.down ? 'down' : ''}`, k.d));
+      return card;
+    })
+  );
 
   // Table Headers
-  tableHeadEl.innerHTML = `<tr>${data.headers.map((h, i) => `
-    <th class="${i >= data.headers.length - 3 ? 'num' : ''}">${h}</th>
-  `).join('')}</tr>`;
+  const headTr = document.createElement('tr');
+  data.headers.forEach((h, i) => {
+    headTr.appendChild(elWithText('th', i >= data.headers.length - 3 ? 'num' : '', h));
+  });
+  tableHeadEl.replaceChildren(headTr);
 
   // Table Body
   renderRows(data.rows, data.headers.length);
 
   // Feed
-  feedContainerEl.innerHTML = data.feed.map((f) => `
-    <div class="f">
-      <div class="tick"></div>
-      <div>
-        <p>${f.text}</p>
-        <div class="m">${f.src} · ${f.time}</div>
-      </div>
-    </div>
-  `).join('');
+  feedContainerEl.replaceChildren(
+    ...data.feed.map((f) => {
+      const wrap = elWithText('div', 'f');
+      wrap.appendChild(elWithText('div', 'tick'));
+      const box = document.createElement('div');
+      box.appendChild(elWithText('p', '', f.text));
+      box.appendChild(elWithText('div', 'm', `${f.src} · ${f.time}`));
+      wrap.appendChild(box);
+      return wrap;
+    })
+  );
 
   // Footer Summary
   footSummaryEl.textContent = `${data.rows.length} records shown`;
@@ -1089,15 +1101,25 @@ function renderRows(rows, colCount) {
   const filtered = filter ? rows.filter((r) => r.some((c) => String(c).toLowerCase().includes(filter))) : rows;
 
   if (filtered.length === 0) {
-    tableBodyEl.innerHTML = `<tr><td colspan="${colCount}" class="mut" style="text-align:center;padding:20px;">No matching items found.</td></tr>`;
+    const tr = document.createElement('tr');
+    const td = elWithText('td', 'mut', 'No matching items found.');
+    td.colSpan = colCount;
+    td.style.textAlign = 'center';
+    td.style.padding = '20px';
+    tr.appendChild(td);
+    tableBodyEl.replaceChildren(tr);
     return;
   }
 
-  tableBodyEl.innerHTML = filtered.map((row, idx) => `
-    <tr class="${idx === 0 ? 'sel' : ''}">
-      ${row.map((col, i) => `<td class="${i >= colCount - 3 ? 'num' : ''}">${col}</td>`).join('')}
-    </tr>
-  `).join('');
+  tableBodyEl.replaceChildren(
+    ...filtered.map((row, idx) => {
+      const tr = elWithText('tr', idx === 0 ? 'sel' : '');
+      row.forEach((col, i) => {
+        tr.appendChild(elWithText('td', i >= colCount - 3 ? 'num' : '', col));
+      });
+      return tr;
+    })
+  );
 }
 
 // Rail click handling
@@ -1135,7 +1157,7 @@ btnRunTest.addEventListener('click', async () => {
   const path = testerPath.value;
   const data = ENGINES_DATA[currentEngineKey];
 
-  testerOutput.innerHTML = `Dispatching ${method} ${path} …`;
+  testerOutput.textContent = `Dispatching ${method} ${path} …`;
 
   try {
     const res = await fetch(path, {
@@ -1148,7 +1170,9 @@ btnRunTest.addEventListener('click', async () => {
 
     if (res.ok) {
       const json = await res.json();
-      testerOutput.innerHTML = `<span style="color:var(--good)">HTTP ${res.status} OK (Live Gateway)</span>\n` + JSON.stringify(json, null, 2);
+      const hdr = elWithText('span', '', `HTTP ${res.status} OK (Live Gateway)`);
+      hdr.style.color = 'var(--good)';
+      testerOutput.replaceChildren(hdr, document.createTextNode('\n' + JSON.stringify(json, null, 2)));
       return;
     }
     throw new Error(`HTTP ${res.status}`);
@@ -1174,7 +1198,9 @@ btnRunTest.addEventListener('click', async () => {
         },
       },
     };
-    testerOutput.innerHTML = `<span style="color:var(--warn)">[ILLUSTRATIVE FALLBACK · OFFLINE GATEWAY MOCK (HTTP 200)]</span>\n` + JSON.stringify(mockPayload, null, 2);
+    const warn = elWithText('span', '', '[ILLUSTRATIVE FALLBACK · OFFLINE GATEWAY MOCK (HTTP 200)]');
+    warn.style.color = 'var(--warn)';
+    testerOutput.replaceChildren(warn, document.createTextNode('\n' + JSON.stringify(mockPayload, null, 2)));
   }
 });
 

@@ -654,8 +654,8 @@ def test_docs_integrity_offline_static_badges_and_v360_metadata() -> None:
     assert mod.main() == 0
 
     pyproj = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'version = "3.6.0"' in pyproj
-    assert nce.__version__ == "3.6.0"
+    assert 'version = "3.7.0"' in pyproj
+    assert nce.__version__ == "3.7.0"
 
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     assert "https://img.shields.io/badge/stage-beta-orange" in readme

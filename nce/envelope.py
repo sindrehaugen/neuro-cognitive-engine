@@ -40,23 +40,37 @@ and is never read from or written to any database/settings table.
 from __future__ import annotations
 
 import hashlib
+import hmac
+import json
+import logging
 import os
+import tempfile
+import threading
 import time
 import uuid
 from collections import OrderedDict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from nce.signing import (
     MasterKey,
+    MasterKeyMissingError,
     SecureKeyBuffer,
     SigningError,
     SigningKeyDecryptionError,
+    canonical_json,
     decrypt_signing_key,
     encrypt_fast_data_key,
     master_key_fingerprint_bytes,
     require_master_key,
 )
+
+log = logging.getLogger(__name__)
+_TOMBSTONE_IO_LOCK = threading.Lock()
+_BACKUP_KEY_FP_LABEL = b"nce-backup-key-fingerprint-v1"
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -342,3 +356,158 @@ def maybe_decrypt_raw_data(raw_data: object, wrapped_dek: bytes | None) -> str:
     # in-place — a buffer here would only wipe a fresh copy — so its scope
     # ends with this function.
     return decrypt_with_dek(blob, dek).decode("utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Backup key fingerprinting & persistent shred tombstones (v3.7.0)
+# ---------------------------------------------------------------------------
+
+
+def _is_prod_mode() -> bool:
+    from nce.config import cfg
+
+    cfg_dict = getattr(cfg, "__dict__", {})
+    if "IS_PROD" in cfg_dict:
+        return bool(cfg_dict["IS_PROD"])
+    env = os.getenv("NCE_ENV", "").strip().lower()
+    if env in {"prod", "production"}:
+        return True
+    return bool(getattr(cfg, "IS_PROD", False))
+
+
+_DEFAULT_PROD_BACKUP_DIR = "/var/lib/nce/backups"
+
+
+def _can_use_dir(path: Path) -> bool:
+    cur = path
+    while not cur.exists() and cur != cur.parent:
+        cur = cur.parent
+    return cur.exists() and os.access(str(cur), os.W_OK)
+
+
+def resolve_backup_dir(backup_dir: str | Path | None = None) -> Path:
+    """Resolve the persistent backup directory honoring cfg + env overrides."""
+    if backup_dir is not None and str(backup_dir).strip():
+        return Path(backup_dir).expanduser().resolve()
+
+    from nce.config import cfg
+
+    env_val = (os.getenv("NCE_BACKUP_DIR") or "").strip()
+    if env_val:
+        return Path(env_val).expanduser().resolve()
+
+    cfg_dict = getattr(cfg, "__dict__", {})
+    raw_cfg = str(
+        cfg_dict.get("NCE_BACKUP_DIR") or getattr(cfg, "NCE_BACKUP_DIR", "") or ""
+    ).strip()
+    is_prod = _is_prod_mode()
+    if raw_cfg and (is_prod or raw_cfg != _DEFAULT_PROD_BACKUP_DIR or _can_use_dir(Path(raw_cfg))):
+        return Path(raw_cfg).expanduser().resolve()
+
+    if is_prod:
+        return Path(_DEFAULT_PROD_BACKUP_DIR)
+    return Path(tempfile.gettempdir()) / "nce_backups"
+
+
+def compute_master_key_hmac_fp() -> str:
+    """Return HMAC-SHA256(master_key, b'nce-backup-key-fingerprint-v1') hex digest."""
+    with require_master_key() as mk:
+        return hmac.new(bytes(mk.key_bytes), _BACKUP_KEY_FP_LABEL, hashlib.sha256).hexdigest()
+
+
+def _tombstone_signing_payload(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "namespace_id": str(record["namespace_id"]),
+        "dek_id": str(record.get("dek_id") or ""),
+        "mongo_ids": [str(x) for x in (record.get("mongo_ids") or [])],
+        "minio_keys": [str(x) for x in (record.get("minio_keys") or [])],
+        "shredded_at": str(record["shredded_at"]),
+    }
+
+
+def sign_shred_tombstone(record: dict[str, Any]) -> str:
+    """Sign a zero-PII shred tombstone record with ``NCE_MASTER_KEY``."""
+    payload = _tombstone_signing_payload(record)
+    canonical = canonical_json(payload)
+    with require_master_key() as mk:
+        return hmac.new(bytes(mk.key_bytes), canonical, hashlib.sha256).hexdigest()
+
+
+def verify_shred_tombstone(record: dict[str, Any]) -> bool:
+    """Verify the HMAC-SHA256 signature of a shred tombstone record."""
+    if not isinstance(record, dict):
+        return False
+    provided = record.get("hmac_sha256")
+    if not isinstance(provided, str) or not provided:
+        return False
+    try:
+        expected = sign_shred_tombstone(record)
+    except KeyError:
+        return False
+    return hmac.compare_digest(provided, expected)
+
+
+def _atomic_append_jsonl(path: Path, record: dict[str, Any]) -> Path:
+    """Safely create parent dirs, append a single JSONL line, and os.fsync."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+    with _TOMBSTONE_IO_LOCK:
+        fd = os.open(str(path), flags, 0o600)
+        try:
+            view = memoryview(line)
+            written = 0
+            while written < len(line):
+                written += os.write(fd, view[written:])
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    return path
+
+
+def append_shred_tombstone(
+    *,
+    namespace_id: str | uuid.UUID,
+    dek_id: str | None,
+    mongo_ids: list[str] | tuple[str, ...] = (),
+    minio_keys: list[str] | tuple[str, ...] = (),
+    shredded_at: datetime | None = None,
+    backup_dir: str | Path | None = None,
+) -> tuple[dict[str, Any], Path]:
+    """Build, sign, and fsync-append a zero-PII record to ``shred_tombstones.jsonl``."""
+    ts = shredded_at or datetime.now(timezone.utc)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    else:
+        ts = ts.astimezone(timezone.utc)
+
+    base_record: dict[str, Any] = {
+        "namespace_id": str(namespace_id),
+        "dek_id": str(dek_id or ""),
+        "mongo_ids": [str(m) for m in mongo_ids if m],
+        "minio_keys": [str(k) for k in minio_keys if k],
+        "shredded_at": ts.isoformat(),
+    }
+
+    try:
+        sig = sign_shred_tombstone(base_record)
+    except MasterKeyMissingError:
+        if _is_prod_mode():
+            raise
+        log.warning("NCE_MASTER_KEY is unavailable in dev/test; writing unsigned tombstone line.")
+        sig = ""
+
+    record = {**base_record, "hmac_sha256": sig}
+    tombstone_path = resolve_backup_dir(backup_dir) / "shred_tombstones.jsonl"
+    _atomic_append_jsonl(tombstone_path, record)
+    return record, tombstone_path
+
+
+def append_deferred_shred_record(
+    job: dict[str, Any],
+    *,
+    backup_dir: str | Path | None = None,
+) -> Path:
+    """Append a deferred post-lease shred job to ``deferred_shreds.jsonl`` with fsync."""
+    target = resolve_backup_dir(backup_dir) / "deferred_shreds.jsonl"
+    return _atomic_append_jsonl(target, dict(job))

@@ -454,25 +454,25 @@ class TestCheckAndStoreTTL:
 
 
 class TestAdminSignedFetchNonceHeader:
-    """admin/index.html signedFetch sets X-NCE-Nonce and binds it into HMAC canonical string."""
+    """admin/console.js apiFetch enforces same-origin cookies and X-NCE-CSRF-Token on writes."""
 
     def test_signed_fetch_sets_x_nce_nonce_header(self) -> None:
         from pathlib import Path
 
-        admin_html_path = Path(__file__).resolve().parent.parent / "admin" / "index.html"
-        content = admin_html_path.read_text(encoding="utf-8")
+        admin_dir = Path(__file__).resolve().parent.parent / "admin"
+        html = (admin_dir / "index.html").read_text(encoding="utf-8")
+        content = (admin_dir / "console.js").read_text(encoding="utf-8")
 
-        start_marker = "async function signedFetch(apiKey, pathname, options = {}) {"
+        assert '<script src="/admin/console.js" defer></script>' in html
+        start_marker = "async function apiFetch(url, options) {"
         start_idx = content.find(start_marker)
-        assert start_idx != -1, "signedFetch definition not found in admin/index.html"
+        assert start_idx != -1, "apiFetch definition not found in admin/console.js"
 
         fetch_idx = content.find("const res = await fetch(url,", start_idx)
-        assert fetch_idx != -1, "fetch call inside signedFetch not found in admin/index.html"
+        assert fetch_idx != -1, "fetch call inside apiFetch not found in admin/console.js"
 
         fn_header_block = content[start_idx:fetch_idx]
-        assert "headers['X-NCE-Timestamp'] = String(ts);" in fn_header_block
-        assert "headers['Authorization'] = 'HMAC-SHA256 ' + sig;" in fn_header_block
-        assert "k.toLowerCase() === 'x-nce-nonce'" in fn_header_block
-        assert "headers['X-NCE-Nonce'] = nonce;" in fn_header_block
-        assert "`${method}\\n${pathname}\\n${ts}\\n${nonce}`" in fn_header_block
-        assert "crypto.randomUUID()" in fn_header_block
+        assert 'credentials: "same-origin"' in fn_header_block
+        assert 'readCookie("nce_admin_csrf")' in fn_header_block
+        assert 'headers["X-NCE-CSRF-Token"] = csrf;' in fn_header_block
+        assert 'headers["Authorization"]' not in fn_header_block

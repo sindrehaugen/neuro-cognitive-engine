@@ -2417,6 +2417,16 @@ async def reschedule_jobs() -> str:
     except Exception:
         pass
 
+    # 26. ops_fast_watchdog
+    try:
+        ops_wd_min = await store_get("NCE_OPS_WATCHDOG_INTERVAL_MINUTES", 5)
+        scheduler.reschedule_job(
+            "ops_fast_watchdog", trigger=IntervalTrigger(minutes=max(1, int(ops_wd_min)))
+        )
+        rescheduled.append("ops_fast_watchdog")
+    except Exception:
+        pass
+
     return f"rescheduled {len(rescheduled)} jobs"
 
 
@@ -2647,6 +2657,178 @@ async def _assets_warranty_eol_tick(pool: asyncpg.Pool) -> None:
             "cron.assets_warranty_eol_watcher.global",
             "Cron Job Failed: assets_warranty_eol_watcher",
             f"Assets warranty/EOL watcher tick failed: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
+async def _call_ops_adaptive(fn: Any, **candidates: Any) -> Any:
+    """Invoke a lazy-imported Day-2 Ops helper matching its accepted parameter names."""
+    import inspect
+
+    sig = inspect.signature(fn)
+    has_varkw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+    call_kwargs: dict[str, Any] = {}
+    for name in sig.parameters:
+        if name in candidates:
+            call_kwargs[name] = candidates[name]
+        elif name == "pool" and "pg_pool" in candidates:
+            call_kwargs[name] = candidates["pg_pool"]
+    if has_varkw:
+        for k, v in candidates.items():
+            if k not in call_kwargs and v is not None:
+                call_kwargs[k] = v
+    res = fn(**call_kwargs)
+    if inspect.isawaitable(res):
+        return await res
+    return res
+
+
+def _build_optional_ops_minio(minio_client: Any | None) -> Any | None:
+    if minio_client is not None:
+        return minio_client
+    if not (cfg.MINIO_ENDPOINT and cfg.MINIO_ACCESS_KEY and cfg.MINIO_SECRET_KEY):
+        return None
+    from nce._client_factory import make_minio
+
+    return make_minio(
+        cfg.MINIO_ENDPOINT,
+        cfg.MINIO_ACCESS_KEY,
+        cfg.MINIO_SECRET_KEY,
+        secure=cfg.MINIO_SECURE,
+    )
+
+
+async def _ops_fast_watchdog_tick(
+    pool: asyncpg.Pool,
+    redis_client: Any | None = None,
+) -> None:
+    """APScheduler job: run 5-minute deterministic Day-2 fast watchdog probes."""
+    lock: CronLock | None = await acquire_cron_lock("ops_fast_watchdog", 360)
+    if lock is None:
+        log.debug("Skipping ops_fast_watchdog — lock held by another instance")
+        return
+
+    owned_redis = False
+    active_redis = redis_client
+    try:
+        if active_redis is None and cfg.REDIS_URL:
+            from nce._client_factory import make_async_redis
+
+            active_redis = make_async_redis(cfg.REDIS_URL)
+            owned_redis = True
+
+        from nce.ops.caddy import run_fast_watchdog_probes
+
+        results = await run_fast_watchdog_probes(pool, redis_client=active_redis)
+        unhealthy = [r.probe_name for r in results if r.status != "ok"]
+        if unhealthy:
+            log.warning("ops_fast_watchdog flagged probes: %s", ", ".join(unhealthy))
+        else:
+            log.debug("ops_fast_watchdog complete: %d probes ok", len(results))
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("ops_fast_watchdog tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.ops_fast_watchdog",
+            "Cron Job Failed: ops_fast_watchdog",
+            f"Fast watchdog probe tick failed: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        if owned_redis and active_redis is not None:
+            try:
+                await active_redis.aclose()
+            except Exception:
+                pass
+        await release_cron_lock(lock)
+
+
+async def _ops_deep_integrity_tick(
+    pool: asyncpg.Pool,
+    mongo_client: Any | None = None,
+    minio_client: Any | None = None,
+) -> None:
+    """APScheduler job: nightly deep integrity verification and optional automated watermark backup."""
+    lock: CronLock | None = await acquire_cron_lock("ops_deep_integrity", 3600)
+    if lock is None:
+        log.debug("Skipping ops_deep_integrity — lock held by another instance")
+        return
+    try:
+        from nce.ops.caddy import run_deep_integrity_probes
+
+        resolved_minio = await asyncio.to_thread(_build_optional_ops_minio, minio_client)
+        results = await run_deep_integrity_probes(
+            pool,
+            mongo_client=mongo_client,
+            minio_client=resolved_minio,
+        )
+        log.info("ops_deep_integrity complete: %d probe(s)", len(results))
+
+        if cfg.NCE_BACKUP_AUTO_DAILY:
+            from nce.ops.backup import create_watermark_backup
+
+            manifest = await _call_ops_adaptive(
+                create_watermark_backup,
+                pg_pool=pool,
+                mongo_client=mongo_client,
+                minio_client=resolved_minio,
+                backup_dir=cfg.NCE_BACKUP_DIR,
+            )
+            log.info("ops_deep_integrity daily watermark backup complete: %s", manifest)
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("ops_deep_integrity tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.ops_deep_integrity",
+            "Cron Job Failed: ops_deep_integrity",
+            f"Deep integrity tick failed: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await release_cron_lock(lock)
+
+
+async def _ops_weekly_restore_drill_tick(
+    pool: asyncpg.Pool,
+    mongo_client: Any | None = None,
+    minio_client: Any | None = None,
+) -> None:
+    """APScheduler job: weekly ephemeral restore drill against the latest verified manifest."""
+    lock: CronLock | None = await acquire_cron_lock("ops_weekly_restore_drill", 7200)
+    if lock is None:
+        log.debug("Skipping ops_weekly_restore_drill — lock held by another instance")
+        return
+    try:
+        async with pool.acquire(timeout=10.0) as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT backup_id
+                FROM backup_manifests
+                WHERE status = 'verified'
+                ORDER BY COALESCE(t_cut, created_at) DESC
+                LIMIT 1
+                """
+            )
+        if row is None:
+            log.info("ops_weekly_restore_drill skipped: no verified backup manifest exists")
+            return
+
+        backup_id = row["backup_id"]
+        resolved_minio = await asyncio.to_thread(_build_optional_ops_minio, minio_client)
+        from nce.ops.backup import run_ephemeral_restore_drill
+
+        report = await _call_ops_adaptive(
+            run_ephemeral_restore_drill,
+            pg_pool=pool,
+            backup_id=backup_id,
+            mongo_client=mongo_client,
+            minio_client=resolved_minio,
+            backup_dir=cfg.NCE_BACKUP_DIR,
+        )
+        log.info("ops_weekly_restore_drill complete for backup_id=%s: %s", backup_id, report)
+    except _CRON_TICK_ERRORS as exc:
+        log.exception("ops_weekly_restore_drill tick failed unexpectedly")
+        await _dispatch_throttled_alert(
+            "cron.ops_weekly_restore_drill",
+            "Cron Job Failed: ops_weekly_restore_drill",
+            f"Weekly restore drill tick failed: {type(exc).__name__}: {exc}",
         )
     finally:
         await release_cron_lock(lock)
@@ -3001,6 +3183,36 @@ async def async_main() -> None:
         IntervalTrigger(minutes=reminders_minutes),
         args=[pool],
         id="reminders_watcher",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _ops_fast_watchdog_tick,
+        IntervalTrigger(minutes=5),
+        args=[pool],
+        id="ops_fast_watchdog",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _ops_deep_integrity_tick,
+        CronTrigger(hour=2, minute=30),
+        args=[pool, mongo_client],
+        id="ops_deep_integrity",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _ops_weekly_restore_drill_tick,
+        CronTrigger(day_of_week="sun", hour=3, minute=30),
+        args=[pool, mongo_client],
+        id="ops_weekly_restore_drill",
         coalesce=True,
         max_instances=1,
         replace_existing=True,

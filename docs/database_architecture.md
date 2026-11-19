@@ -322,7 +322,7 @@ The table participates in the global tenant database boundary:
 
 ## 9. PostgreSQL Schema Source & Lifecycle Management
 
-> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `041_app_connections_vault.sql`, plus `optional/010_citus_sharding.sql`; external plugin packages record scoped migrations `<plugin_scope>:<filename>` in `applied_migrations`).
+> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `042_day2_ops_backup_and_governance.sql`, plus `optional/010_citus_sharding.sql`; external plugin packages record scoped migrations `<plugin_scope>:<filename>` in `applied_migrations`).
 >
 > ⚠ **Important Provisioning Notice:** Do not copy or execute static embedded SQL snippets from documentation to provision database tables. Doing so bypasses the migration lifecycle and risks provisioning tenant tables without mandatory Row-Level Security (RLS) policies and security triggers. Always allow the engine to initialize its schema automatically via `NCEEngine._init_pg_schema()` or execute the versioned migrations in order.
 
@@ -335,7 +335,7 @@ At engine startup, `NCEEngine.connect()` ([`nce/orchestrator.py`](https://github
 > **Test Environment Setup (`schema.sql` is not enough)**
 > `nce/schema.sql` alone is not a usable database. A schema-only initialization will yield a false green on test runs by skipping hundreds of tests (e.g. missing `public.event_log.chain_hash`, missing `v3_cognitive_ledger`). All files in `nce/migrations/*.sql` **must be applied on top**, in filename order, to reach a full green test run.
 
-### 9b. Complete Versioned Migrations Catalog (001 through 041 + Optional Citus)
+### 9b. Complete Versioned Migrations Catalog (001 through 042 + Optional Citus)
 
 Schema evolution is governed by chronological migration scripts located in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/):
 
@@ -382,6 +382,7 @@ Schema evolution is governed by chronological migration scripts located in [`nce
 | [`039_nce_app_runtime_role_grants.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/039_nce_app_runtime_role_grants.sql) | Core schema migration `039_nce_app_runtime_role_grants.sql`. | — | `namespaces`, `memories`, `event_log` | Non-superuser `nce_app` runtime least-privilege grants, policy binding, and WORM revocations |
 | [`040_partition_rls_and_key_confinement.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/040_partition_rls_and_key_confinement.sql) | Core schema migration `040_partition_rls_and_key_confinement.sql`. | — | `kg_node_embeddings`, `event_sequences`, `signing_keys`, tenant child partitions | Forced RLS on `kg_node_embeddings`, `event_sequences`, and all child partitions; WORM child partition revocations; `signing_keys` confinement behind `SECURITY DEFINER` helpers |
 | [`041_app_connections_vault.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/041_app_connections_vault.sql) | Core schema migration `041_app_connections_vault.sql`. | `app_connections` | — | Multi-tenant envelope-encrypted connector connection vault with `FORCE ROW LEVEL SECURITY` (`(SELECT get_nce_namespace())`) and `nce_app` / `nce_gc` runtime grants |
+| [`042_day2_ops_backup_and_governance.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/042_day2_ops_backup_and_governance.sql) | Core schema migration `042_day2_ops_backup_and_governance.sql`. | `runtime_tool_governance`, `backup_leases`, `backup_manifests`, `ops_probe_runs`, `ops_incidents`, `ops_quarantine`, `ops_playbook_executions` | `memory_salience` partitions, `kg_edges` partitions | Control-plane tables isolated to admin/`nce_gc` roles (direct access revoked from `nce_app`), `SECURITY DEFINER` helpers `nce_get_disabled_runtime_tools()` / `nce_is_backup_lease_active()`, leaf-partition `0.02` autovacuum tuning |
 | [`010_citus_sharding.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/migrations/optional/010_citus_sharding.sql) *(optional)* | Core schema migration `010_citus_sharding.sql`. | Core schema | Core tables | Core RLS / triggers |
 
 ### 9c. Automated RLS Catalog Consistency Gate
