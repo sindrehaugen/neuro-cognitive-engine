@@ -146,7 +146,7 @@ Success response:
 }
 ```
 
-#### tools/call — semantic_search (with time travel)
+#### tools/call — semantic_search (with point-in-time `as_of` filter)
 
 Request:
 
@@ -222,7 +222,7 @@ Tools are conditionally included: migration tools are present unless `NCE_DISABL
 | Tool | Description |
 |---|---|
 | `store_memory` | Persist a conversation turn, document, or summary |
-| `semantic_search` | pgvector cosine search + Mongo hydration; optional `as_of` time travel |
+| `semantic_search` | 3-way Hybrid RRF (`pgvector` + FTS + ID boost) + Mongo hydration; optional `as_of` temporal filter |
 | `get_recent_context` | Retrieve the N most-recent episodic memories for an agent |
 | `boost_memory` | Raise salience score of a memory |
 | `forget_memory` | Soft-delete a memory (reversible via `unredact_memory`) |
@@ -238,7 +238,7 @@ Tools are conditionally included: migration tools are present unless `NCE_DISABL
 | Tool | Description |
 |---|---|
 | `graph_search` | GraphRAG BFS traversal anchored by vector similarity; optional `as_of` |
-| `neuromorphic_search` | GraphRAG spreading-activation traversal (spiking neural model) |
+| `neuromorphic_search` | Weighted `WITH RECURSIVE` multi-hop graph traversal over `kg_nodes` / `kg_edges` |
 | `describe_schema` | List live entity types and edge predicates for a namespace |
 | `suggest_queries` | Discover pre-optimised query templates |
 | `execute_query_template` | Run a named query template |

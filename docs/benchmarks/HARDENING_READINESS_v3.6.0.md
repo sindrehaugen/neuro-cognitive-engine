@@ -1,5 +1,7 @@
 # NCE Core `v3.6.0` Hardening & Readiness Report
 
+> **Benchmark Scope Notice:** Figures in this report were captured on a controlled single-host Docker container testbed against synthetic R&D datasets. They document engineering regression baselines and index/middleware deltas, not commercial multi-tenant SLA guarantees.
+
 **Release:** `neuro-cognitive-engine` `v3.6.0`  
 **Certification Date:** `2026-11-19`  
 **Scope:** Core Connector SDK (`nce/connectors/`), Beta/Stable Maturity Contract, Encrypted `app_connections` Vault (`041`), Admin Beta UI, Pure-ASGI Middleware, Air-Gapped ONNX Cognitive Service (`num_threads=4`, batching), `nce-cron` `ZERO_TORCH` + Seccomp Parity, and 19-Container Integrated Stack Certification.  

@@ -1,120 +1,127 @@
-# NCE — Neuro-Cognitive Engine
+# NCE (Neuro-Cognitive Engine)
 
-> A cognitive memory and reasoning substrate for autonomous agents.
-> Persistent, multi-tenant, time-travelling memory across a four-database stack — with a brain on top.
+> Multi-tenant context, hybrid retrieval, and governance substrate for Model Context Protocol (MCP) clients and LLM-assisted engineering workflows.
 
 <p>
   <img alt="version" src="https://img.shields.io/badge/version-3.6.0-blue">
+  <img alt="stage" src="https://img.shields.io/badge/stage-active%20R%26D-0ea5e9">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%20--%203.12-3776ab">
   <img alt="protocol" src="https://img.shields.io/badge/MCP-JSON--RPC%202.0-6e40c9">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
 </p>
 
-NCE began life as **TriMCP** — a Model Context Protocol server backed by a tri-database stack. It has since grown into a full **Neuro-Cognitive Engine**: MCP is now just *one* of several front doors onto a system that consolidates memories while agents sleep, models how knowledge decays and is reinforced, maintains logical consistency across competing beliefs, reasons about cause and effect, and federates memory securely between independent agent networks.
+## Project Status & Research Scope
 
-The engine is **provider-agnostic** (BYO LLM — local, OpenAI, Anthropic, Gemini, and more), **multi-tenant by construction** (database-enforced Row-Level Security), and **auditable by design** (an append-only, hash-chained event log that makes every state reconstructable and every memory's causal provenance traceable).
+NCE v3.6.0 is an **ongoing personal Research & Development (R&D) architecture testbed started in early May 2026**. It was built to design, implement, and stress-test three systems-engineering pillars end to end:
+
+1. **Multi-Database Systems Architecture:** Coordinating relational/vector state (`PostgreSQL 16` + `pgvector`), unstructured document payloads (`MongoDB 7.0`), distributed locks/queues (`Redis 7.4` + `RQ`), and content-addressed blobs (`MinIO`) behind transaction-scoped Saga compensation and point-in-time (`as_of`) temporal queries.
+2. **Enterprise Security Engineering:** Database-enforced PostgreSQL Row-Level Security (`FORCE ROW LEVEL SECURITY`) across partitioned tables, per-record `AES-256-GCM` KEK/DEK envelope encryption with cryptographic erasure, and an append-only, hash-chained WORM `event_log` signed via RFC 8785 (JCS) `HMAC-SHA256`.
+3. **Grounded Retrieval & Action Governance:** 3-way Reciprocal Rank Fusion (lexical + vector + exact identifier boosting), cycle-safe recursive graph traversal, cross-encoder NLI contradiction warnings, provenance tracking, and `@governed` confirm-first human-in-the-loop approval gates.
+
+> [!IMPORTANT]
+> **What NCE Is Not:** NCE is **not** a commercially supported product, a turnkey enterprise platform, or a certified drop-in replacement for statutory ERP, accounting, or safety-critical engineering software. Background LLM summarization and NLI contradiction checks remain probabilistic; NCE reduces ungrounded outputs and operational blast radius by anchoring reads to exact/vector hybrid recall, WORM provenance, and human approval gates rather than claiming deterministic factual perfection.
+
+**Note on Naming:** The project started in early May 2026 as **TriMCP** (a three-store MCP server) and was renamed `neuro-cognitive-engine` as graph traversal, dependency tracking, and scheduled summarization workers were added. Python package names (`neuro-cognitive-engine`, `nce`), SQL identifiers (`salience`, `episodic`, `semantic`, `consolidation_runs`), and file paths (`docs/cognitive_layer.md`, `docs/time_travel.md`) retain their original names for backwards compatibility; throughout this documentation, each legacy identifier is paired directly with its concrete database or retrieval mechanism.
 
 ---
 
 ## Table of Contents
 
-- [Why NCE](#why-nce)
-- [The Cognitive Model](#the-cognitive-model)
-- [System Architecture](#system-architecture)
-- [The Quad-Database Stack](#the-quad-database-stack)
-- [Capabilities](#capabilities)
-- [Surfaces & Entrypoints](#surfaces--entrypoints)
-- [Performance, Scale & LLM-Loop Latency](#performance-scale--llm-loop-latency)
+- [Project Status & Research Scope](#project-status--research-scope)
+- [Architectural Goals](#architectural-goals)
+- [Retrieval, Consistency & Governance](#retrieval-consistency--governance)
+- [Multi-Store Architecture](#multi-store-architecture)
+- [Surfaces & Progressive MCP Routing](#surfaces--progressive-mcp-routing)
+- [Security Architecture](#security-architecture)
+- [Known Limitations & R&D Trade-Offs](#known-limitations--rd-trade-offs)
 - [Quickstart](#quickstart)
 - [Connecting an MCP Client](#connecting-an-mcp-client)
-- [MCP Tool Surface](#mcp-tool-surface)
-- [Security Model](#security-model)
-- [Official Plugins](#official-plugins)
+- [Experimental Extension Packages](#experimental-extension-packages)
 - [Tech Stack](#tech-stack)
 - [Testing & Quality Gates](#testing--quality-gates)
-- [Documentation](#documentation)
-- [Production Checklist](#production-checklist)
+- [Documentation Index](#documentation-index)
+- [Pre-Deployment & Staging Verification Checklist](#pre-deployment--staging-verification-checklist)
 
 ---
 
-## Why NCE
+## Architectural Goals
 
-Most "agent memory" is a vector index with a `search()` call bolted on. That works until an agent runs for weeks, serves multiple tenants, accumulates contradictory facts, and someone asks *"what did the agent believe last Tuesday, and why?"*
+Flat vector wrappers work well for single-user prototypes, but exhibit predictable failure modes in shared engineering sandboxes: application-layer `WHERE` filters risk cross-tenant leaks when a query omits a predicate, pure cosine similarity misses exact part numbers/SKUs/standards clauses, `UPDATE` statements overwrite prior design rationale, and unguarded MCP tools allow silent state mutations.
 
-NCE is built for that second world:
-
-| Concern | Naïve approach | NCE |
+| Engineering Concern | Flat Vector Wrapper Failure Mode | NCE Substrate Mechanism |
 | :--- | :--- | :--- |
-| **Recall** | Flat vector search | Semantic search **+** GraphRAG traversal **+** spiking spreading activation |
-| **Isolation** | App-layer `WHERE tenant = ?` | PostgreSQL **Row-Level Security**, forced on every table |
-| **History** | Last-write-wins | Append-only **WORM event log**; `as_of` time-travel on every read |
-| **Knowledge quality** | Store everything forever | **Consolidation** (sleep cycle), **salience decay**, **contradiction detection** |
-| **Truth** | Trust the latest write | **ATMS** belief revision with justification graphs |
-| **Sharing** | Copy data between agents | **A2A** cryptographic, scope-bound, RLS-enforced federation |
-| **Auditability** | Logs, maybe | Hash-chained provenance; deterministic **replay & fork** of any namespace |
+| **Tenant Isolation** | Application-layer `WHERE tenant_id = ?` omitted in one query | PostgreSQL `FORCE ROW LEVEL SECURITY` bound via `SET LOCAL nce.namespace_id` on every checkout |
+| **Technical Recall** | Pure cosine search misses exact SKUs, org numbers, IPs, or standards codes | 3-way Hybrid RRF (`pgvector` HNSW + `tsvector` BM25/GIN + exact identifier boost) + `WITH RECURSIVE` graph traversal |
+| **Audit & History** | Last-write-wins overwrites prior engineering rationale | Append-only WORM `event_log` with `as_of` point-in-time temporal queries and named snapshots |
+| **Conflicting Inputs** | Stale and newer records coexist silently in top-$k$ | Candidate similarity filter + `kg_edges` conflict check + `nli-deberta-v3-small` cross-encoder warnings + ATMS dependency links |
+| **Context Lifecycle** | Unbounded raw logs degrade retrieval precision over time | Scheduled HDBSCAN background clustering & Pydantic-validated summarization (`nce.cron`) + configurable time-decay scoring |
+| **Cross-Team Federation** | Copying raw rows across workspaces | Scoped, SHA-256 hash-grant A2A JSON-RPC queries evaluated inside the owner's RLS session |
+| **Tool Mutation Safety** | LLM client executes high-impact writes directly | C2 Action Governance (`@governed` confirm-first human approval queue, value ceilings, idempotency keys, kill-switch) |
 
 ---
 
-## The Cognitive Model
-
-NCE treats memory the way a mind does — as a lifecycle, not a bucket.
+## Retrieval, Consistency & Governance
 
 ```
-   ingest ──▶ EPISODIC ──▶ consolidate ──▶ SEMANTIC ──▶ knowledge graph
-   (raw)       memories      (sleep cycle)   abstractions      (entities + relations)
-                  │                                                  │
-            salience decay                                    spreading activation
-          (Ebbinghaus curve)                                 (neuromorphic recall)
-                  │                                                  │
-              reinforced ◀──────────── retrieval ───────────────────┘
+  ingest ──▶ raw interaction & document records (`episodic`)
+                    │
+                    ├──▶ scheduled HDBSCAN clustering + LLM summarization (`nce.cron`)
+                    │            │
+                    │            ▼
+                    │    distilled reference summaries (`semantic`) + `procedural_heuristics`
+                    │            │
+                    ▼            ▼
+            3-Way Hybrid RRF + `WITH RECURSIVE` Knowledge Graph (`kg_nodes` / `kg_edges`)
+                    │
+                    └──▶ async ring-buffered access-frequency & time-decay scoring (`memory_salience`)
 ```
 
-- **Episodic → Semantic consolidation.** A background "sleep cycle" runs HDBSCAN density clustering over episodic embeddings, distils each cluster into a *Semantic Abstraction* via an LLM (output strictly validated by Pydantic V2), and upserts the result into both the memory store and the knowledge graph.
-- **Salience & forgetting.** Every memory carries a salience score that decays exponentially per the **Ebbinghaus forgetting curve**, `s(t) = s₀·e^(−λΔt)`, and is reinforced on retrieval, `s ← min(1.0, s + δ)`. Important things stay sharp; noise fades.
-- **Contradiction detection.** New facts are checked against existing knowledge via semantic match → KG conflict → a **cross-encoder NLI** model (`nli-deberta-v3-small`) → an LLM tiebreaker. Unresolved conflicts are surfaced for the agent to settle.
-- **Belief revision (ATMS).** An Assumption-Based Truth Maintenance System tracks `ASSUMPTION` / `PREMISE` / `DERIVED` nodes and their justifications, propagating deprecation through the justification graph (cycle-safe) when an assumption is retracted.
-- **Causal reasoning.** A do-calculus causal engine and counterfactual **chrono-branching** let agents ask *"what if"* — overlaying hypothetical mutations on an isolated timeline without ever touching production rows.
+- **3-Way Hybrid RRF & Context Compilation:** `semantic_search` fuses dense vector similarity (`pgvector` `halfvec(768)` HNSW with `relaxed_order`), PostgreSQL full-text search (`search_tsv` GIN), and exact token/identifier matching (SKUs, organization numbers, IP addresses) via Reciprocal Rank Fusion, returning calibrated `confidence_score` and `epistemic_warnings` metadata. `compile_working_memory` (tool `#71`) assembles raw records (`episodic`), distilled summaries (`semantic`), graph neighborhoods, and `procedural_heuristics` in a shared `scoped_pg_session`.
+- **Cycle-Safe Graph Traversal:** `graph_search` and `neuromorphic_search` execute weighted, cycle-safe multi-hop `WITH RECURSIVE` CTE traversals over `kg_nodes` and `kg_edges` using trigram GIN indexes (`idx_kg_edges_combined_trgm`) and configurable edge-weight adaptation based on co-retrieval frequency.
+- **Configurable Time-Decay & Access-Frequency Scoring (`salience`):** Each record tracks a relevance score $s(t) = s_0 \cdot e^{-\lambda \Delta t}$ ($\lambda = \ln(2)/\text{half\_life\_days}$, deterministic $\pm 5\%$ per-UUID jitter) stored across 4 hash partitions of `memory_salience`. Read-path reinforcements (`s <- min(1.0, s + delta)`) are coalesced asynchronously via an in-memory ring buffer so read latency stays off the write lock path.
+- **Contradiction Flagging & Dependency Tracking (ATMS):** Candidate writes are compared against top cosine neighbors (`>= 0.85`), checked for conflicting `kg_edges` objects, scored with the local cross-encoder `cross-encoder/nli-deberta-v3-small`, and optionally tie-broken by a schema-validated LLM auditor. Confirmed conflicts are recorded in `contradictions`. An Assumption-Based Dependency Tracker (`ATMS`) links `ASSUMPTION`, `PREMISE`, and `DERIVED` records so retracting an upstream assumption marks downstream derived records superseded (`valid_to = now()`).
+- **Scheduled Background Summarization (`nce/cron.py` & RQ):** Background workers cluster dense embeddings with HDBSCAN (`min_cluster_size=2`), generate Pydantic V2-validated summaries (`ConsolidatedAbstraction`), persist raw text to MongoDB, and log provenance edges to `event_log`.
 
-See [docs/cognitive_layer.md](docs/cognitive_layer.md).
+See [docs/cognitive_layer.md](docs/cognitive_layer.md) for mathematical formulas, SQL schemas, and failure-mode mitigations.
 
 ---
 
-## System Architecture
+## Multi-Store Architecture
 
 ```mermaid
 flowchart TB
-  subgraph Clients [Clients]
-    IDE["MCP clients · Claude Desktop · Cursor"]
-    PEER["Peer agent networks"]
-    OPS["Operators / Admins"]
+  subgraph Clients ["Clients & Operators"]
+    IDE["MCP Clients (Claude Desktop, Cursor)"]
+    PEER["Federated Namespace Peers"]
+    OPS["Operators / Staging Admins"]
   end
 
-  subgraph Surfaces [Surfaces & Ingress Gateways]
-    STDIO["server.py · MCP stdio"]
-    GW["mcp_gateway_server.py · Streamable HTTP /mcp"]
-    PROXY["nce.mcp_client_proxy · CLI bridge"]
-    A2A["nce/a2a_server.py · A2A federation"]
-    ADM["admin_server.py · REST + Admin UI"]
-    WH["nce/webhook_receiver · document bridges"]
+  subgraph Surfaces ["Ingress Gateways (Pure-ASGI + HTTP 413 Guards)"]
+    STDIO["server.py (MCP stdio)"]
+    GW["mcp_gateway_server.py (Streamable HTTP /mcp)"]
+    PROXY["nce.mcp_client_proxy (Zero-Secret CLI Bridge)"]
+    A2A["nce/a2a_server.py (Scoped JSON-RPC Federation)"]
+    ADM["admin_server.py (REST + Admin Console)"]
+    WH["nce/webhook_receiver (Document Webhook Ingest)"]
   end
 
-  subgraph Background [Background processing]
-    RQ["start_worker.py · RQ worker"]
-    CRON["nce.cron · schedulers"]
+  subgraph Background ["Background Workers & Schedulers"]
+    RQ["start_worker.py (RQ Job Worker)"]
+    CRON["nce.cron (Summarization, Decay, Renewals, GC)"]
   end
 
-  subgraph Engine [NCEEngine — orchestration]
-    ORCH["Saga write path"]
-    COG["Cognitive workers · compile_working_memory"]
-    PROC["procedural_heuristics · distillation"]
-    TMP["Temporal / replay"]
+  subgraph Engine ["NCEEngine Core Substrate"]
+    ORCH["Transaction-Scoped Write Saga"]
+    RET["3-Way RRF & Recursive Graph Retrieval"]
+    GOV["C2 @governed Gates & ATMS Dependency Tracker"]
+    TMP["as_of Temporal Queries & Deterministic Replay"]
   end
 
-  subgraph Data [Quad-Database Stack]
-    PG[("PostgreSQL + pgvector")]
-    MG[("MongoDB")]
-    RD[("Redis")]
-    S3[("MinIO")]
+  subgraph Data ["Four-Store Persistence Layer"]
+    PG[("PostgreSQL 16 + pgvector")]
+    MG[("MongoDB 7.0")]
+    RD[("Redis 7.4 + RQ")]
+    S3[("MinIO S3 Object Store")]
   end
 
   IDE --> STDIO
@@ -123,88 +130,99 @@ flowchart TB
   IDE --> GW
   PEER --> A2A
   OPS --> ADM
-  STDIO --> ORCH
-  GW --> ORCH
-  A2A --> ORCH
-  ADM --> ORCH
+  STDIO --> ORCH & RET
+  GW --> ORCH & RET
+  A2A --> RET
+  ADM --> ORCH & GOV
   WH --> RQ
   RQ --> ORCH
-  CRON --> COG
-  COG --> PROC
+  CRON --> ORCH
   ORCH --> PG & MG & RD & S3
-  COG --> PG & MG
-  PROC --> PG
-  TMP --> PG & S3
+  RET --> PG & MG & RD
+  GOV --> PG & RD
+  TMP --> PG & MG & S3
 ```
 
-Every standard write travels a transaction-scoped **Saga** path with automatic compensating rollbacks, so a partial failure across the four stores never leaves orphaned state. Detailed sequence diagrams live in [docs/architecture-v1.md](docs/architecture-v1.md) and [docs/database_architecture.md](docs/database_architecture.md).
-
----
-
-## The Quad-Database Stack
-
-Duties are split across four engines so each does only what it is best at:
-
-| Store | Role | Holds |
+| Backing Store | Primary Engineering Responsibility | Stored Artifacts |
 | :--- | :--- | :--- |
-| **PostgreSQL + pgvector** | Relational core & vector index | Semantic embeddings (HNSW), knowledge-graph triplets (`kg_nodes` / `kg_edges`), RLS policies, the WORM `event_log` |
-| **MongoDB** | Episodic payload archive | Heavy unstructured content — transcripts, code, document pages — referenced by ObjectID |
-| **Redis** | Transient & coordination | TTL context caches, rate limits, distributed locks, single-use HMAC nonces, RQ job queues |
-| **MinIO** | Object storage (S3 API) | Binary artifacts (image/audio/video/PDF/logs/binary) and the deterministic LLM response cache used by replay |
+| **PostgreSQL 16 + `pgvector`** | Relational integrity, forced RLS, vector/FTS/graph indexing, WORM audit ledger | `halfvec(768)` HNSW embeddings, `search_tsv` GIN indexes, `kg_nodes` / `kg_edges`, RLS policies, hash-chained `event_log` |
+| **MongoDB 7.0** | Document payload storage with `$in` batch hydration | Large unstructured transcripts, extracted document pages, AST chunks referenced by `payload_ref` |
+| **Redis 7.4** | Low-latency coordination, caching, and background queues | Session/token caches, rate limits, distributed cron locks, single-use HMAC anti-replay nonces, `rq` job queues |
+| **MinIO (S3 API)** | Content-addressed binary & replay cache storage | Binary files (PDF, CAD, images, logs) and SHA-256-verified LLM response payloads for deterministic replay |
+
+Standard multi-store writes execute through a transaction-scoped **Saga orchestrator** (`nce/saga.py`) with bounded timeouts (`2000ms` Motor failover) and compensating rollbacks; residual crash orphans are swept asynchronously (`SKIP LOCKED`). See [docs/architecture-v1.md](docs/architecture-v1.md) and [docs/database_architecture.md](docs/database_architecture.md).
 
 ---
 
-## Capabilities
+## Surfaces & Progressive MCP Routing
 
-- **3-way Hybrid RRF & Cognitive Synthesis** — `semantic_search` combining vector embeddings (pgvector HNSW cosine), full-text search (`search_tsv`), and exact keyword/identifier boosting (SKU, orgnr, IP) via Reciprocal Rank Fusion, with calibrated `confidence_score` and `epistemic_warnings`; `compile_working_memory` (tool #71) dynamically synthesizes working memory across episodic, semantic, graph, and procedural tiers.
-- **Procedural memory & heuristics** — `procedural_heuristics` distillation extracts operational rules, trigger conditions, and action guidance from governed decisions with trigger-maintained full-text indexing and RLS isolation.
-- **Hybrid recall** — `semantic_search` with MongoDB `$in` batch hydration, `graph_search` GraphRAG BFS traversal, and neuromorphic **spiking spreading activation** with LTP/LTD weight adaptation.
-- **Time travel** — pass an `as_of` ISO-8601 timestamp to any read and see memory exactly as it stood: `valid_from <= as_of AND (valid_to IS NULL OR valid_to > as_of)`. Applies symmetrically to vector search and graph traversal.
-- **Snapshots & state diffing** — name a point in time (`create_snapshot`) and diff two instants with `compare_states`.
-- **Replay engine** — `replay_observe` streams the event log read-only; `replay_fork` rebuilds a namespace into an isolated target, either *deterministically* (LLM responses served from the MinIO cache, byte-identical) or *re-executed* (call the LLM fresh for A/B "what-if" divergence); `replay_reconstruct` for exact rebuilds.
-- **Code intelligence** — `index_code_file` AST-parses source (Tree-sitter; Python, JS, TS, Go, Rust) into per-symbol chunks; `search_codebase` returns matching functions/classes with line ranges.
-- **Document bridges** — OAuth + webhook sync from **SharePoint/OneDrive, Google Drive, and Dropbox**, with subscription renewal, retry, and a dead-letter queue.
-- **Rich ingestion** — extractors for PDF, Office (Word/Excel/PowerPoint), email, CAD, diagrams, project files, plaintext, with OCR and LibreOffice fallbacks.
-- **Provider-agnostic cognition** — `local-cognitive-model`, `openai`, `azure_openai`, `anthropic`, `google_gemini`, `deepseek`, `moonshot_kimi`, and any `openai_compatible` endpoint.
-- **Edge & air-gapped** — local inference stack with optional **OpenVINO NPU** acceleration; see [docs/airgapped_deployment.md](docs/airgapped_deployment.md).
-- **Observability** — OpenTelemetry → OTLP/Jaeger tracing and a Prometheus metrics endpoint, on by default.
+Every HTTP surface runs pure-ASGI streaming middleware (avoiding Starlette `BaseHTTPMiddleware` buffering overhead) fronted by `BoundedBodyMiddleware` (`NCE_MAX_HTTP_BODY_BYTES`, rejecting oversized requests with HTTP `413`):
 
----
-
-## Surfaces & Entrypoints
-
-NCE is no longer "just an MCP server." It exposes several coordinated surfaces protected by ASGI `BoundedBodyMiddleware` (`NCE_MAX_HTTP_BODY_BYTES`, rejecting oversized payloads with HTTP `413`):
-
-| Entrypoint | Transport | Purpose | Security & Limits |
+| Entrypoint | Transport | Role | Security & Isolation Controls |
 | :--- | :--- | :--- | :--- |
-| `server.py` | MCP stdio (JSON-RPC 2.0) | Direct tool surface for local LLM clients (Claude Desktop, Cursor) | Process-isolated stdio, tenant pinned via `NCE_MCP_NAMESPACE_ID` |
-| `mcp_gateway_server.py` | Streamable HTTP `/mcp` (SSE / JSON-RPC 2.0) | Zero-trust remote MCP gateway for IDEs and desktop clients | Scoped bearer tokens, fail-closed Redis governance, `BoundedBodyMiddleware` (HTTP `413`) |
-| `nce.mcp_client_proxy` | CLI bridge (stdio → HTTP `/mcp`) | Zero-secret local bridge (`nce-mcp-proxy`) connecting stdio-only MCP clients to HTTP `/mcp` | Zero database secrets on workstations, scoped token authentication |
-| `go/cmd/nce-launch` | Native CLI shim (Go) | Mode-aware native launcher shim for desktop/server installers | OS keyring + MSAL/JWT auth, bounded `<5s` hardware topology probes |
-| `admin_server.py` | HTTP (Starlette REST + Admin UI) | Operations, namespace/quota management, runtime tool toggles | HMAC-SHA256 three-header auth, anti-replay nonces, `BoundedBodyMiddleware` (HTTP `413`) |
-| `nce/a2a_server.py` | HTTP (A2A RPC) | Federated, scope-bound memory sharing between agent networks | JWT Bearer tokens (`RS256`/`ES256`/`PS256` public key or `HS256` secret), atomic 1-time grant redemption, `BoundedBodyMiddleware` (HTTP `413`) |
-| `nce/webhook_receiver/main.py` | HTTP | Inbound document-bridge change notifications | Provider HMAC verification, SSRF egress validation, `BoundedBodyMiddleware` (HTTP `413`) |
-| `start_worker.py` | RQ worker | Async background jobs — code indexing, bridge sync, re-embedding | Queue-isolated execution, automatic retry, dead-letter queue (DLQ) |
-| `nce/cron.py` | Scheduler | Sleep consolidation cycles, salience decay pruning, bridge renewal, GC | Distributed Redis locking, non-blocking health probes |
+| `server.py` | MCP stdio (JSON-RPC 2.0) | Local developer MCP server | Process-isolated stdio; namespace pinned via `NCE_MCP_NAMESPACE_ID` |
+| `mcp_gateway_server.py` | Streamable HTTP `/mcp` (SSE / JSON-RPC 2.0) | Remote multi-tenant MCP gateway (`:8005` direct, `:8443/mcp` TLS via Caddy) | Scoped bearer tokens (`tools:read`, `tools:call`, `admin`), fail-closed Redis governance, HTTP `413` body cap |
+| `nce.mcp_client_proxy` | CLI bridge (`stdio` → HTTPS `/mcp`) | Workstation proxy (`nce-mcp-proxy`) for stdio-only MCP clients | Zero database credentials or `NCE_MASTER_KEY` on client machines |
+| `go/cmd/nce-launch` | Native Go CLI shim | Mode-aware launcher for desktop/server setups | OS keyring + MSAL/JWT auth, bounded `<5s` socket probes |
+| `admin_server.py` | HTTP REST + Admin UI (`:8003`) | Namespace/quota management, connection vault, runtime tool toggles | 3-header `HMAC-SHA256` auth, Redis single-use nonces, optional internal mTLS |
+| `nce/a2a_server.py` | HTTP JSON-RPC (`:8004`) | Cross-namespace federated query endpoint | Pinned JWT (`RS256`/`ES256`/`PS256` or `HS256`), SHA-256 hashed grant scopes, owner-RLS execution |
+| `nce/webhook_receiver/main.py` | HTTP | Inbound SharePoint/OneDrive, Google Drive, and Dropbox webhooks | Provider HMAC verification, SSRF egress guards, HTTP `413` body cap |
+| `start_worker.py` | RQ worker | Async code AST indexing, document bridge sync, shadow-column re-embedding | Queue isolation, bounded retries, dead-letter queue (DLQ), seccomp profile |
+| `nce/cron.py` | Scheduler | Scheduled background summarization, time-decay pruning, bridge renewal, GC | Distributed Redis locks, non-blocking health probes, zero local `libtorch` RSS when offloading embeddings |
 
-A **Dynamic Tools Console** in the Admin UI can enable/disable individual stdio tools or A2A skills at runtime (persisted to a Redis hash); disabled calls are rejected by the dispatch interceptor. In production, tool and engine governance fails **closed** (`-32005`) if Redis is unreachable to prevent unauthenticated or unauthorized dispatch.
+### Progressive MCP Tool Routing (`compact` vs. `full`)
+
+NCE registers **71** static Core MCP tools in [`nce/tool_registry.py`](nce/tool_registry.py) (`34` mutation, `13` admin-only, `9` cacheable, `5` migration), plus optional plugin tool families loaded via `nce.plugins`.
+
+- **`compact` mode (default on `/mcp`):** `tools/list` exposes `12` startup tools (`<= 16` budget: `11` Core retrieval/graph/schema tools + `discover_tools`) with internal auth fields stripped from `inputSchema` (`~3,100` initial prompt tokens). Clients dynamically search and activate additional Core or plugin tools in `< 2 ms` via `discover_tools(query=..., limit=...)` (capped at `12` matches per call in `compact` mode, prioritizing connected `app_slug` entries from `TenantConnectionVault`).
+- **`full` mode:** Exposes all `71` static Core tools (plus enabled plugin tools) up front for batch test harnesses or high-context clients.
+
+| Tool Family | Representative MCP Tools | Mechanical Function |
+| :--- | :--- | :--- |
+| **Write & Ingest** | `store_memory`, `store_artifact`, `index_code_file`, `check_indexing_status` | Saga-coordinated record persistence, MinIO artifact storage, Tree-sitter AST symbol chunking |
+| **Hybrid & Graph Read** | `semantic_search`, `compile_working_memory`, `graph_search`, `search_codebase`, `describe_schema` | 3-way RRF search, multi-tier context assembly, recursive CTE graph traversal, live schema inspection |
+| **Relevance & Conflict** | `boost_memory`, `forget_memory`, `list_contradictions`, `resolve_contradiction` | Adjust `memory_salience`, soft-expire rows (`valid_to`), inspect/resolve NLI & KG conflicts with ATMS propagation |
+| **Temporal & Replay** | `create_snapshot`, `list_snapshots`, `compare_states`, `replay_observe`, `replay_fork`, `replay_reconstruct` | `as_of` snapshot markers, point-in-time state diffs, deterministic or re-executed namespace replay |
+| **Provenance & Sharing** | `verify_memory`, `get_event_provenance`, `a2a_create_grant`, `a2a_query_shared`, `a2a_revoke_grant` | JCS `HMAC-SHA256` verification, `parent_event_id` chain walk, scoped cross-namespace federation |
+| **Bridges & Admin** | `connect_bridge`, `list_bridges`, `manage_namespace`, `manage_quotas`, `trigger_consolidation`, `rotate_signing_key`, `get_health`, `list_dlq` | OAuth/webhook document sync and `[ADMIN]` tenant, quota, key-rotation, summarization, and DLQ operations |
+
+See [`docs/_generated/surface.md`](docs/_generated/surface.md) and [docs/mcp_tool_cookbook.md](docs/mcp_tool_cookbook.md) for complete schemas.
+
+### Controlled Container Benchmark Summary
+
+Measured on a single-host Docker Compose environment against a synthetic **100,000-row** `AES-256-GCM` envelope-encrypted (`TCDEK\x01`) tenant dataset (`100k` `memories` + MongoDB `episodes`, `20k` `memory_salience`, `5k` `kg_nodes`, `15k` `kg_edges`, `10k` signed WORM `event_log` rows; baked ONNX sidecar `NCE_COGNITIVE_BACKEND=onnx` with `HF_HUB_OFFLINE=1`):
+
+| Operation / Chained Workflow Step | `v3.5.0` Baseline (`p50`) | `v3.5.1` Direct Engine (`p50`) | `v3.5.2+` `/mcp` HTTP Gateway (`p50 / p95`) | Primary Engineering Optimization |
+| :--- | ---: | ---: | ---: | :--- |
+| `discover_tools(limit=8)` (`compact` mode) | `35.78 ms` | `35.78 ms` | **`1.35 ms / 9.32 ms`** | Pre-tokenized catalog cache + compact schema stripping |
+| `semantic_search(limit=5)` (`100k` rows) | `681.31 ms` | `24.46 ms` | **`35.60 ms / 38.87 ms`** | Fused CTE, `halfvec(768)` HNSW, direct `search_tsv` GIN, zeroing DEK LRU |
+| `compile_working_memory` (`100k` rows) | `651.32 ms` | `26.70 ms` | **`38.44 ms / 41.80 ms`** | Shared `scoped_pg_session` SQL coalescing + query-embedding LRU |
+| `graph_search(max_depth=2)` (`15k` edges) | `108.73 ms` | `21.00 ms` | **`36.18 ms / 48.64 ms`** | Cycle-safe `WITH RECURSIVE` CTE + `idx_kg_edges_combined_trgm` GIN |
+| **5-Tool Chained MCP Turn** | `~1,515 ms` | `~148 ms` | **`116.94 ms` (`p50`)** | 30s verified-token cache + 2s Redis session sync + async ring-buffered `salience` |
+| **Mongo-Pause Saga Rollback (`store_memory`)** | `10.10 s` | `2.36 s` | **`2.38 s` (`< 3.0s`)** | `2000ms` Motor socket timeouts + bounded inline compensation + `SKIP LOCKED` sweeper |
+
+> [!NOTE]
+> These figures reflect controlled synthetic single-node container benchmarks, not multi-region commercial SLA guarantees. Full methodology, hardware specs, and `EXPLAIN (ANALYZE, BUFFERS)` plans are documented in [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md), [HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md), [HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md), and [HARDENING_READINESS_v3.6.0.md](docs/benchmarks/HARDENING_READINESS_v3.6.0.md).
 
 ---
 
-## Performance, Scale & LLM-Loop Latency
+## Security Architecture
 
-NCE `v3.5.4` eliminates the HTTP/1.1 Delayed-ACK floor (`BaseHTTPMiddleware` replaced with pure-ASGI streaming middleware across all HTTP surfaces), serves air-gapped baked ONNX cognitive embeddings (`nce-cognitive:3.5.4` with `NCE_COGNITIVE_BACKEND=onnx`, `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`), keeps `nce-cron` free of `libtorch` RSS under remote embeddings with `worker.json` seccomp confinement, and trims idle container CPU via 30s healthchecks. On the live **100,000-row** envelope-encrypted (`TCDEK\x01` AES-256-GCM) tenant dataset (`100k` `memories` + Mongo `episodes`, `20k` `memory_salience`, `5k` `kg_nodes`, `15k` `kg_edges`, `10k` signed WORM `event_log` rows):
+- **Forced PostgreSQL Row-Level Security:** Every application query checks out a connection via `scoped_pg_session`, executing `SET LOCAL nce.namespace_id = '<tenant-uuid>'` inside the transaction. All **39** tenant-scoped Core tables (**38** single-namespace tables in `EXPECTED_TENANT_RLS_TABLES` plus `a2a_grants` in `EXPECTED_SPECIAL_RLS_TABLES`, out of **42** Core SQL tables across **42** SQL migration files `001`–`041` + `optional/010_citus_sharding.sql`) enforce `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` evaluated via `(SELECT get_nce_namespace())` `InitPlan` predicates. Installing optional extension packages dynamically registers their additional forced-RLS tables (`110` in `nce-vertical-engines`, `58` in `nce-app-engines`) into the same startup drift verifier. Out-of-band retention GC runs under a separate `nce_gc` role.
+- **Envelope Encryption & Cryptographic Erasure:** Per-record `AES-256-GCM` Data Encryption Keys (`TCDEK\x01` in `encryption_deks`) wrapped by versioned Key Encryption Keys derived from `NCE_MASTER_KEY` (`>= 32` random bytes, enforced fail-closed at import/boot) enable cryptographic erasure by nulling `wrapped_dek` without mutating WORM history. Tenant connector secrets live in `app_connections` (`041_app_connections_vault.sql`) via `TenantConnectionVault`. See [docs/pii.md](docs/pii.md).
+- **Append-Only WORM `event_log` & Canonical Signing:** `prevent_mutation` triggers block `UPDATE`/`DELETE` on `event_log` and `event_parents`. Per-namespace `pg_advisory_xact_lock` (`acquire_event_log_worm_lock`) serializes hash-chain appends, and every row is signed with rotatable `HMAC-SHA256` keys over RFC 8785 JSON Canonicalization Scheme (JCS). See [docs/signing.md](docs/signing.md).
+- **Zero-Trust Auth, Replay Fencing & SSRF Defense:** Admin HTTP requires 3-header `HMAC-SHA256` signatures with Redis single-use nonces and bounded clock-skew windows (`NCE_ADMIN_OVERRIDE` raises `RuntimeError` if set when `NCE_ENV=production`). JWT verification pins explicit algorithms (`RS256`/`ES256`/`PS256` or `HS256`). Replay sandboxes (`is_replay_sandbox`) fence outbound webhooks and hardware/ERP actuation. SSRF validators reject RFC 1918, loopback, link-local, CGNAT (`100.64.0.0/10`), and IPv4-mapped IPv6 addresses unless explicitly allowlisted via `NCE_SSRF_ALLOWLIST_HOSTS`.
 
-| Operation / Chained LLM-Loop Step | `v3.5.0` Baseline (`p50`) | `v3.5.1` Direct Engine (`p50`) | `v3.5.2` `/mcp` HTTP Gateway (`p50 / p95`) | Key Optimization |
-| :--- | ---: | ---: | ---: | :--- |
-| `discover_tools(limit=8)` (`compact` mode) | `35.78 ms` | `35.78 ms` | **`1.35 ms / 9.32 ms`** | `O(1)` pre-tokenized catalog cache + compact schema stripping |
-| `semantic_search(limit=5)` (`100k` rows) | `681.31 ms` | `24.46 ms` | **`35.60 ms / 38.87 ms`** | Fused CTE, `halfvec(768)` HNSW, direct `search_tsv` GIN, zeroing DEK LRU |
-| `compile_working_memory` (`100k` rows) | `651.32 ms` | `26.70 ms` | **`38.44 ms / 41.80 ms`** | Shared `scoped_pg_session` SQL branch coalescing + query-embedding LRU |
-| `graph_search(max_depth=2)` (`15k` edges) | `108.73 ms` | `21.00 ms` | **`36.18 ms / 48.64 ms`** | Cycle-safe recursive CTE + `idx_kg_edges_combined_trgm` GIN |
-| **Full 5-Tool Chained LLM Reasoning Turn** | `~1,515 ms` | `~148 ms` | **`116.94 ms` (`p50`)** | 30s verified-token cache + 2s Redis session sync + coalesced salience ring buffer |
-| **Mongo-Pause Saga Failover (`store_memory`)** | `10.10 s` | `2.36 s` | **`2.38 s` (`< 3.0s`)** | `2000ms` Motor timeouts + bounded inline rollback + `SKIP LOCKED` recovery |
+See [docs/enterprise_security.md](docs/enterprise_security.md) and [docs/multi_tenancy.md](docs/multi_tenancy.md).
 
-Full benchmark methodology and `EXPLAIN (ANALYZE, BUFFERS)` plans: [docs/benchmarks/PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · Live `v3.5.3` report: [docs/benchmarks/HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) · Live `v3.5.4` report: [docs/benchmarks/HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md) · Live `v3.6.0` release certification: [docs/benchmarks/HARDENING_READINESS_v3.6.0.md](docs/benchmarks/HARDENING_READINESS_v3.6.0.md).
+---
+
+## Known Limitations & R&D Trade-Offs
+
+1. **Four-Store Day-Two Operational Overhead:** Running PostgreSQL, MongoDB, Redis, and MinIO gives clean workload separation, but increases deployment footprint and means point-in-time disaster recovery requires coordinated snapshot orchestration across Postgres WAL, MongoDB oplog, and MinIO buckets to avoid cross-store restore skew.
+2. **Probabilistic NLP & Summarization Boundaries:** Cross-encoder NLI (`nli-deberta-v3-small`) and LLM-driven HDBSCAN cluster summarization are statistical aids, not formal theorem provers. Subtle domain contradictions can be missed (`false negatives`) or over-flagged (`false positives`), and bad upstream documents can yield flawed summaries—mitigated, not eliminated, by Pydantic V2 validation, `supporting_memory_ids` provenance links, and human review queues.
+3. **Solo R&D Velocity vs. Production Soak Time:** Started in early May 2026 and developed rapidly with AI-assisted coding and automated CI/container test suites, this codebase has **not** undergone multi-year, multi-organization production soak testing or third-party penetration certification.
+4. **Copyleft Licensing (`AGPL-3.0-only`):** Networked deployment of modified versions triggers AGPL-3.0 source-disclosure obligations; evaluate license compatibility before embedding in proprietary SaaS offerings.
 
 ---
 
@@ -212,220 +230,163 @@ Full benchmark methodology and `EXPLAIN (ANALYZE, BUFFERS)` plans: [docs/benchma
 
 > Prerequisites: **Docker Desktop** and **Python 3.10+**.
 
-### 1. Configure
+### 1. Configure Environment Secrets
 
 ```bash
 cp .env.example .env
 ```
 
-Generate real secrets in `.env` (never commit it):
+Populate required secrets in `.env` (never commit `.env`):
 
-- `NCE_MASTER_KEY` — ≥32 random bytes; AES-256-GCM key for PII/credential & envelope DEK encryption. `openssl rand -base64 32`
-- `NCE_ENVELOPE_ENCRYPTION_ENABLED=true` — enables per-memory AES-256-GCM (`TCDEK\x01`) envelope encryption & GDPR `crypto_shred`
-- `NCE_API_KEY` / `NCE_ADMIN_API_KEY` / `NCE_MCP_API_KEY` — long random tokens
-- `NCE_MCP_NAMESPACE_ID` — a UUID pinning the local `server.py` stdio connection to one tenant, e.g. `00000000-0000-4000-8000-000000000001` (whereas the Streamable HTTP `/mcp` gateway binds each session's `namespace_id` cryptographically from its scoped bearer token)
+- `NCE_MASTER_KEY` — `>= 32` random UTF-8 bytes used for KEK/DEK envelope and vault encryption (`python -c "import secrets; print(secrets.token_urlsafe(48))"`).
+- `NCE_ENVELOPE_ENCRYPTION_ENABLED=true` — enables per-record `AES-256-GCM` (`TCDEK\x01`) envelope encryption.
+- `NCE_API_KEY` / `NCE_ADMIN_API_KEY` / `NCE_MCP_API_KEY` — high-entropy random tokens.
+- `NCE_MCP_NAMESPACE_ID` — UUID pinning local `server.py` stdio sessions to a single tenant namespace (remote `/mcp` sessions bind `namespace_id` directly from their scoped bearer token).
 
-### 2. Bring up the full stack
-
-```bash
-make up          # bootstraps compose secrets, then `docker compose up -d --build`
-make status      # container health
-```
-
-This launches the Quad-Stack (`nce-postgres`, `nce-mongo`, `nce-redis`, `nce-minio`), the cognitive model, and the application services (`mcp-gateway`, `admin`, `a2a`, `webhook-receiver`, `worker`, `cron`) behind Caddy, plus Jaeger.
-
-**Databases only** (when you want to run the app from your host):
+### 2. Launch the Container Stack
 
 ```bash
-make local-up    # docker-compose.local.yml — just Postgres, Mongo, Redis, MinIO
+make up          # generates compose secrets and starts Caddy, services, ONNX sidecar, and 4 stores
+make status      # inspect container healthchecks
 ```
 
-### 3. Run from the host (optional)
+To start **only the four backing stores** for host-side Python development:
+
+```bash
+make local-up    # runs docker-compose.local.yml (Postgres, Mongo, Redis, MinIO)
+```
+
+### 3. Run Entrypoints from Host (Optional)
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate            # Windows ·  source .venv/bin/activate on macOS/Linux
+.venv\Scripts\activate            # Windows (use `source .venv/bin/activate` on Linux/macOS)
 pip install -r requirements.txt
 
-python mcp_gateway_server.py       # primary Streamable HTTP /mcp gateway (:8005 host direct, :8000 container internal, :8443/mcp TLS via Caddy)
-python server.py                   # local dev MCP stdio server (stdin/stdout JSON-RPC)
-python start_worker.py             # background RQ worker  (separate shell)
-python -m nce.cron                 # schedulers            (separate shell)
+python mcp_gateway_server.py       # Streamable HTTP /mcp gateway (:8005 host, :8443/mcp via Caddy)
+python server.py                   # Local MCP stdio server (stdin/stdout JSON-RPC 2.0)
+python start_worker.py             # RQ background worker (separate shell)
+python -m nce.cron                 # Background scheduler (separate shell)
 ```
 
-### 4. Verify
+### 4. Run End-to-End Smoke Verification
 
 ```bash
-make verify                        # runs verify_v1_launch.py end-to-end
+make verify                        # runs verify_v1_launch.py against the running stack
 ```
 
 ---
 
 ## Connecting an MCP Client
- 
- ### Claude Desktop
- 
- Connect directly to NCE's zero-trust Streamable HTTP gateway `/mcp` or use the zero-secret `nce.mcp_client_proxy`. Neither requires database connection strings (`PG_DSN`, `MONGO_URI`) or `NCE_MASTER_KEY` on client workstations.
- 
- Edit `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or
- `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
- 
- ```json
- {
-   "mcpServers": {
-     "nce-http": {
-       "url": "https://localhost:8443/mcp",
-       "headers": {
-         "Authorization": "Bearer nce_mcp_REPLACE_WITH_SCOPED_TOKEN"
-       }
-     },
-     "nce-proxy": {
-       "command": "python",
-       "args": [
-         "-m",
-         "nce.mcp_client_proxy"
-       ],
-       "env": {
-         "NCE_MCP_HTTP_URL": "https://localhost:8443/mcp",
-         "NCE_MCP_CLIENT_TOKEN": "nce_mcp_REPLACE_WITH_SCOPED_TOKEN"
-       }
-     }
-   }
- }
- ```
- 
- Mint scoped bearer tokens directly from the `/admin/plugins` console UI or via `POST /admin/plugins/api/mint-token`.
- 
- **Cursor** — *Settings → MCP → Add New Tool*, type `command` with `python -m nce.mcp_client_proxy` or direct HTTP URL `https://localhost:8443/mcp`. A ready-to-edit template ships as [`mcp_config.json.example`](mcp_config.json.example).
 
+Connect MCP clients either directly to the Streamable HTTP `/mcp` gateway or through the zero-secret `nce.mcp_client_proxy` bridge (`nce-mcp-proxy`). Neither option places database credentials or `NCE_MASTER_KEY` on client workstations.
+
+Edit `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+
+```json
+{
+  "mcpServers": {
+    "nce-http": {
+      "url": "https://localhost:8443/mcp",
+      "headers": {
+        "Authorization": "Bearer nce_mcp_REPLACE_WITH_SCOPED_TOKEN"
+      }
+    },
+    "nce-proxy": {
+      "command": "python",
+      "args": [
+        "-m",
+        "nce.mcp_client_proxy"
+      ],
+      "env": {
+        "NCE_MCP_HTTP_URL": "https://localhost:8443/mcp",
+        "NCE_MCP_CLIENT_TOKEN": "nce_mcp_REPLACE_WITH_SCOPED_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Scoped tokens can be minted in the `/admin/plugins` console or via `POST /admin/plugins/api/mint-token`. For **Cursor**, add an MCP server pointing to `https://localhost:8443/mcp` or `python -m nce.mcp_client_proxy` (see [`mcp_config.json.example`](mcp_config.json.example)).
 
 ---
 
-## MCP Tool Surface
+## Experimental Extension Packages
 
-NCE provides **71** static core MCP tools (`38` Core SQL migrations across `43` Core SQL tables, `36` forced-RLS Core tables + `96` forced-RLS Vertical tables = `132` total forced-RLS tables) dispatched through `nce/mcp_stdio_dispatch.py` and the Streamable HTTP `/mcp` gateway (`:8005` direct HTTP, `:8443/mcp` TLS via Caddy; Prometheus metrics on `:8000`, Admin REST on `:8003`, A2A on `:8004`).
+NCE v3.6.0 includes the vendor-neutral **Core Connector SDK (`nce.connectors`)** (`BaseAppConnector`, `ConnectorDescriptor`, `@governed_action`, `TenantConnectionVault`, SSRF/ZIP/XML/C8 redaction guards, and Entra OIDC helpers), allowing optional R&D extension repositories to mount schemas, routes, and MCP tools via `nce.plugins` entry points:
 
-In **`compact` exposure mode** (default on `/mcp`), `tools/list` initially exposes only **12** core working-memory tools (`11` memory/graph/schema tools + `discover_tools`) with redundant auth arguments (`mcp_api_key`, `admin_api_key`) stripped from `inputSchema`, keeping initial LLM context overhead to `~3,100` tokens; agents dynamically activate any of the remaining Core or Vertical tools in `< 2 ms` via `discover_tools(query=..., limit=...)`. Highlights (`[ADMIN]` tools require the `admin` token scope on `/mcp` or `admin_api_key` on stdio):
+1. **`neuro-cognitive-engine` (Core Substrate + Connector SDK)** — ![Stage: Core](https://img.shields.io/badge/stage-core%20R%26D-0ea5e9)
+   - Four-store retrieval/security substrate (`71` static Core MCP tools, `39` forced-RLS Core tables), `TenantConnectionVault` (`041_app_connections_vault.sql`), `/admin/plugins` maturity filtering (`?maturity=stable,beta,experimental`), and connected-first `/mcp` `discover_tools` ranking.
+2. **[`nce-app-engines`](https://github.com/sindrehaugen/nce-app-engines) (`[Experimental / Beta]` — 20 Core-Only Application Connectors)** — ![Stage: Beta](https://img.shields.io/badge/stage-beta-orange)
+   - Standalone R&D connector package (`maturity="beta"`, `vendor_specific=True`, `58` forced-RLS tables, `140` MCP tools) covering CAD/BIM/ECAD, diagramming, analytics, and workspace file/API formats (`visio`, `autocad`, `revit`, `kicad`, `wscad`, `sketchup`, `bim_vision`, `dialux`, `solidworks`, `vectorworks`, `blender`, `pcon_planner`, `drawio`, `figma`, `adobe_suite`, `power_bi`, `nodered`, `webiq`, `vscode`, `m365_workspace`) with zero dependency on business-domain tables.
+3. **[`nce-vertical-engines`](https://github.com/sindrehaugen/nce-vertical-engines) (`[Experimental / R&D Prototypes]` — 29 Business & Governance Engines)** — ![Stage: Beta](https://img.shields.io/badge/stage-beta-orange)
+   - Experimental reference schemas and `@governed` workflows across 29 business, ERP/CRM, IT/OT, compliance, and system-design modules (`110` forced-RLS tables, Shared-Core C1–C9 contracts, Dual-Axis `type-*` / `cat-*` packaging). Calculations touching engineering, electrical, accounting, or regulatory frameworks (e.g., NEK 400 / NEK 700, NGAAP, ESG, QHSE) are R&D aids for qualified human review, not certified compliance sign-off.
+4. **Private / Organization-Specific Extensions**
+   - Internal R&D or OT/BMS prototypes mount out-of-band via the same `nce.plugins` protocol without adding proprietary code or identifiers to public repositories.
 
-| Tool | What it does |
-| :--- | :--- |
-| `store_memory` | Persist a memory; extract entities; build KG edges (Saga write) |
-| `store_artifact` | Ingest media/PDF/logs into MinIO + index metadata |
-| `semantic_search` | 3-way Hybrid RRF (pgvector cosine + BM25 keyword + SKU/orgnr/IP boost) with `confidence_score` & `epistemic_warnings`; optional `as_of` |
-| `compile_working_memory` | Cognitive synthesis tool (tool #71): assemble episodic, semantic, graph, and procedural memory tiers with epistemic confidence |
-| `graph_search` | GraphRAG: anchor by similarity, cycle-safe recursive CTE BFS traversal, return subgraph; optional `as_of` |
-| `describe_schema` | List live entity types & edge predicates (avoid hallucinated graph constraints) |
-| `suggest_queries` / `execute_query_template` | Discover and run pre-optimised query templates |
-| `index_code_file` / `check_indexing_status` / `search_codebase` | Async AST code indexing & semantic code search |
-| `boost_memory` / `forget_memory` | Reinforce or zero a memory's salience |
-| `list_contradictions` / `resolve_contradiction` | Surface and settle logical conflicts |
-| `create_snapshot` / `list_snapshots` / `compare_states` | Point-in-time references & state diffing |
-| `replay_observe` / `replay_fork` / `replay_reconstruct` / `replay_status` | Deterministic & forked replay |
-| `verify_memory` / `get_event_provenance` | Integrity check & causal-chain trace |
-| `a2a_create_grant` · `a2a_query_shared` · `a2a_revoke_grant` · `a2a_list_grants` · … | Cross-agent federated sharing |
-| `connect_bridge` / `complete_bridge_auth` / `list_bridges` / `force_resync_bridge` | Document-bridge lifecycle |
-| `manage_namespace` · `manage_quotas` · `trigger_consolidation` · `rotate_signing_key` · `get_health` · `list_dlq` | `[ADMIN]` operations |
-
-Migration tools (`start_migration`, `validate_migration`, `commit_migration`, …) are included unless disabled, and vertical-engine tool families (`product_*`, `procurement_*`, `vendors_*`, `sales_*`, `system_design_*`, `project_*`, `d365_*`, `diag_*`, …) register when their engine is enabled. The authoritative registry is [`nce/tool_registry.py`](nce/tool_registry.py), pinned by `_EXPECTED_TOTAL` in [`tests/test_tool_registry.py`](tests/test_tool_registry.py); current per-engine and shared counts are generated in [`docs/_generated/surface.md`](docs/_generated/surface.md) and [`ENGINE_STATUS.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/ENGINE_STATUS.md).
-
----
-
-## Security Model
-
-- **Multi-tenant by construction.** Every application checkout passes through `scoped_pg_session`, which sets `SET LOCAL nce.namespace_id = '<tenant-uuid>'`. All **36** tenant-scoped Core relational tables (`35` single-namespace tables in `EXPECTED_TENANT_RLS_TABLES` plus `a2a_grants` in `EXPECTED_SPECIAL_RLS_TABLES`, out of 43 Core SQL tables; dynamically expanding by **96** plugin forced-RLS tables via `nce.plugins` when `nce-vertical-engines` is installed) have RLS **enabled and forced**; policies validate via `get_nce_namespace()`. Privileged GC runs under a separate `BYPASSRLS` role, out of band.
-- **Encryption at rest & GDPR crypto-shredding.** KEK/DEK AES-256-GCM envelope encryption (`encryption_deks` / `wrapped_dek`) allows cryptographic deletion of forgotten memories by nulling the wrapped DEK. PII, credentials, and sensitive cognitive payloads are encrypted under versioned KEK rings derived from `NCE_MASTER_KEY` — see [docs/pii.md](docs/pii.md).
-- **Integrity & WORM serialization.** The `event_log` is append-only (a `prevent_mutation` trigger blocks edits) and hash-chained. Per-namespace WORM serialization via `pg_advisory_xact_lock` (`acquire_event_log_worm_lock`) prevents Merkle-chain races. Entries are HMAC-SHA256 signed over RFC 8785 (JCS) canonical JSON, with rotatable signing keys — see [docs/signing.md](docs/signing.md).
-- **AuthN/Z & Anti-Replay.** HMAC-authenticated admin HTTP with mandatory production nonces validated against a Redis distributed store; sliding timestamp drift window; fail-closed production guards (`live_admin_override_enabled()`); JWT Bearer tokens (`RS256`/`ES256`/`PS256` public key or `HS256` secret) for A2A and protected routes; optional **mTLS** behind your edge proxy.
-- **Network & Ingress Defense.** ASGI `BoundedBodyMiddleware` (`NCE_MAX_HTTP_BODY_BYTES`, HTTP `413`) enforces hard payload limits across all HTTP entrypoints. SSRF guards block private IP ranges, CGNAT (`100.64.0.0/10`), and IPv4-mapped IPv6 (`::ffff:169.254.169.254`), with strict host allowlisting (`NCE_SSRF_ALLOWLIST_HOSTS`).
-- **A2A federation.** Sharing tokens are stored only as SHA-256 hashes mapped to expirations and JSONB scopes; inbound queries are scope-checked then executed bound to the *owner's* RLS namespace.
-
-Full guide: [docs/enterprise_security.md](docs/enterprise_security.md) · [docs/multi_tenancy.md](docs/multi_tenancy.md).
-
----
-
-## Official Plugins
-
-NCE `v3.6.0` introduces the vendor-neutral **Core Connector SDK (`nce.connectors`)** and a decoupled **4-repo plugin ecosystem** governed by entry points (`nce.plugins`), encrypted tenant vaults (`041_app_connections_vault.sql`), and connected-first `/mcp` compact discovery:
-
-1. **`neuro-cognitive-engine` (Core + Connector SDK)** — ![Stage: Stable](https://img.shields.io/badge/stage-stable-10b981)
-   - Core quad-database cognitive substrate (`71` static Core MCP tools) plus `nce.connectors` (`BaseAppConnector`, `ConnectorDescriptor`, `@governed_action`, `TenantConnectionVault`, SSRF/ZIP/XML/C8 guards, Entra OIDC verification, and canonical diagram/entity envelopes).
-   - Admin Console (`/admin/plugins`) exposes release-stage badges (`stable` / `beta` / `experimental`), `?maturity=` filtering, and `/admin/plugins/api/connections` vault CRUD without leaking plaintext secrets.
-   - Streamable HTTP `/mcp` gateway (`discover_tools`) prioritizes connected `app_slug` tools for the authenticated tenant while preserving the strict 12-tool `compact` exposure budget.
-2. **`nce-app-engines` (20 Core-Only Beta Connectors)** — ![Stage: Beta](https://img.shields.io/badge/stage-beta-orange)
-   - Standalone Core-only connector suite built strictly against `nce.connectors` (`maturity="beta"`, `vendor_specific=True`), storing per-tenant credentials in `app_connections` with zero vertical domain coupling.
-3. **[NCE Vertical Engines](https://github.com/sindrehaugen/nce-vertical-engines) (Stable / Beta Split)**
-   - 22 modular domain engines spanning Sales, Procurement, Product, Agreements, Vendors, Inventory, Economy, System Design, Project, Field Tech, HR, Marketing, Business Insights, Resources, Assets, Support, NetBox, Dynamics 365, Odoo, Salesforce, Diagnostics, and Customer Portal.
-   - Engines advertise `maturity` (`stable` for hardened core business domains, `beta` for external/preview connectors) and `vendor_specific` metadata via `nce.plugins`, installable via entry points (`pip install "nce-vertical-engines[all]"` or per-engine/type/category extras).
-4. **Private / Downstream Enterprise Extensions**
-   - Organization-specific plugin packages mount custom tools, routes, and migrations out-of-band through the same `nce.plugins` entry-point contract without modifying Core.
-
-See [docs/plugin_development.md](docs/plugin_development.md) for the `nce.connectors` SDK contract and [nce-vertical-engines](https://github.com/sindrehaugen/nce-vertical-engines) for vertical engine specifications.
+See [docs/plugin_development.md](docs/plugin_development.md) for the `nce.connectors` and `NCEPlugin` authoring contract.
 
 ---
 
 ## Tech Stack
 
-- **Runtime** — Python 3.10–3.12 (runtime 3.12)
-- **Protocol** — MCP over JSON-RPC 2.0 (stdio and Streamable HTTP `/mcp` gateway); HTTP for admin/A2A/webhooks
-- **Relational + vector** — PostgreSQL 16 with `pgvector` (HNSW iterative scan with `relaxed_order`), `pgcrypto`, and cycle-safe `WITH RECURSIVE` CTE graph queries
-- **Serialization & XML** — `orjson` (accelerated JSON & `tools/list` schema caching), `defusedxml` (XML-RPC Billion Laughs / XXE prevention)
-- **Episodic store** — MongoDB 7.0 (with `$in` batch hydration)
-- **Cache / queues** — Redis 7.4 (+ `rq`)
-- **Object storage** — MinIO (S3-compatible)
-- **NLP / graph** — spaCy (entities), NetworkX, HDBSCAN, cross-encoder NLI
-- **Code parsing** — Tree-sitter
-- **Validation** — Pydantic V2
-- **Observability** — OpenTelemetry, Prometheus, Jaeger
+- **Runtime:** Python 3.10–3.12 (container runtime 3.12)
+- **Transports:** MCP over JSON-RPC 2.0 (`stdio` and Streamable HTTP `/mcp`); pure-ASGI Starlette/FastAPI HTTP services
+- **Relational & Vector Store:** PostgreSQL 16 + `pgvector` (`halfvec` HNSW iterative `relaxed_order` scan), `pgcrypto`, `WITH RECURSIVE` graph CTEs
+- **Document Store:** MongoDB 7.0 (`motor` async driver, `$in` batch hydration)
+- **Coordination & Queues:** Redis 7.4 + `rq`
+- **Object Storage:** MinIO (S3-compatible API)
+- **NLP, Clustering & Verification:** ONNX Runtime / OpenVINO, `sentence-transformers`, `cross-encoder/nli-deberta-v3-small`, `scikit-learn` HDBSCAN, `spaCy`, `NetworkX`
+- **Parsing & Serialization:** `Tree-sitter` (AST chunking), `orjson`, `defusedxml` (XXE / entity-expansion protection), `Pydantic V2`
+- **Observability:** OpenTelemetry (OTLP / Jaeger), Prometheus metrics
 
-Transitive dependencies are pinned in [`requirements.lock`](requirements.lock); regenerate with `make lockfile`.
+Locked transitive dependencies live in [`requirements.lock`](requirements.lock) (`make lockfile`).
 
 ---
 
 ## Testing & Quality Gates
 
 ```bash
-pytest tests/                 # full suite (RLS scoping, Saga rollbacks, temporal reads, tools)
-pytest -m integration         # integration tests (require running backing services)
+pytest tests/                           # unit, security, schema-drift, and doc-parity suites
+pytest -m integration                   # live multi-store integration suites (requires running containers)
 
-make lint                     # ruff check + ruff format --check (the CI gate)
-make typecheck                # mypy (strict)
-make fmt                      # apply the formatter
+python scripts/check_docs_integrity.py  # link/anchor, orphan, env-parity, anti-metaphor & brand-wall gate
+make lint                               # ruff check + ruff format --check + check_docs_integrity.py
+make typecheck                          # mypy static type check on nce/
 ```
 
 ---
 
-## Documentation
+## Documentation Index
 
-The [`docs/`](docs/) tree is the source of truth. Start here:
+All technical guides live under [`docs/`](docs/) (indexed in [docs/README.md](docs/README.md)):
 
-| Area | Document |
+| Topic | Guides |
 | :--- | :--- |
-| Get running fast | [quick_start.md](docs/quick_start.md) · [developer_onboarding.md](docs/developer_onboarding.md) |
-| How it talks | [usage_modes.md](docs/usage_modes.md) |
-| Architecture | [architecture-v1.md](docs/architecture-v1.md) · [database_architecture.md](docs/database_architecture.md) |
-| Configuration | [configuration_reference.md](docs/configuration_reference.md) · [it_admin_guide.md](docs/it_admin_guide.md) |
-| Security | [enterprise_security.md](docs/enterprise_security.md) · [multi_tenancy.md](docs/multi_tenancy.md) · [signing.md](docs/signing.md) · [pii.md](docs/pii.md) |
-| Cognition | [cognitive_layer.md](docs/cognitive_layer.md) · [llm_providers.md](docs/llm_providers.md) |
-| Time & simulation | [time_travel.md](docs/time_travel.md) · [replay.md](docs/replay.md) · [migrations.md](docs/migrations.md) |
-| Integrations | [service_integrations.md](docs/service_integrations.md) · [bridge_setup_guide.md](docs/bridge_setup_guide.md) · [a2a.md](docs/a2a.md) |
-| Edge | [airgapped_deployment.md](docs/airgapped_deployment.md) · [vram_monitoring.md](docs/vram_monitoring.md) |
-| Plugins & Verticals | [plugin_development.md](docs/plugin_development.md) · [shared-core/overview.md](docs/shared-core/overview.md) · [nce-vertical-engines](https://github.com/sindrehaugen/nce-vertical-engines) |
-| Benchmarks | [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · [HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) · [HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md) · [HARDENING_READINESS_v3.6.0.md](docs/benchmarks/HARDENING_READINESS_v3.6.0.md) |
-| Design decisions | [adr/](docs/adr/) |
+| **Getting Started** | [quick_start.md](docs/quick_start.md) · [developer_onboarding.md](docs/developer_onboarding.md) · [usage_modes.md](docs/usage_modes.md) |
+| **Architecture & Storage** | [architecture-v1.md](docs/architecture-v1.md) · [database_architecture.md](docs/database_architecture.md) · [migrations.md](docs/migrations.md) · [citus_descope.md](docs/citus_descope.md) |
+| **Retrieval, Graph & NLP** | [cognitive_layer.md](docs/cognitive_layer.md) · [llm_providers.md](docs/llm_providers.md) · [recursive_indexing_flow.md](docs/recursive_indexing_flow.md) · [mcp_tool_cookbook.md](docs/mcp_tool_cookbook.md) |
+| **Temporal & Replay** | [time_travel.md](docs/time_travel.md) · [replay.md](docs/replay.md) |
+| **Security & Isolation** | [enterprise_security.md](docs/enterprise_security.md) · [multi_tenancy.md](docs/multi_tenancy.md) · [signing.md](docs/signing.md) · [pii.md](docs/pii.md) · [aws_iam_worker_isolation.md](docs/aws_iam_worker_isolation.md) |
+| **Configuration & Ops** | [configuration_reference.md](docs/configuration_reference.md) · [it_admin_guide.md](docs/it_admin_guide.md) · [observability.md](docs/observability.md) · [performance_tuning.md](docs/performance_tuning.md) · [troubleshooting_faq.md](docs/troubleshooting_faq.md) · [deploy/README.md](deploy/README.md) |
+| **Edge & Hardware** | [airgapped_deployment.md](docs/airgapped_deployment.md) · [vram_monitoring.md](docs/vram_monitoring.md) |
+| **Plugins, Bridges & Federation** | [plugin_development.md](docs/plugin_development.md) · [plugin-overview-nontechnical.md](docs/plugin-overview-nontechnical.md) · [shared-core/overview.md](docs/shared-core/overview.md) · [service_integrations.md](docs/service_integrations.md) · [bridge_setup_guide.md](docs/bridge_setup_guide.md) · [push_architecture.md](docs/push_architecture.md) · [a2a.md](docs/a2a.md) |
+| **APIs & Frontend Seams** | [api_reference.md](docs/api_reference.md) · [api_usage_examples.md](docs/api_usage_examples.md) · [API.md](docs/API.md) · [frontend_integration_guide.md](docs/frontend_integration_guide.md) · [FRONTEND_READINESS.md](docs/FRONTEND_READINESS.md) |
+| **Benchmarks & ADRs** | [PERF_REPORT_v3.5.2.md](docs/benchmarks/PERF_REPORT_v3.5.2.md) · [HARDENING_READINESS_v3.5.3.md](docs/benchmarks/HARDENING_READINESS_v3.5.3.md) · [HARDENING_READINESS_v3.5.4.md](docs/benchmarks/HARDENING_READINESS_v3.5.4.md) · [HARDENING_READINESS_v3.6.0.md](docs/benchmarks/HARDENING_READINESS_v3.6.0.md) · [adr/README.md](docs/adr/README.md) |
 
 ---
 
-## Production Checklist
+## Pre-Deployment & Staging Verification Checklist
 
-- Set `NCE_ENV=production`; supply strong random `NCE_API_KEY`, `NCE_ADMIN_API_KEY`, `NCE_MASTER_KEY` (≥32 bytes).
-- `NCE_ADMIN_PASSWORD` must be a `$pbkdf2$…` hash; set `NCE_LOAD_DOTENV=false`.
-- Guardrails enforced: `NCE_ADMIN_OVERRIDE` is hard-blocked in `NCE_ENV=production` (raises `RuntimeError` at boot if set).
-- Enforce TLS everywhere (`?sslmode=require` for Postgres); prefer `NCE_ADMIN_MTLS_ENABLED=true` behind your edge proxy.
-- Leave the `prevent_mutation` trigger on `event_log` in place — never disable WORM.
-- Migration MCP tools stay disabled in prod (`NCE_DISABLE_MIGRATION_MCP=true`) outside controlled windows.
-- Rotate HMAC keys and JWT certificates on a schedule.
+Before exposing a self-hosted pilot or staging instance beyond `localhost`:
+
+- Set `NCE_ENV=production` and supply high-entropy random values for `NCE_MASTER_KEY` (`>= 32` bytes), `NCE_API_KEY`, `NCE_ADMIN_API_KEY`, and `NCE_MCP_API_KEY`.
+- Store `NCE_ADMIN_PASSWORD` as a `$pbkdf2$...` digest and set `NCE_LOAD_DOTENV=false` when injecting secrets via Docker/orchestrator secret mounts.
+- Verify `NCE_ADMIN_OVERRIDE` is unset (`NCE_ENV=production` aborts startup with `RuntimeError` if `NCE_ADMIN_OVERRIDE=true`).
+- Require TLS across external ingress and Postgres connections (`?sslmode=require`); enable internal Caddy-to-Admin mutual TLS (`make up-mtls` / `NCE_ADMIN_MTLS_ENABLED=true`) where supported.
+- Keep the `prevent_mutation` WORM trigger active on `event_log` and `event_parents`, and keep `NCE_DISABLE_MIGRATION_MCP=true` outside planned re-embedding maintenance windows.
+- Test coordinated backup and restore procedures across PostgreSQL, MongoDB, and MinIO before storing non-synthetic team data.
 
 ---
 
 NCE — Neuro-Cognitive Engine · v3.6.0 · © Sindre Løvlie Haugen · AGPL-3.0. Formerly TriMCP.
-

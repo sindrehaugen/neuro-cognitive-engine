@@ -8,13 +8,13 @@ Deep-dive into the Neuro Cognitive Engine (NCE) data persistence layer: the Quad
 
 ## 1. Quad-Database Role Assignment
 
-To meet enterprise requirements for performance, scalability, and strict temporal isolation, NCE distributes its data across four distinct databases, each matched to the specific storage model for which it is optimized:
+As a multi-store systems-architecture testbed, NCE splits persistence across four backing stores matched to distinct access patterns:
 
 | Storage Layer | Database | Access Library | Primary Role | Data Lifecycle & Retention |
 | :--- | :--- | :--- | :--- | :--- |
-| **Semantic Index** | PostgreSQL (with `pgvector` & `pgcrypto`) | `asyncpg` (async pool) | Enforces the relational schema, vector embeddings (768-dim, stored as `halfvec`), Knowledge Graph (KG) triplets, Row-Level Security (RLS), and the append-only (WORM) event log. | Long-term persistent storage; partitioned monthly or via hash. |
-| **Episodic Archive** | MongoDB | `motor` (async driver) | Stores heavy unstructured raw payloads (full conversation transcripts, raw document pages, bulk code file contents, and media metadata). | Persistent archive; referenced via hex-encoded 24-character ObjectIDs. |
-| **Working Memory & Queues** | Redis | `redis.asyncio` (async) & `redis` (sync for RQ) | Handles short-term context cache, distributed locks, rate-limiting, HMAC nonces, active token checks, and background worker queues (RQ). | Transient; TTL-evicted (default 3600s) or job-completed pruned. |
+| **Relational & Vector Store** | PostgreSQL (with `pgvector` & `pgcrypto`) | `asyncpg` (async pool) | Enforces the relational schema, vector embeddings (768-dim, stored as `halfvec`), Knowledge Graph (KG) triplets, Row-Level Security (RLS), and the append-only (WORM) event log. | Long-term persistent storage; partitioned monthly or via hash. |
+| **Document Payload Store** | MongoDB | `motor` (async driver) | Stores heavy unstructured raw payloads (full conversation transcripts, raw document pages, bulk code file contents, and media metadata). | Persistent archive; referenced via hex-encoded 24-character ObjectIDs. |
+| **Coordination, Cache & Queues** | Redis | `redis.asyncio` (async) & `redis` (sync for RQ) | Handles short-term context cache, distributed locks, rate-limiting, HMAC nonces, active token checks, and background worker queues (RQ). | Transient; TTL-evicted (default 3600s) or job-completed pruned. |
 | **Object Store** | MinIO (S3 compatible) | `minio` (thread-pooled via `asyncio.to_thread`) | Archival storage of large media objects (audio recordings, images, video segments) and LLM response caches for deterministic replay. | Persistent bucket storage with path indexing. |
 
 Global database connections are initialized and managed by the `NCEEngine` class within `nce/orchestrator.py` during application boot.
@@ -177,6 +177,11 @@ To handle hard process crashes midway through a multi-database write, NCE runs a
 * Uncommitted steps are rolled back in reverse order (Redis key eviction -> PostgreSQL deletion -> MongoDB payload purge).
 * The saga state is updated to `ROLLED_BACK`.
 
+### 4d. Cross-Database Point-in-Time Backup Skew (Operational Trade-Off)
+Running four backing stores introduces real day-two backup and restore coordination requirements:
+* Because PostgreSQL (`memories.payload_ref`, `event_log.llm_payload_uri`), MongoDB (`episodes`), and MinIO buckets do not share a distributed two-phase backup snapshot coordinator, restoring PostgreSQL to $T_1$ while restoring MongoDB or MinIO to $T_2 < T_1$ can leave dangling `payload_ref` pointers.
+* Operators running self-hosted sandboxes or pilots should take backups in order **MongoDB + MinIO first, PostgreSQL WAL checkpoint second** (so every committed Postgres pointer resolves to an already-captured blob/document), and let `SagaRecoveryWorker` / `run_gc_loop` clean up unreferenced blobs after restore.
+
 ---
 
 ## 5. GraphRAG Hydration Pipeline
@@ -249,7 +254,7 @@ The event log table (`event_log`) is configured as a Write-Once, Read-Many (WORM
   REVOKE UPDATE, DELETE ON TABLE public.event_log FROM nce_app;
   REVOKE UPDATE, DELETE ON TABLE public.event_parents FROM nce_app;
   ```
-  *Deployment and CI reality:* Runtime connections execute as superuser `mcp_user` (`rolsuper = true`), which bypasses PostgreSQL role-level table grants; the execution trigger `prevent_mutation()` above provides the active database-level barrier against mutation. Furthermore, the integration test verifying role-level rejection (`tests/test_worm_db_enforcement.py`) is parked in `KNOWN_UNWIRED` (ML-CI1) and does not currently run in CI.
+  *Deployment and CI reality:* When `PG_DSN` connects as table-owner/superuser `mcp_user` (`rolsuper = true`), role-level table grants are bypassed and `prevent_mutation()` provides the active database-level barrier; connecting via the non-superuser `nce_app` runtime role (`039_nce_app_runtime_role_grants.sql`) enforces both grant revocation and trigger protection. Furthermore, the integration test verifying role-level rejection (`tests/test_worm_db_enforcement.py`) is parked in `KNOWN_UNWIRED` (ML-CI1) and does not currently run in CI.
 * **Merkle Chain Integrity**: Each event log entry includes a `chain_hash` byte array representing the SHA-256 digest of the current record data concatenated with the previous record's `chain_hash`. A periodic cron job (`_chain_verification_tick`, default interval 120 min via `NCE_CHAIN_VERIFY_INTERVAL_MINUTES`) validates the cryptographic chain across all namespaces to ensure no logs have been modified at the database layer; verification depth per namespace per run is controlled by `NCE_CHAIN_VERIFY_STARTUP_DEPTH` (default 500 events). *(Note: while active at runtime in `nce/cron.py`, its integration test suite `tests/test_cron_chain_verify.py` is parked in `KNOWN_UNWIRED` (ML-CI1) and does not run in CI.)*
 
 ---
@@ -317,7 +322,7 @@ The table participates in the global tenant database boundary:
 
 ## 9. PostgreSQL Schema Source & Lifecycle Management
 
-> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `095_site_master_data.sql`).
+> **Authoritative DDL Source:** The canonical DDL is maintained in [`nce/schema.sql`](https://github.com/sindrehaugen/NCE/blob/main/nce/schema.sql) and the sequential migration chain in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/) (`001_enable_rls.sql` through `041_app_connections_vault.sql`, plus `optional/010_citus_sharding.sql`; external plugin packages record scoped migrations `<plugin_scope>:<filename>` in `applied_migrations`).
 >
 > ⚠ **Important Provisioning Notice:** Do not copy or execute static embedded SQL snippets from documentation to provision database tables. Doing so bypasses the migration lifecycle and risks provisioning tenant tables without mandatory Row-Level Security (RLS) policies and security triggers. Always allow the engine to initialize its schema automatically via `NCEEngine._init_pg_schema()` or execute the versioned migrations in order.
 
@@ -330,7 +335,7 @@ At engine startup, `NCEEngine.connect()` ([`nce/orchestrator.py`](https://github
 > **Test Environment Setup (`schema.sql` is not enough)**
 > `nce/schema.sql` alone is not a usable database. A schema-only initialization will yield a false green on test runs by skipping hundreds of tests (e.g. missing `public.event_log.chain_hash`, missing `v3_cognitive_ledger`). All files in `nce/migrations/*.sql` **must be applied on top**, in filename order, to reach a full green test run.
 
-### 9b. Complete Versioned Migrations Catalog (001 through 083)
+### 9b. Complete Versioned Migrations Catalog (001 through 041 + Optional Citus)
 
 Schema evolution is governed by chronological migration scripts located in [`nce/migrations/`](https://github.com/sindrehaugen/NCE/tree/main/nce/migrations/):
 
@@ -386,6 +391,6 @@ To guarantee that newly added tables cannot be deployed without tenant isolation
 * Raises `RuntimeError` and halts server startup if any unisolated tenant table is detected.
 
 > [!NOTE]
-> **Deployment Reality vs. DDL Invariants:** While `verify_rls_catalog_consistency()` asserts that RLS policies are enabled and attached in PostgreSQL catalog metadata, runtime application connections connect as `mcp_user` (`rolsuper = true`, `rolbypassrls = true`). Zero policies target `mcp_user`, rendering RLS inert during live execution; active tenant isolation is enforced by application `WHERE`-clause predicates (see [`docs/vertical_engines/_security/enforcement-census.md`](https://github.com/sindrehaugen/nce-vertical-engines/blob/main/docs/vertical_engines/_security/enforcement-census.md)).
+> **Operator Role Requirement (`nce_app` vs. `mcp_user`):** `verify_rls_catalog_consistency()` enforces `ENABLE` and `FORCE ROW LEVEL SECURITY` across all parent tables and child partitions (`039_nce_app_runtime_role_grants.sql`, `040_partition_rls_and_key_confinement.sql`). However, PostgreSQL `rolsuper` / `rolbypassrls` accounts always bypass RLS—operators must point runtime application `PG_DSN` connections at the non-superuser `nce_app` role (reserving `mcp_user` for `NCE_MIGRATION_PG_DSN` DDL migrations) for database-enforced RLS to block cross-tenant SQL defects at runtime.
 
 

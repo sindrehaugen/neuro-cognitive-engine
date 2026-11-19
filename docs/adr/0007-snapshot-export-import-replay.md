@@ -2,6 +2,8 @@
 
 # ADR-0007: Snapshot Export/Import + Observational/Forked Replay
 
+> **Note:** Historical ADR preserved for audit lineage; biological/temporal terminology in this record maps to the retrieval and point-in-time query mechanisms documented in [docs/cognitive_layer.md](../cognitive_layer.md) and [docs/time_travel.md](../time_travel.md).
+
 ## Status
 
 Shipped

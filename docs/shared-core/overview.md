@@ -20,7 +20,7 @@ The Shared Core is divided into nine functional components designed to be implem
 └────────┬─────────┴─────────┬─────────┴────────┬───────┴────────┬───────┘
          │                   │                  │                │
 ┌────────▼───────────────────▼──────────────────▼────────────────▼───────┐
-│                     C2 Autonomy Governance Wrapper                     │
+│                C2 Action Governance Wrapper (@governed)                │
 ├────────────────────────────────────────────────────────────────────────┤
 │                       C4 Reactive Trigger Outbox                       │
 ├────────────────────────────────────────────────────────────────────────┤
@@ -176,7 +176,7 @@ While NCE defines PostgreSQL Row-Level Security (RLS) policies in DDL, in deploy
 To manage integration risks in the seams between vertical engines, NCE enforces two distinct categories of contracts.
 
 ### Comparison Table
-| Aspect | Contract A (Data Ownership) | Contract B (Autonomy Governance) |
+| Aspect | Contract A (Data Ownership) | Contract B (C2 Action Governance) |
 | :--- | :--- | :--- |
 | **Primary Focus** | **Node ownership and single-writer invariants** | **Safety bounds and human confirmation gates** |
 | **Protected Surface** | Graph nodes, edges (`kg_nodes`, `kg_edges`), and database tables | Mutating autonomous tool execution paths |
@@ -214,7 +214,7 @@ state-machine
 
 ---
 
-### Contract B: Autonomy Governance
+### Contract B: C2 Action Governance (`@governed`)
 Contract B dictates *how* a mutating tool can interact with the environment. It acts as an execution wrapper to prevent run-away AI loops, accidental double-submissions, and unauthorized operations.
 
 ```

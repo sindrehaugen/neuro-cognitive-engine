@@ -38,7 +38,7 @@ Derived directly from `TOOL_REGISTRY` in `nce/tool_registry.py` on baseline `730
 | `store_artifact` | | yes | | | Quad-Stack Artifacts |
 | `store_media` _(deprecated)_ | | yes | | | Quad-Stack Media |
 | `semantic_search` | | | yes | | pgvector Vector Search |
-| `get_recent_context` | | | | | Episodic Memory |
+| `get_recent_context` | | | | | Recent Raw Records (`episodic`) |
 | `boost_memory` | | yes | | | Memory Salience |
 | `forget_memory` | | yes | | | Memory Deactivation |
 | `unredact_memory` | yes | yes | | | PII Vault Management |
@@ -47,7 +47,7 @@ Derived directly from `TOOL_REGISTRY` in `nce/tool_registry.py` on baseline `730
 | `check_indexing_status` | | | | | Background Job Worker |
 | `search_codebase` | | | yes | | Code Chunk Search |
 | `graph_search` | | | yes | | Knowledge Graph BFS |
-| `neuromorphic_search` | | | yes | | Spreading-Activation Search |
+| `neuromorphic_search` | | | yes | | Weighted Recursive Graph Search |
 | `connect_bridge` | | yes | | | Document Bridge OAuth |
 | `complete_bridge_auth` | | yes | | | Document Bridge Auth |
 | `list_bridges` | | | | | Bridge Subscriptions |
@@ -84,7 +84,7 @@ Derived directly from `TOOL_REGISTRY` in `nce/tool_registry.py` on baseline `730
 | `merge_queue_reject` | yes | yes | | | Entity Merge Rejection |
 | `manage_namespace` | | yes | | | Namespace Lifecycle |
 | `verify_memory` | | | | | SHA-256 Memory Integrity |
-| `trigger_consolidation` | | yes | | | Sleep Consolidation Run |
+| `trigger_consolidation` | | yes | | | Background HDBSCAN Summarization Run |
 | `consolidation_status` | | | | | Consolidation Progress |
 | `manage_quotas` | | yes | | | Quota Management |
 | `rotate_signing_key` | | yes | | | HMAC Key Rotation |
@@ -288,7 +288,7 @@ Traverse causal and structural relationships between entities:
 }
 ```
 
-#### `neuromorphic_search` — Spreading activation network search
+#### `neuromorphic_search` — Weighted multi-hop graph traversal
 ```json
 {
   "jsonrpc": "2.0",

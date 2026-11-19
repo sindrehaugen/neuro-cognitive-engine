@@ -374,7 +374,7 @@ Colour threshold: red below 2, amber at 2, green above 2.
 
 ## 7. Prometheus alert rules
 
-The following is a complete, production-ready `prometheus_rules.yml` covering NCE's critical metric surfaces. Adjust thresholds to your SLA.
+The following reference `prometheus_rules.yml` covers NCE's primary metric surfaces for self-hosted sandboxes and staging pilots; tune alert thresholds to match your host sizing.
 
 ```yaml
 groups:

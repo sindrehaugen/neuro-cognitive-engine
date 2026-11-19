@@ -14,7 +14,7 @@ In airgapped mode, NCE replaces external API dependencies with local equivalents
 
 ## Hardware Acceleration: Intel OpenVINO
 
-To achieve production-grade performance on edge hardware without discrete GPUs, NCE integrates with the **Intel OpenVINO** toolkit. This allows embedding models to run on the **Integrated GPU** or **Intel NPU** via pre-exported static-shape IR artifacts.
+To run local 768-dimensional embedding inference on edge hardware without discrete GPUs, NCE integrates with the **Intel OpenVINO** toolkit. This allows embedding models to run on the **Integrated GPU** or **Intel NPU** via pre-exported static-shape IR artifacts.
 
 ### Model Export Signal Flow
 
@@ -107,6 +107,6 @@ When `NCE_BACKEND` is not set, `detect_backend()` in `nce/embeddings.py` selects
 
 ## Data Sovereignty and Security
 
-- **Zero Outbound Telemetry**: NCE has no callbacks to external analytics or licensing servers. All "telemetry" in the codebase refers to internal spreading-activation severity scores used by the knowledge graph engine.
+- **Zero Outbound Analytics Callbacks**: NCE makes zero outbound calls to external analytics or licensing endpoints; with `NCE_COGNITIVE_BACKEND=onnx` (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`), embedding inference runs entirely from pre-baked local weights.
 - **On-Premise Storage**: All memory payloads and Knowledge Graph data remain within your infrastructure boundary (PostgreSQL, MongoDB, MinIO).
 - **Signing Stays Active**: The cryptographic signing layer (`NCE_MASTER_KEY`, PBKDF2 key derivation, HMAC chain verification) is independent of the deployment mode. All agent interactions are signed and verifiable regardless of whether the node is online or airgapped.
