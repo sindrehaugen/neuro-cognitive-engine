@@ -380,7 +380,7 @@ def test_dynamic_version_compose_and_retention_hygiene() -> None:
     ver_match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', project_section)
     assert ver_match is not None
     expected_version = ver_match.group(1)
-    assert expected_version == "3.5.4"
+    assert expected_version == "3.6.0"
     assert nce.__version__ == expected_version
 
     with TestClient(webhook_main.app) as client:
@@ -393,7 +393,7 @@ def test_dynamic_version_compose_and_retention_hygiene() -> None:
         'mongosh", "--quiet", "--norc", "--eval", "quit(db.runCommand({ ping: 1 }).ok ? 0 : 2)"'
         in compose_text
     )
-    assert "image: nce-cognitive:3.5.4" in compose_text
+    assert f"image: nce-cognitive:{expected_version}" in compose_text
     assert "NCE_COGNITIVE_BACKEND: ${NCE_COGNITIVE_BACKEND:-onnx}" in compose_text
     assert "NCE_COGNITIVE_BATCH_WINDOW_MS: ${NCE_COGNITIVE_BATCH_WINDOW_MS:-5}" in compose_text
     assert "NCE_COGNITIVE_MAX_BATCH_SIZE: ${NCE_COGNITIVE_MAX_BATCH_SIZE:-32}" in compose_text

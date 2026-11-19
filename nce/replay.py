@@ -1413,6 +1413,8 @@ _additional_fork_provenance_types: tuple[str, ...] = (
     "business_insights_access_audited",
     "partner_scope_impersonated",
     "customer_scope_impersonated",
+    # Core Connector SDK governed external actions (v3.6.0)
+    "connector_action",
 )
 for _fork_et in _additional_fork_provenance_types:
     assert _fork_et not in _HANDLER_REGISTRY, (

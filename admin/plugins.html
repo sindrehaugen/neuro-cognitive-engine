@@ -110,6 +110,168 @@
       border: 1px solid rgba(139, 92, 246, 0.3);
     }
 
+    .badge-maturity {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .badge-maturity-beta {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(234, 88, 12, 0.2));
+      border: 1px solid #f59e0b;
+      color: #fbbf24;
+      box-shadow: 0 0 0 1px rgba(234, 88, 12, 0.25);
+    }
+
+    .badge-maturity-stable {
+      background-color: rgba(16, 185, 129, 0.16);
+      border: 1px solid rgba(16, 185, 129, 0.45);
+      color: #34d399;
+    }
+
+    .badge-maturity-experimental {
+      background-color: rgba(139, 92, 246, 0.16);
+      border: 1px solid rgba(139, 92, 246, 0.45);
+      color: #c4b5fd;
+    }
+
+    .badge-vendor {
+      background-color: rgba(100, 116, 139, 0.16);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      color: #cbd5e1;
+      font-size: 0.625rem;
+      padding: 0.125rem 0.4375rem;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+    }
+
+    .nav-actions-group {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-connections {
+      background-color: rgba(245, 158, 11, 0.14);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      padding: 0.5rem 0.875rem;
+      border-radius: 0.5rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn-connections:hover {
+      background-color: rgba(234, 88, 12, 0.24);
+      border-color: #ea580c;
+      color: #fde68a;
+    }
+
+    .card-badges-row {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .stage-filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding-top: 0.25rem;
+    }
+
+    .conn-form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .connections-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.625rem;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .connection-item {
+      background-color: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      border-radius: 0.5rem;
+      padding: 0.75rem 0.875rem;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+
+    .connection-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      min-width: 0;
+    }
+
+    .connection-title {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .connection-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      word-break: break-all;
+    }
+
+    .connection-creds {
+      font-size: 0.6875rem;
+      color: #34d399;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .btn-danger-sm {
+      background-color: rgba(244, 63, 94, 0.14);
+      border: 1px solid rgba(244, 63, 94, 0.35);
+      color: #fda4af;
+      padding: 0.25rem 0.625rem;
+      border-radius: 0.375rem;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .btn-danger-sm:hover {
+      background-color: rgba(244, 63, 94, 0.26);
+      color: #ffffff;
+    }
+
     /* Main Console Container */
     .console-container {
       max-width: 1400px;
@@ -942,6 +1104,7 @@
       </div>
     </div>
     <div class="nav-actions-group">
+      <button type="button" class="btn-connections" id="open-connections-modal-btn">App Connections Vault</button>
       <button type="button" class="btn-mint" id="open-mint-modal-btn">Mint Scoped /mcp Token &amp; Config</button>
     </div>
   </header>
@@ -995,6 +1158,17 @@
 
         <button type="button" id="reset-filters-btn" class="btn-reset">Reset Filters</button>
         <button type="button" id="btn-quick-mint" class="btn-mint">Mint Scoped /mcp Token</button>
+      </div>
+
+      <!-- Stage / Maturity Filter Row -->
+      <div class="stage-filter-row">
+        <span class="axis-title">Release Stage</span>
+        <div class="status-segmented" id="maturity-segmented" role="group" aria-label="Stage filter">
+          <button type="button" class="segmented-btn is-active" data-maturity="all">All</button>
+          <button type="button" class="segmented-btn" data-maturity="stable">Stable</button>
+          <button type="button" class="segmented-btn" data-maturity="beta">Beta</button>
+          <button type="button" class="segmented-btn" data-maturity="experimental">Experimental</button>
+        </div>
       </div>
 
       <!-- Axis 1: Component Type Filter Pills -->
@@ -1123,6 +1297,77 @@
     </div>
   </div>
 
+  <!-- App Connections Vault Modal -->
+  <div class="modal-overlay" id="connections-modal" role="dialog" aria-modal="true" aria-labelledby="connections-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title" id="connections-modal-title">Tenant App Connections Vault (Encrypted)</h2>
+        <button type="button" class="modal-close-btn" id="close-connections-modal-btn" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="search-status-row">
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label" for="conn-namespace-id">Tenant / Namespace ID</label>
+            <input type="text" id="conn-namespace-id" class="form-input" value="00000000-0000-0000-0000-000000000001" placeholder="UUID">
+          </div>
+          <button type="button" class="copy-btn" id="refresh-connections-btn" style="align-self: flex-end; height: 34px;">Refresh</button>
+        </div>
+
+        <div class="form-group">
+          <span class="form-label">Configured Tenant Connections (Masked Metadata Only)</span>
+          <div class="connections-list" id="connections-list">
+            <span class="kpi-desc">Open drawer or click Refresh to load tenant connections.</span>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <span class="form-label">Upsert Encrypted Connector Credential</span>
+          <div class="conn-form-grid">
+            <div class="form-group">
+              <label class="form-label" for="conn-app-slug">App Slug</label>
+              <input type="text" id="conn-app-slug" class="form-input" placeholder="e.g. kicad">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="conn-name">Connection Name</label>
+              <input type="text" id="conn-name" class="form-input" value="default" placeholder="default">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="conn-auth-kind">Auth Kind</label>
+              <select id="conn-auth-kind" class="form-select">
+                <option value="api_key" selected>api_key</option>
+                <option value="oauth2">oauth2</option>
+                <option value="entra_oidc">entra_oidc</option>
+                <option value="webhook">webhook</option>
+                <option value="local_file">local_file</option>
+                <option value="none">none</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="conn-endpoint-url">Endpoint URL (Optional)</label>
+              <input type="text" id="conn-endpoint-url" class="form-input" placeholder="api.vendor.example/v1">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="conn-scopes">Scopes (Comma-Separated)</label>
+              <input type="text" id="conn-scopes" class="form-input" placeholder="read,write">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="conn-secret-key">Secret Field Key</label>
+              <input type="text" id="conn-secret-key" class="form-input" value="api_key" placeholder="api_key or token">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="conn-secret-value">Secret Value (Encrypted at rest, never returned)</label>
+            <input type="password" id="conn-secret-value" class="form-input" autocomplete="off" placeholder="Enter API key or bearer secret">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-reset" id="cancel-connections-btn">Close</button>
+        <button type="button" class="btn-connections" id="submit-connection-btn">Save Encrypted Connection</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div class="toast-container" id="toast-container"></div>
 
@@ -1136,6 +1381,7 @@
       var state = {
         selectedTypes: [],
         selectedCategories: [],
+        maturity: "all",
         status: "all",
         q: "",
         searchDebounceTimer: null,
@@ -1150,6 +1396,7 @@
 
       var searchInput = document.getElementById("search-input");
       var statusSegmented = document.getElementById("status-segmented");
+      var maturitySegmented = document.getElementById("maturity-segmented");
       var resetFiltersBtn = document.getElementById("reset-filters-btn");
       var typeFilterPills = document.getElementById("type-filter-pills");
       var categoryFilterPills = document.getElementById("category-filter-pills");
@@ -1220,11 +1467,16 @@
         var params = new URLSearchParams(window.location.search);
         var typeParam = params.get("type");
         var catParam = params.get("category");
+        var maturityParam = params.get("maturity");
         var statusParam = params.get("status");
         var qParam = params.get("q");
 
         state.selectedTypes = typeParam ? typeParam.split(",").filter(Boolean) : [];
         state.selectedCategories = catParam ? catParam.split(",").filter(Boolean) : [];
+        var normMat = (maturityParam || "").trim().toLowerCase();
+        state.maturity = (normMat && ["all", "stable", "beta", "experimental"].indexOf(normMat) !== -1)
+          ? normMat
+          : "all";
         state.status = (statusParam && ["all", "active", "installed", "uninstalled"].indexOf(statusParam) !== -1)
           ? statusParam
           : "all";
@@ -1232,6 +1484,7 @@
 
         searchInput.value = state.q;
         updateStatusButtons();
+        updateMaturityButtons();
       }
 
       // Sync State to URL Search Parameters
@@ -1242,6 +1495,9 @@
         }
         if (state.selectedCategories.length > 0) {
           params.set("category", state.selectedCategories.join(","));
+        }
+        if (state.maturity && state.maturity !== "all") {
+          params.set("maturity", state.maturity);
         }
         if (state.status && state.status !== "all") {
           params.set("status", state.status);
@@ -1267,6 +1523,29 @@
         }
       }
 
+      function updateMaturityButtons(maturitySummary) {
+        if (!maturitySegmented) return;
+        var btns = maturitySegmented.querySelectorAll(".segmented-btn");
+        var labels = { all: "All", stable: "Stable", beta: "Beta", experimental: "Experimental" };
+        for (var i = 0; i < btns.length; i++) {
+          var btn = btns[i];
+          var val = btn.getAttribute("data-maturity");
+          if (val === state.maturity) {
+            btn.classList.add("is-active");
+          } else {
+            btn.classList.remove("is-active");
+          }
+          if (maturitySummary && val && labels[val]) {
+            if (val === "all") {
+              var totalCount = (maturitySummary.stable || 0) + (maturitySummary.beta || 0) + (maturitySummary.experimental || 0);
+              btn.textContent = labels[val] + " (" + totalCount + ")";
+            } else if (maturitySummary[val] != null) {
+              btn.textContent = labels[val] + " (" + maturitySummary[val] + ")";
+            }
+          }
+        }
+      }
+
       // Fetch Catalog API with current filters
       function fetchCatalog() {
         var params = new URLSearchParams();
@@ -1275,6 +1554,9 @@
         }
         if (state.selectedCategories.length > 0) {
           params.set("category", state.selectedCategories.join(","));
+        }
+        if (state.maturity && state.maturity !== "all") {
+          params.set("maturity", state.maturity);
         }
         if (state.status && state.status !== "all") {
           params.set("status", state.status);
@@ -1309,7 +1591,9 @@
 
       // Render Console Components
       function renderConsole(data) {
-        renderKPIs(data.summary || {});
+        var summary = data.summary || {};
+        renderKPIs(summary);
+        updateMaturityButtons(summary.maturity || data.maturity_counts || null);
         renderFilterPills(data.facets || {});
         renderSnippets(data.snippets || {});
         renderEnginesGrid(data.engines || data.plugins || []);
@@ -1444,7 +1728,26 @@
 
         header.appendChild(titleGroup);
 
-        // Status Badge
+        // Badges group (Stage maturity + Vendor + Status)
+        var badgesRow = document.createElement("div");
+        badgesRow.className = "card-badges-row";
+
+        var maturityVal = String(engine.maturity || "stable").toLowerCase();
+        if (["stable", "beta", "experimental"].indexOf(maturityVal) === -1) {
+          maturityVal = "stable";
+        }
+        var maturityBadge = document.createElement("span");
+        maturityBadge.className = "badge-maturity badge-maturity-" + maturityVal;
+        maturityBadge.textContent = maturityVal.toUpperCase();
+        badgesRow.appendChild(maturityBadge);
+
+        if (engine.vendor_specific) {
+          var vendorBadge = document.createElement("span");
+          vendorBadge.className = "badge-vendor";
+          vendorBadge.textContent = "Vendor";
+          badgesRow.appendChild(vendorBadge);
+        }
+
         var statusBadge = document.createElement("div");
         var statusDot = document.createElement("span");
         statusDot.className = "status-dot";
@@ -1462,7 +1765,8 @@
           statusText.textContent = "Disabled";
         }
         statusBadge.appendChild(statusText);
-        header.appendChild(statusBadge);
+        badgesRow.appendChild(statusBadge);
+        header.appendChild(badgesRow);
 
         card.appendChild(header);
 
@@ -1593,6 +1897,15 @@
           toggleWrapper.appendChild(toggleSwitch);
           toggleWrapper.appendChild(toggleLabel);
           footer.appendChild(toggleWrapper);
+
+          var connectBtn = document.createElement("button");
+          connectBtn.type = "button";
+          connectBtn.className = "copy-btn";
+          connectBtn.textContent = "Vault Config";
+          connectBtn.addEventListener("click", function () {
+            openConnectionsModal(engine.slug);
+          });
+          footer.appendChild(connectBtn);
         } else {
           var lockedBadge = document.createElement("span");
           lockedBadge.className = "tag-chip";
@@ -1650,10 +1963,12 @@
       function resetAllFilters() {
         state.selectedTypes = [];
         state.selectedCategories = [];
+        state.maturity = "all";
         state.status = "all";
         state.q = "";
         searchInput.value = "";
         updateStatusButtons();
+        updateMaturityButtons();
         syncStateToUrl();
         fetchCatalog();
       }
@@ -1680,6 +1995,21 @@
           }
         }
       });
+
+      if (maturitySegmented) {
+        maturitySegmented.addEventListener("click", function (e) {
+          var target = e.target;
+          if (target && target.classList.contains("segmented-btn")) {
+            var val = target.getAttribute("data-maturity");
+            if (val && val !== state.maturity) {
+              state.maturity = val;
+              updateMaturityButtons();
+              syncStateToUrl();
+              fetchCatalog();
+            }
+          }
+        });
+      }
 
       resetFiltersBtn.addEventListener("click", resetAllFilters);
 
@@ -1835,6 +2165,238 @@
       if (copyMintedConfigBtn) {
         copyMintedConfigBtn.addEventListener("click", function () {
           copyToClipboard(mintConfigVal.textContent, copyMintedConfigBtn, "Copied mcp_config.json to clipboard");
+        });
+      }
+
+      // Connections Vault Modal Controller
+      var connectionsModal = document.getElementById("connections-modal");
+      var openConnectionsModalBtn = document.getElementById("open-connections-modal-btn");
+      var closeConnectionsModalBtn = document.getElementById("close-connections-modal-btn");
+      var cancelConnectionsBtn = document.getElementById("cancel-connections-btn");
+      var refreshConnectionsBtn = document.getElementById("refresh-connections-btn");
+      var submitConnectionBtn = document.getElementById("submit-connection-btn");
+      var connNamespaceId = document.getElementById("conn-namespace-id");
+      var connAppSlug = document.getElementById("conn-app-slug");
+      var connName = document.getElementById("conn-name");
+      var connAuthKind = document.getElementById("conn-auth-kind");
+      var connEndpointUrl = document.getElementById("conn-endpoint-url");
+      var connScopes = document.getElementById("conn-scopes");
+      var connSecretKey = document.getElementById("conn-secret-key");
+      var connSecretValue = document.getElementById("conn-secret-value");
+      var connectionsListEl = document.getElementById("connections-list");
+
+      function renderConnectionsList(connections) {
+        if (!connections || connections.length === 0) {
+          var emptyMsg = document.createElement("span");
+          emptyMsg.className = "kpi-desc";
+          emptyMsg.textContent = "No configured app connections for this tenant namespace.";
+          connectionsListEl.replaceChildren(emptyMsg);
+          return;
+        }
+
+        var nodes = [];
+        for (var i = 0; i < connections.length; i++) {
+          (function (conn) {
+            var item = document.createElement("div");
+            item.className = "connection-item";
+
+            var metaCol = document.createElement("div");
+            metaCol.className = "connection-meta";
+
+            var titleRow = document.createElement("div");
+            titleRow.className = "connection-title";
+
+            var slugEl = document.createElement("span");
+            slugEl.textContent = conn.app_slug + " / " + (conn.connection_name || "default");
+            titleRow.appendChild(slugEl);
+
+            var statusPill = document.createElement("span");
+            statusPill.className = "tag-chip";
+            statusPill.textContent = String(conn.status || "connected").toUpperCase();
+            titleRow.appendChild(statusPill);
+
+            var authPill = document.createElement("span");
+            authPill.className = "tag-chip tag-chip-type";
+            authPill.textContent = conn.auth_kind || "api_key";
+            titleRow.appendChild(authPill);
+            metaCol.appendChild(titleRow);
+
+            var subRow = document.createElement("div");
+            subRow.className = "connection-sub";
+            var parts = [];
+            if (conn.endpoint_url) {
+              parts.push("endpoint=" + conn.endpoint_url);
+            }
+            if (conn.scopes && conn.scopes.length > 0) {
+              parts.push("scopes=" + conn.scopes.join(","));
+            }
+            if (conn.kek_version) {
+              parts.push("kek=" + conn.kek_version);
+            }
+            subRow.textContent = parts.length > 0 ? parts.join(" | ") : ("id=" + conn.connection_id);
+            metaCol.appendChild(subRow);
+
+            var credsRow = document.createElement("div");
+            credsRow.className = "connection-creds";
+            credsRow.textContent = "Credentials: " + (conn.credentials_masked || "••••••••") + " (encrypted at rest)";
+            metaCol.appendChild(credsRow);
+
+            item.appendChild(metaCol);
+
+            var delBtn = document.createElement("button");
+            delBtn.type = "button";
+            delBtn.className = "btn-danger-sm";
+            delBtn.textContent = "Delete";
+            delBtn.addEventListener("click", function () {
+              deleteConnection(conn.connection_id);
+            });
+            item.appendChild(delBtn);
+
+            nodes.push(item);
+          })(connections[i]);
+        }
+        connectionsListEl.replaceChildren.apply(connectionsListEl, nodes);
+      }
+
+      function fetchConnections() {
+        var nsVal = (connNamespaceId.value || "").trim() || "00000000-0000-0000-0000-000000000001";
+        var qs = new URLSearchParams({ namespace_id: nsVal }).toString();
+        fetch("/admin/plugins/api/connections?" + qs, {
+          method: "GET",
+          headers: { "Accept": "application/json" }
+        })
+          .then(function (res) {
+            if (!res.ok) {
+              return res.json().then(function (body) {
+                throw new Error(body.error || ("HTTP " + res.status));
+              });
+            }
+            return res.json();
+          })
+          .then(function (data) {
+            renderConnectionsList(data.connections || []);
+          })
+          .catch(function (err) {
+            var errSpan = document.createElement("span");
+            errSpan.className = "kpi-desc";
+            errSpan.textContent = "Connections unavailable: " + err.message;
+            connectionsListEl.replaceChildren(errSpan);
+          });
+      }
+
+      function submitConnection() {
+        var nsVal = (connNamespaceId.value || "").trim() || "00000000-0000-0000-0000-000000000001";
+        var appSlugVal = (connAppSlug.value || "").trim();
+        var authKindVal = connAuthKind.value || "api_key";
+        var secretKeyVal = (connSecretKey.value || "").trim() || "api_key";
+        var secretVal = connSecretValue.value || "";
+
+        if (!appSlugVal) {
+          showToast("Please enter an app_slug");
+          return;
+        }
+        var secretConfig = {};
+        if (authKindVal !== "none") {
+          if (!secretVal) {
+            showToast("Please enter a secret value to encrypt");
+            return;
+          }
+          secretConfig[secretKeyVal] = secretVal;
+        }
+        var rawScopes = (connScopes.value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+        var payload = {
+          namespace_id: nsVal,
+          app_slug: appSlugVal,
+          connection_name: (connName.value || "").trim() || "default",
+          auth_kind: authKindVal,
+          endpoint_url: (connEndpointUrl.value || "").trim() || null,
+          scopes: rawScopes,
+          secret_config: secretConfig
+        };
+
+        submitConnectionBtn.disabled = true;
+        submitConnectionBtn.textContent = "Encrypting & Saving...";
+        fetch("/admin/plugins/api/connections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify(payload)
+        })
+          .then(function (res) {
+            if (!res.ok) {
+              return res.json().then(function (body) {
+                throw new Error(body.error || ("HTTP " + res.status));
+              });
+            }
+            return res.json();
+          })
+          .then(function () {
+            submitConnectionBtn.disabled = false;
+            submitConnectionBtn.textContent = "Save Encrypted Connection";
+            connSecretValue.value = "";
+            showToast("Encrypted connection saved for '" + appSlugVal + "'");
+            fetchConnections();
+          })
+          .catch(function (err) {
+            submitConnectionBtn.disabled = false;
+            submitConnectionBtn.textContent = "Save Encrypted Connection";
+            showToast("Save connection failed: " + err.message);
+          });
+      }
+
+      function deleteConnection(connectionId) {
+        var nsVal = (connNamespaceId.value || "").trim() || "00000000-0000-0000-0000-000000000001";
+        var qs = new URLSearchParams({ namespace_id: nsVal, connection_id: connectionId }).toString();
+        fetch("/admin/plugins/api/connections?" + qs, {
+          method: "DELETE",
+          headers: { "Accept": "application/json" }
+        })
+          .then(function (res) {
+            if (!res.ok) {
+              return res.json().then(function (body) {
+                throw new Error(body.error || ("HTTP " + res.status));
+              });
+            }
+            return res.json();
+          })
+          .then(function () {
+            showToast("Connection deleted");
+            fetchConnections();
+          })
+          .catch(function (err) {
+            showToast("Delete failed: " + err.message);
+          });
+      }
+
+      function openConnectionsModal(prefillSlug) {
+        if (prefillSlug && connAppSlug) {
+          connAppSlug.value = prefillSlug;
+        }
+        if (connSecretValue) {
+          connSecretValue.value = "";
+        }
+        connectionsModal.classList.add("is-open");
+        fetchConnections();
+      }
+
+      function closeConnectionsModal() {
+        connectionsModal.classList.remove("is-open");
+      }
+
+      if (openConnectionsModalBtn) {
+        openConnectionsModalBtn.addEventListener("click", function () { openConnectionsModal(""); });
+      }
+      if (closeConnectionsModalBtn) closeConnectionsModalBtn.addEventListener("click", closeConnectionsModal);
+      if (cancelConnectionsBtn) cancelConnectionsModalBtn.addEventListener("click", closeConnectionsModal);
+      if (refreshConnectionsBtn) refreshConnectionsBtn.addEventListener("click", fetchConnections);
+      if (submitConnectionBtn) submitConnectionBtn.addEventListener("click", submitConnection);
+      if (connectionsModal) {
+        connectionsModal.addEventListener("click", function (e) {
+          if (e.target === connectionsModal) {
+            closeConnectionsModal();
+          }
         });
       }
 

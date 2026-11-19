@@ -13,7 +13,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, TypedDict, runtime_checkable
+from typing import Any, Literal, Protocol, TypedDict, runtime_checkable
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +47,8 @@ class EngineDescriptor(TypedDict, total=False):
     route_count: int
     requires_schemas: list[str]
     install_extra: str
+    maturity: Literal["stable", "beta", "experimental"]
+    vendor_specific: bool
 
 
 @runtime_checkable
@@ -453,6 +455,9 @@ def _normalize_filter_tokens(raw: str | None) -> set[str]:
     return {tok.strip().lower() for tok in raw.split(",") if tok.strip()}
 
 
+_VALID_MATURITIES: frozenset[str] = frozenset({"stable", "beta", "experimental"})
+
+
 def _normalize_descriptor(raw: dict[str, Any], default_id: str) -> dict[str, Any]:
     types_raw = raw.get("types") or ()
     categories_raw = raw.get("categories") or ()
@@ -465,6 +470,9 @@ def _normalize_descriptor(raw: dict[str, Any], default_id: str) -> dict[str, Any
     installed = bool(raw.get("installed", True))
     enabled_by_env = bool(raw.get("enabled_by_env", raw.get("enabled", installed)))
     enabled = bool(raw.get("enabled", enabled_by_env and installed))
+    raw_maturity = str(raw.get("maturity") or "stable").strip().lower()
+    maturity = raw_maturity if raw_maturity in _VALID_MATURITIES else "stable"
+    vendor_specific = bool(raw.get("vendor_specific", False))
     return {
         **raw,
         "slug": slug,
@@ -482,6 +490,8 @@ def _normalize_descriptor(raw: dict[str, Any], default_id: str) -> dict[str, Any
         "route_count": int(raw.get("route_count") or 0),
         "requires_schemas": requires_list,
         "install_extra": str(raw.get("install_extra") or slug),
+        "maturity": maturity,
+        "vendor_specific": vendor_specific,
     }
 
 
@@ -540,6 +550,8 @@ def list_plugin_engine_descriptors(
                     "route_count": int(getattr(plugin, "route_count", 0) or 0),
                     "requires_schemas": list(getattr(plugin, "requires_schemas", ()) or ()),
                     "install_extra": str(getattr(plugin, "install_extra", plugin_id)),
+                    "maturity": str(getattr(plugin, "maturity", "stable") or "stable"),
+                    "vendor_specific": bool(getattr(plugin, "vendor_specific", False)),
                 }
             )
         for item in raw_items:

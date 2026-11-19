@@ -29,6 +29,8 @@ _BRAND_WALL_RE = re.compile(r"\b(glamox|vertex|e2d)\b", re.IGNORECASE)
 _CODE_SCAN_SUFFIXES = {".py", ".sql", ".yml", ".yaml", ".sh"}
 _CODE_SCAN_NAMES = {"Makefile", "Caddyfile"}
 _MD_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+_STATIC_SHIELDS_BADGE_PREFIX = "https://img.shields.io/badge/"
+_STATIC_SHIELDS_IMAGE_MD_RE = re.compile(r"!\[[^\]]*\]\((https://img\.shields\.io/badge/[^)\s]+)\)")
 _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+(.+?)\s*$")
 _DELETED_REFS = (
@@ -79,6 +81,15 @@ def _extract_anchors(fpath: pathlib.Path, cache: dict[pathlib.Path, set[str]]) -
     return anchors
 
 
+def is_static_shields_badge_url(target: str) -> bool:
+    """Return True for valid static shields.io badge URLs (validated offline)."""
+    clean = target.strip()
+    if not clean.startswith(_STATIC_SHIELDS_BADGE_PREFIX):
+        return False
+    suffix = clean[len(_STATIC_SHIELDS_BADGE_PREFIX) :]
+    return bool(suffix) and not any(ch.isspace() for ch in suffix)
+
+
 def check_links_and_orphans(files: list[pathlib.Path]) -> list[str]:
     errors: list[str] = []
     anchor_cache: dict[pathlib.Path, set[str]] = {}
@@ -87,8 +98,15 @@ def check_links_and_orphans(files: list[pathlib.Path]) -> list[str]:
     for fpath in files:
         raw = fpath.read_text(encoding="utf-8")
         cleaned = _strip_fences(raw)
-        for match in _MD_LINK_RE.finditer(cleaned):
+        # Unwrap static shields.io badge images inside outer links without live fetches.
+        cleaned_links = _STATIC_SHIELDS_IMAGE_MD_RE.sub(
+            lambda m: "badge" if is_static_shields_badge_url(m.group(1)) else m.group(0),
+            cleaned,
+        )
+        for match in _MD_LINK_RE.finditer(cleaned_links):
             target = match.group(1).strip()
+            if is_static_shields_badge_url(target):
+                continue
             if not target or target.startswith(
                 ("http://", "https://", "mailto:", "conversation://", "file://")
             ):

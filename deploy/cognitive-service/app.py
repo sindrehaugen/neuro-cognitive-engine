@@ -22,6 +22,7 @@ import asyncio
 import hmac
 import json
 import logging
+import math
 import os
 import re
 import sys
@@ -43,10 +44,20 @@ try:
 except ImportError:  # pragma: no cover - fallback when orjson is absent
     _orjson = None  # type: ignore[assignment]
 
+
+def _enforce_offline_env() -> None:
+    """Ensure air-gapped offline HuggingFace/Transformers flags are active when unset or blank."""
+    for key, default_val in (
+        ("HF_HUB_OFFLINE", "1"),
+        ("TRANSFORMERS_OFFLINE", "1"),
+        ("TOKENIZERS_PARALLELISM", "false"),
+    ):
+        if not os.environ.get(key, "").strip():
+            os.environ[key] = default_val
+
+
 # Default to air-gapped offline operation so runtime containers never reach HuggingFace Hub.
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+_enforce_offline_env()
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO").upper(),
@@ -159,10 +170,14 @@ def _max_batch_size() -> int:
 
 
 def _num_threads() -> int:
+    default = max(1, min(4, os.cpu_count() or 4))
+    raw = os.environ.get("NCE_COGNITIVE_NUM_THREADS")
+    if raw is None or not raw.strip():
+        return default
     try:
-        return max(1, int(os.environ.get("NCE_COGNITIVE_NUM_THREADS", "4")))
+        return max(1, int(raw.strip()))
     except ValueError:
-        return 4
+        return default
 
 
 def _api_key() -> str:
@@ -272,6 +287,7 @@ def _load_models() -> None:
     try:
         import spacy
 
+        _enforce_offline_env()
         backend = _resolve_backend()
         engine = _engine_for_backend(backend)
         model_dir = Path(_model_dir())
@@ -306,14 +322,14 @@ def _load_models() -> None:
 
             onnx_dir = model_dir / "all-mpnet-base-v2-onnx"
             filename = "model_qint8.onnx" if backend == "onnx-int8" else "model.onnx"
+            onnx_override = os.environ.get("NCE_COGNITIVE_ONNX_PATH", "").strip()
             if model_dir.is_dir() and onnx_dir.is_dir():
                 tok_source = str(onnx_dir)
-                onnx_path = onnx_dir / filename
+                onnx_path = Path(onnx_override) if onnx_override else (onnx_dir / filename)
                 dim, max_seq = _load_onnx_metadata(onnx_dir)
             else:
                 # Fallback to local HuggingFace cache only when baked directory does not exist.
                 tok_source = model_id
-                onnx_override = os.environ.get("NCE_COGNITIVE_ONNX_PATH", "").strip()
                 onnx_path = Path(onnx_override) if onnx_override else (onnx_dir / filename)
                 dim, max_seq = 768, 384
 
@@ -875,6 +891,7 @@ async def readyz(_request: Request) -> Response:
             "dimension": _state.embedding_dim,
             "batch_window_ms": _batch_window_ms(),
             "max_batch_size": _max_batch_size(),
+            "num_threads": _num_threads(),
             "offline": True,
         },
         status_code=200,
@@ -1017,11 +1034,18 @@ def verify_onnx_pytorch_parity(
     from sentence_transformers import SentenceTransformer
     from transformers import AutoTokenizer
 
+    _enforce_offline_env()
+    norm_backend = (backend or "onnx").strip().lower()
+    if norm_backend == "onnx_int8":
+        norm_backend = "onnx-int8"
+    if norm_backend not in ("onnx", "onnx-int8"):
+        raise ValueError(f"Unsupported parity backend={backend!r}; expected 'onnx' or 'onnx-int8'")
+
     samples = list(texts) if texts else list(_DEFAULT_PARITY_SENTENCES)
     base_dir = Path(model_dir) if model_dir is not None else Path(_model_dir())
     st_dir = base_dir / "all-mpnet-base-v2"
     onnx_dir = base_dir / "all-mpnet-base-v2-onnx"
-    onnx_file = onnx_dir / ("model_qint8.onnx" if backend == "onnx-int8" else "model.onnx")
+    onnx_file = onnx_dir / ("model_qint8.onnx" if norm_backend == "onnx-int8" else "model.onnx")
 
     if not st_dir.is_dir():
         raise FileNotFoundError(f"Baked SentenceTransformer directory not found: {st_dir}")
@@ -1057,16 +1081,26 @@ def verify_onnx_pytorch_parity(
 
     cosines: list[float] = []
     max_norm_err = 0.0
+    all_finite = bool(np.all(np.isfinite(pt_vecs)) and np.all(np.isfinite(onnx_vecs)))
     for idx in range(len(samples)):
-        norm_err = abs(float(np.linalg.norm(onnx_vecs[idx])) - 1.0)
-        max_norm_err = max(max_norm_err, norm_err)
-        cosines.append(float(np.dot(pt_vecs[idx], onnx_vecs[idx])))
+        norm_val = float(np.linalg.norm(onnx_vecs[idx]))
+        cos_val = float(np.dot(pt_vecs[idx], onnx_vecs[idx]))
+        if not (math.isfinite(norm_val) and math.isfinite(cos_val)):
+            all_finite = False
+        else:
+            max_norm_err = max(max_norm_err, abs(norm_val - 1.0))
+        cosines.append(cos_val)
 
-    min_cos = min(cosines) if cosines else 1.0
-    ok = onnx_vecs.shape == (len(samples), dim) and max_norm_err < 1e-5 and min_cos >= min_cosine
+    min_cos = min(cosines) if (cosines and all_finite) else 0.0
+    ok = (
+        all_finite
+        and onnx_vecs.shape == (len(samples), dim)
+        and max_norm_err < 1e-5
+        and min_cos >= min_cosine
+    )
     return {
         "ok": ok,
-        "backend": backend,
+        "backend": norm_backend,
         "dimension": int(onnx_vecs.shape[1]),
         "min_cosine": min_cos,
         "max_norm_err": max_norm_err,
@@ -1120,12 +1154,37 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Backend override for --verify-parity (onnx or onnx-int8).",
     )
+    parser.add_argument(
+        "--model-dir",
+        default=None,
+        help="Model directory override for --verify-parity (defaults to NCE_MODEL_DIR).",
+    )
+    parser.add_argument(
+        "--min-cosine",
+        type=float,
+        default=None,
+        help="Minimum cosine threshold override for --verify-parity.",
+    )
     args = parser.parse_args(argv)
 
     if args.verify_parity:
-        backend = (args.backend or _resolve_backend()).strip().lower()
-        min_cos = 0.85 if backend == "onnx-int8" else 0.9999
-        report = verify_onnx_pytorch_parity(backend=backend, min_cosine=min_cos)
+        if args.backend:
+            backend = args.backend.strip().lower()
+        else:
+            resolved = _resolve_backend()
+            backend = "onnx" if resolved == "torch" else resolved
+        if backend == "onnx_int8":
+            backend = "onnx-int8"
+        min_cos = (
+            args.min_cosine
+            if args.min_cosine is not None
+            else (0.85 if backend == "onnx-int8" else 0.9999)
+        )
+        report = verify_onnx_pytorch_parity(
+            model_dir=args.model_dir,
+            backend=backend,
+            min_cosine=min_cos,
+        )
         print(json.dumps(report, indent=2))
         return 0 if report["ok"] else 1
 

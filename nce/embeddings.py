@@ -257,6 +257,13 @@ def _validate_batch(
         # ``POST /v1/embeddings`` with a 768-dim ZERO vector (see
         # ``deploy/cognitive-stub/stub_server.py``), and every memory embedded
         # through it was stored un-recallable with nothing logged.
+        if not all(math.isfinite(x) for x in v):
+            return _fallback_with_error(
+                texts,
+                "%s returned a non-finite (NaN/Inf) vector at index %d — falling back",
+                backend_name,
+                i,
+            )
         norm_sq = sum(x * x for x in v)
         if norm_sq <= _DEGENERATE_NORM_SQ:
             return _fallback_with_error(
@@ -1081,6 +1088,8 @@ class CognitiveRemoteBackend(EmbeddingBackend):
         texts: list[str],
         data: Any,
     ) -> tuple[list[list[float]], bool]:
+        if not texts:
+            return [], False
         rows = data.get("data") if isinstance(data, dict) else None
         if not rows or not isinstance(rows, list):
             return _fallback_with_error(
@@ -1105,8 +1114,16 @@ class CognitiveRemoteBackend(EmbeddingBackend):
                     "Invalid embedding row from cognitive: %r",
                     item,
                 )
-            idx = int(item["index"]) if "index" in item else len(indexed)
-            indexed.append((idx, [float(x) for x in emb]))
+            try:
+                idx = int(item["index"]) if "index" in item else len(indexed)
+                vec = [float(x) for x in emb]
+            except (TypeError, ValueError):
+                return _fallback_with_error(
+                    texts,
+                    "Non-numeric embedding row from cognitive: %r",
+                    item,
+                )
+            indexed.append((idx, vec))
         indexed.sort(key=lambda t: t[0])
         vectors = [v for _, v in indexed]
         return _validate_batch(texts, vectors, backend_name="CognitiveRemote")
@@ -1129,14 +1146,7 @@ class CognitiveRemoteBackend(EmbeddingBackend):
         log.info("CognitiveRemoteBackend: triggering fallback model: %s", fallback_model)
         return self._build_request_spec(texts, model_override=fallback_model)
 
-    def _sync_embed_batch(self, texts: list[str]) -> tuple[list[list[float]], bool]:
-        if not self._base:
-            return _fallback_with_error(
-                texts,
-                "CognitiveRemoteBackend: empty base URL — stubbing.",
-                is_warn=True,
-            )
-
+    def _sync_embed_chunk(self, texts: list[str]) -> tuple[list[list[float]], bool]:
         from nce.http_resilience import request_with_retry_sync
 
         url, headers, payload = self._build_request_spec(texts)
@@ -1171,14 +1181,28 @@ class CognitiveRemoteBackend(EmbeddingBackend):
 
         return self._parse_embeddings_response(texts, data)
 
-    async def _async_embed_batch_direct(self, texts: list[str]) -> tuple[list[list[float]], bool]:
+    def _sync_embed_batch(self, texts: list[str]) -> tuple[list[list[float]], bool]:
+        if not texts:
+            return [], False
         if not self._base:
             return _fallback_with_error(
                 texts,
                 "CognitiveRemoteBackend: empty base URL — stubbing.",
                 is_warn=True,
             )
+        if len(texts) <= self._max_batch_size:
+            return self._sync_embed_chunk(texts)
 
+        all_vectors: list[list[float]] = []
+        any_degraded = False
+        for start in range(0, len(texts), self._max_batch_size):
+            chunk = texts[start : start + self._max_batch_size]
+            chunk_vecs, chunk_degraded = self._sync_embed_chunk(chunk)
+            all_vectors.extend(chunk_vecs)
+            any_degraded = any_degraded or chunk_degraded
+        return all_vectors, any_degraded
+
+    async def _async_embed_chunk(self, texts: list[str]) -> tuple[list[list[float]], bool]:
         from nce.http_resilience import request_with_retry
 
         url, headers, payload = self._build_request_spec(texts)
@@ -1212,6 +1236,27 @@ class CognitiveRemoteBackend(EmbeddingBackend):
                 return _fallback_with_error(texts, "Fallback embedding model also failed: %s", fe)
 
         return self._parse_embeddings_response(texts, data)
+
+    async def _async_embed_batch_direct(self, texts: list[str]) -> tuple[list[list[float]], bool]:
+        if not texts:
+            return [], False
+        if not self._base:
+            return _fallback_with_error(
+                texts,
+                "CognitiveRemoteBackend: empty base URL — stubbing.",
+                is_warn=True,
+            )
+        if len(texts) <= self._max_batch_size:
+            return await self._async_embed_chunk(texts)
+
+        all_vectors: list[list[float]] = []
+        any_degraded = False
+        for start in range(0, len(texts), self._max_batch_size):
+            chunk = texts[start : start + self._max_batch_size]
+            chunk_vecs, chunk_degraded = await self._async_embed_chunk(chunk)
+            all_vectors.extend(chunk_vecs)
+            any_degraded = any_degraded or chunk_degraded
+        return all_vectors, any_degraded
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed texts using persistent per-loop ``httpx.AsyncClient`` pooling & coalescing."""
@@ -1253,6 +1298,13 @@ def detect_backend() -> EmbeddingBackend:
     cognitive_url = (cfg.NCE_COGNITIVE_BASE_URL or "").strip()
 
     if pref:
+        if pref in {"cognitive", "remote"} and cognitive_url:
+            log.info(
+                "Embedding backend forced by NCE_BACKEND=%s: CognitiveRemoteBackend (%s)",
+                pref,
+                cognitive_url,
+            )
+            return CognitiveRemoteBackend()
         if pref not in _BACKEND_BUILDERS:
             log.warning("Unknown NCE_BACKEND=%r — falling back to auto-detect.", pref)
         else:

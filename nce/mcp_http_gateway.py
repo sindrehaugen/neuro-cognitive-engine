@@ -38,12 +38,17 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from nce import __version__
+from nce.connectors.vault import TenantConnectionVault
 from nce.health_probe import (
     SingleflightReadinessCache,
     build_liveness_payload,
     probe_engine_readiness,
 )
 from nce.http_body_limit import BoundedBodyMiddleware
+
+_DEFAULT_TENANT_CONNECTION_VAULT = TenantConnectionVault
+_COMPACT_DISCOVER_LIMIT = 12
+_CONNECTED_APP_BOOST = 15.0
 
 logger = logging.getLogger("nce.mcp_http_gateway")
 
@@ -842,6 +847,21 @@ def _tokenize_search_text(text: str) -> set[str]:
 _DISCOVER_INDEX_CACHE: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
 
+def _infer_discover_tool_engine(spec: Any, infer_fn: Any) -> str | None:
+    tool_engine = infer_fn(spec)
+    if tool_engine:
+        return str(tool_engine)
+    qualname = getattr(spec.handler, "__qualname__", "")
+    module_name = qualname.rsplit(".", 1)[0] if "." in qualname else ""
+    if not module_name:
+        module_name = getattr(spec.handler, "__module__", "") or ""
+    if module_name.startswith("nce_apps."):
+        parts = module_name.split(".")
+        if len(parts) >= 2 and parts[1]:
+            return str(parts[1])
+    return None
+
+
 def _get_discover_index() -> list[dict[str, Any]]:
     from nce.plugins import list_plugin_engine_descriptors
     from nce.tool_registry import TOOL_REGISTRY, infer_tool_engine
@@ -864,7 +884,7 @@ def _get_discover_index() -> list[dict[str, Any]]:
         t_schema = tool_dict["inputSchema"]
         t_compact_schema = _compact_input_schema(t_schema)
         spec = TOOL_REGISTRY.get(t_name)
-        tool_engine = infer_tool_engine(spec) if spec else None
+        tool_engine = _infer_discover_tool_engine(spec, infer_tool_engine) if spec else None
         desc = descriptors_by_slug.get(tool_engine) if tool_engine else None
         t_name_low = t_name.lower()
         t_desc_low = (t_desc or "").lower()
@@ -908,13 +928,35 @@ def _get_discover_index() -> list[dict[str, Any]]:
     return indexed
 
 
+async def _resolve_connected_app_slugs(namespace_id: str | None, pg_pool: Any) -> set[str]:
+    """Resolve connected app slugs for *namespace_id* via TenantConnectionVault (fail-open)."""
+    if pg_pool is None or not namespace_id:
+        return set()
+    try:
+        import nce.connectors.vault as _vault_mod
+
+        vault_cls = (
+            TenantConnectionVault
+            if TenantConnectionVault is not _DEFAULT_TENANT_CONNECTION_VAULT
+            else _vault_mod.TenantConnectionVault
+        )
+        slugs = await asyncio.wait_for(
+            vault_cls(pg_pool).get_connected_app_slugs(namespace_id),
+            timeout=1.0,
+        )
+        return {str(s).strip().lower() for s in slugs if str(s).strip()}
+    except Exception:
+        return set()
+
+
 async def discover_tools_handler(
     session: MCPGatewaySession,
     arguments: dict[str, Any],
     *,
     redis_client: Any = None,
+    pg_pool: Any = None,
 ) -> dict[str, Any]:
-    """Handler for discover_tools meta-tool (O(1) pre-tokenized index + BM25/keyword ranking)."""
+    """Handler for discover_tools meta-tool (connected-first ranking + O(1) BM25 index)."""
     query = str(arguments.get("query") or "").strip().lower()
     query_tokens = _tokenize_search_text(query) if query else set()
     type_filter = arguments.get("type_filter")
@@ -935,6 +977,8 @@ async def discover_tools_handler(
         descriptors = list_plugin_engine_descriptors()
     except Exception:
         descriptors = []
+
+    connected_slugs_low = await _resolve_connected_app_slugs(session.namespace_id, pg_pool)
 
     scored_tools: list[tuple[float, int, dict[str, Any]]] = []
     is_compact = session.tool_exposure_mode == "compact"
@@ -990,6 +1034,9 @@ async def discover_tools_handler(
             else:
                 continue
 
+        if connected_slugs_low and item["eng_low"] in connected_slugs_low:
+            score += _CONNECTED_APP_BOOST
+
         scored_tools.append(
             (
                 score,
@@ -998,8 +1045,15 @@ async def discover_tools_handler(
             )
         )
 
-    if query and len(scored_tools) > 1:
+    if (query or connected_slugs_low) and len(scored_tools) > 1:
         scored_tools.sort(key=lambda entry: (-entry[0], entry[1]))
+
+    if is_compact:
+        limit_val = (
+            _COMPACT_DISCOVER_LIMIT
+            if limit_val is None
+            else min(limit_val, _COMPACT_DISCOVER_LIMIT)
+        )
 
     if limit_val is not None:
         scored_tools = scored_tools[:limit_val]
@@ -1532,7 +1586,10 @@ def create_mcp_gateway_app(engine: Any = None, lifespan: Any = None) -> Starlett
 
             if tool_name == "discover_tools":
                 redis_c = getattr(engine, "redis_client", None) if engine else None
-                res = await discover_tools_handler(session, arguments, redis_client=redis_c)
+                pg_p = getattr(engine, "pg_pool", None) if engine else None
+                res = await discover_tools_handler(
+                    session, arguments, redis_client=redis_c, pg_pool=pg_p
+                )
                 return {
                     "jsonrpc": "2.0",
                     "id": req_id,
