@@ -375,6 +375,16 @@ def _is_prod_mode() -> bool:
     return bool(getattr(cfg, "IS_PROD", False))
 
 
+_DEFAULT_PROD_BACKUP_DIR = "/var/lib/nce/backups"
+
+
+def _can_use_dir(path: Path) -> bool:
+    cur = path
+    while not cur.exists() and cur != cur.parent:
+        cur = cur.parent
+    return cur.exists() and os.access(str(cur), os.W_OK)
+
+
 def resolve_backup_dir(backup_dir: str | Path | None = None) -> Path:
     """Resolve the persistent backup directory honoring cfg + env overrides."""
     if backup_dir is not None and str(backup_dir).strip():
@@ -382,20 +392,20 @@ def resolve_backup_dir(backup_dir: str | Path | None = None) -> Path:
 
     from nce.config import cfg
 
-    cfg_dict = getattr(cfg, "__dict__", {})
-    if "NCE_BACKUP_DIR" in cfg_dict and str(cfg_dict["NCE_BACKUP_DIR"] or "").strip():
-        return Path(str(cfg_dict["NCE_BACKUP_DIR"]).strip()).expanduser().resolve()
-
     env_val = (os.getenv("NCE_BACKUP_DIR") or "").strip()
     if env_val:
         return Path(env_val).expanduser().resolve()
 
-    cfg_attr = str(getattr(cfg, "NCE_BACKUP_DIR", "") or "").strip()
-    if cfg_attr:
-        return Path(cfg_attr).expanduser().resolve()
+    cfg_dict = getattr(cfg, "__dict__", {})
+    raw_cfg = str(
+        cfg_dict.get("NCE_BACKUP_DIR") or getattr(cfg, "NCE_BACKUP_DIR", "") or ""
+    ).strip()
+    is_prod = _is_prod_mode()
+    if raw_cfg and (is_prod or raw_cfg != _DEFAULT_PROD_BACKUP_DIR or _can_use_dir(Path(raw_cfg))):
+        return Path(raw_cfg).expanduser().resolve()
 
-    if _is_prod_mode():
-        return Path("/var/lib/nce/backups")
+    if is_prod:
+        return Path(_DEFAULT_PROD_BACKUP_DIR)
     return Path(tempfile.gettempdir()) / "nce_backups"
 
 

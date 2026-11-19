@@ -626,6 +626,18 @@ class ReplayContext:
             self.mongo_remap[src_ref] = str(ObjectId(derived_bytes))
         return self.mongo_remap[src_ref]
 
+    async def _insert_copied_episode_idempotent(
+        self, tgt_episodes: Any, target_doc: dict[str, Any]
+    ) -> None:
+        """Insert a cloned replay episode without mutating existing CoW blobs."""
+        try:
+            await tgt_episodes.insert_one(target_doc)
+        except Exception as exc:
+            err_l = str(exc).lower()
+            if "e11000" in err_l or "duplicate key" in err_l:
+                return
+            raise
+
     async def copy_mongo_doc(
         self, src_ref: str, source_namespace_id: uuid.UUID | None = None
     ) -> str:
@@ -669,13 +681,11 @@ class ReplayContext:
                 target_doc["_id"] = ObjectId(target_ref)
                 target_doc["namespace_id"] = str(self.target_namespace_id)
 
-                # Insert or replace in target (using upsert to be idempotent)
+                # Insert once without mutating CoW payloads (idempotent on duplicate _id).
                 async with scoped_mongo_session(
                     self.mongo_client, self.target_namespace_id
                 ) as tgt_db:
-                    await tgt_db.episodes.replace_one(
-                        {"_id": target_doc["_id"]}, target_doc, upsert=True
-                    )
+                    await self._insert_copied_episode_idempotent(tgt_db.episodes, target_doc)
                 self._copied_refs.add(src_ref)
             else:
                 log.warning(
@@ -758,9 +768,7 @@ class ReplayContext:
                         target_doc = dict(doc)
                         target_doc["_id"] = ObjectId(target_ref)
                         target_doc["namespace_id"] = str(self.target_namespace_id)
-                        await tgt_db.episodes.replace_one(
-                            {"_id": target_doc["_id"]}, target_doc, upsert=True
-                        )
+                        await self._insert_copied_episode_idempotent(tgt_db.episodes, target_doc)
                         self._copied_refs.add(src_ref_str)
             except Exception as exc:
                 log.warning("Batch copy MongoDB documents failed for chunk: %s", exc)
