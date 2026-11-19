@@ -14,7 +14,10 @@
   - [Data-Source Modes Architecture](DATA_SOURCE_MODES.md)
   - [Detector Limits & AST Ratchet](detector_limits.md)
   - [100k-Row Benchmark Report (v3.5.2)](benchmarks/PERF_REPORT_v3.5.2.md)
-  - [Plugin Development Guide](plugin_development.md)
+  - [Hardening Report (v3.5.3)](benchmarks/HARDENING_READINESS_v3.5.3.md)
+  - [Pure-ASGI & ONNX Report (v3.5.4)](benchmarks/HARDENING_READINESS_v3.5.4.md)
+  - [Connector SDK Report (v3.6.0)](benchmarks/HARDENING_READINESS_v3.6.0.md)
+  - [Plugin & Connector SDK Guide](plugin_development.md)
   - [Plugin Overview (Non-Technical)](plugin-overview-nontechnical.md)
 
 - Getting Started
@@ -46,29 +49,29 @@
   - [PII Detection & Redaction](pii.md)
   - [AWS IAM Worker Isolation](aws_iam_worker_isolation.md)
 
-- Integrations & Bridges
+- Integrations & Federation
   - [Service Webhook Integrations](service_integrations.md)
   - [Bridge Setup Guide](bridge_setup_guide.md)
-  - [Agent-to-Agent Protocol](a2a.md)
+  - [Cross-Namespace Federation (A2A)](a2a.md)
 
-- Cognitive Layer
-  - [Cognitive Features](cognitive_layer.md)
+- Retrieval, Graph & Summarization
+  - [Hybrid Retrieval & Summarization](cognitive_layer.md)
   - [LLM Providers & Schemas](llm_providers.md)
 
-- Data Engineering & Simulation
-  - [Memory Time Travel](time_travel.md)
-  - [Memory Replay Engine](replay.md)
-  - [System Migrations](migrations.md)
+- Temporal Queries, Replay & Migrations
+  - [Point-in-Time Queries (as_of)](time_travel.md)
+  - [Deterministic Replay & Forking](replay.md)
+  - [System Migrations & Re-embedding](migrations.md)
 
 - Shared Core Foundation
   - [Shared Core Overview](shared-core/overview.md)
-  - [Autonomy Governance Wrapper (C2)](shared-core/autonomy-governance.md)
-  - [Entity-Resolution (C1)](shared-core/entity-resolution.md)
+  - [C2 Action Governance (@governed)](shared-core/autonomy-governance.md)
+  - [Entity Resolution (C1)](shared-core/entity-resolution.md)
   - [External Scope RLS (C3)](shared-core/external-scope-rls.md)
   - [Allow-List Redactor (C8)](shared-core/redaction.md)
   - [Source Mode Divergence (C5)](shared-core/source-mode-divergence.md)
   - [Pricing, Signing & Grounding](shared-core/pricing-signing-grounding.md)
 
-
-- Official Plugins & Verticals
-  - [22 Vertical Engines (Plugins Repository)](https://github.com/sindrehaugen/nce-vertical-engines)
+- Experimental R&D Extension Repos
+  - [App Connectors (nce-app-engines, Beta)](https://github.com/sindrehaugen/nce-app-engines)
+  - [Business Domain Engines (nce-vertical-engines, Beta)](https://github.com/sindrehaugen/nce-vertical-engines)

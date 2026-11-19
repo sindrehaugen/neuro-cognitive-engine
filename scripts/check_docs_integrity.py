@@ -38,7 +38,28 @@ _DELETED_REFS = (
     "SUMMARY_REMEDIATION_RUN.md",
     "PERF_REPORT_v3.5.1.md",
 )
-_MERMAID_UNQUOTED_SPECIAL_RE = re.compile(r'\b[A-Za-z0-9_-]+\[(?!["(\[/])([^\]]*?[()/:][^\]]*?)\]')
+_BANNED_PROSE_PHRASES = (
+    "with a brain on top",
+    "while agents sleep",
+    "sleep cycle",
+    "spiking spreading activation",
+    "ebbinghaus",
+    "synaptic",
+    "time-travelling memory",
+    "competing beliefs",
+    "autonomous enterprise operating system",
+    "zero hallucinations",
+    "hallucination-free",
+    "empathic-tensor",
+    "empathic tensor",
+)
+_BANNED_PROSE_RE = re.compile(
+    "|".join(re.escape(phrase) for phrase in _BANNED_PROSE_PHRASES),
+    re.IGNORECASE,
+)
+_MERMAID_UNQUOTED_SPECIAL_RE = re.compile(
+    r'\b[A-Za-z0-9_-]+\[(?!["(\[/])((?:[^\]]*?[()/:]|[^\]]*?\[[^\]]*?\])[^\]]*?)\]'
+)
 
 
 def _strip_fences(md_text: str) -> str:
@@ -289,12 +310,42 @@ def check_code_and_config_brand_wall() -> list[str]:
     return errors
 
 
+def check_prose_metaphors(files: list[pathlib.Path]) -> list[str]:
+    """Scan Markdown prose outside code fences, inline backticks, CHANGELOG.md, and docs/adr/."""
+    errors: list[str] = []
+    for fpath in files:
+        rel_src = fpath.relative_to(_REPO_ROOT).as_posix()
+        if (
+            rel_src == "CHANGELOG.md"
+            or rel_src.startswith("docs/adr/")
+            or rel_src.startswith("docs/_generated/")
+        ):
+            continue
+        raw = fpath.read_text(encoding="utf-8")
+        in_fence = False
+        for line_no, line in enumerate(raw.splitlines(), 1):
+            if _FENCE_RE.match(line):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            prose_line = re.sub(r"`[^`]*`", " ", line)
+            m = _BANNED_PROSE_RE.search(prose_line)
+            if m:
+                errors.append(
+                    f"{rel_src}:{line_no}: banned biological metaphor or hype phrase in prose: {m.group(0)!r}"
+                )
+    return errors
+
+
 def main() -> int:
     md_files = [
         _REPO_ROOT / "README.md",
         _REPO_ROOT / "SECURITY.md",
         _REPO_ROOT / "CONTRIBUTING.md",
         _REPO_ROOT / "CHANGELOG.md",
+        _REPO_ROOT / "CLA.md",
+        _REPO_ROOT / "deploy" / "README.md",
         _REPO_ROOT / ".github" / "CODE_OF_CONDUCT.md",
     ]
     docs_dir = _REPO_ROOT / "docs"
@@ -307,6 +358,7 @@ def main() -> int:
     errors.extend(check_stale_refs(md_files))
     errors.extend(check_config_parity())
     errors.extend(check_json_and_mermaid(md_files))
+    errors.extend(check_prose_metaphors(md_files))
     errors.extend(check_version_and_brand_wall(md_files))
 
     if errors:
@@ -315,7 +367,7 @@ def main() -> int:
         return 1
 
     print(
-        f"[OK] Verified {len(md_files)} markdown files: 0 broken links/anchors, 0 orphan docs, 0 stale refs, 100% NCE_* config parity, valid JSON/Mermaid, 0 brand-wall violations."
+        f"[OK] Verified {len(md_files)} markdown files: 0 broken links/anchors, 0 orphan docs, 0 stale refs, 100% NCE_* config parity, valid JSON/Mermaid, 0 banned metaphors, 0 brand-wall violations."
     )
     return 0
 

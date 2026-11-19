@@ -197,7 +197,7 @@ UNMANAGED_PG_AUDITED_SITES: Final[frozenset[str]] = frozenset(
 | Domain / Subsystem | Site Identifier | Source File Location | Operational Purpose |
 | :--- | :--- | :--- | :--- |
 | **1. Maintenance & GC** (3) | `cron.consolidation.namespaces_scan` | [`nce/cron.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/cron.py) | Scans active namespaces to enqueue episodic consolidation jobs. |
-| | `cron.decay_prune` | [`nce/temporal_decay.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/temporal_decay.py) | Global temporal salience decay prune sweep across all namespaces. |
+| | `cron.decay_prune` | [`nce/temporal_decay.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/temporal_decay.py) | Global exponential time-decay retention prune sweep across all namespaces. |
 | | `cron.partition_maintenance` | [`nce/cron.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/cron.py) | Pre-generates upcoming monthly range partitions for event log and memories. |
 | **2. Saga Recovery** (3) | `cron.saga_recovery.list_stuck` | [`nce/cron.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/cron.py) | Queries orphaned sagas stuck in `PENDING` status across all tenants. |
 | | `cron.saga_recovery.mark_failed` | [`nce/cron.py`](https://github.com/sindrehaugen/NCE/blob/main/nce/cron.py) | Updates state for failed multi-DB write sagas. |

@@ -2,7 +2,10 @@
 
 # NCE Enterprise Security Guide
 
-This document details the security model, cryptographic controls, and access authorization boundaries implemented in the Neuro Cognitive Engine (NCE).
+This document details the cryptographic controls, authentication protocols, and PostgreSQL authorization boundaries implemented in NCE (an ongoing May 2026 personal R&D project).
+
+> [!IMPORTANT]
+> **Database/Code Enforcement vs. Operator Custody:** PostgreSQL (`FORCE ROW LEVEL SECURITY`, `prevent_mutation` WORM triggers, `pg_advisory_xact_lock`) and NCE's Python middleware (`BoundedBodyMiddleware`, `HMACAuthMiddleware`, `validate_outbound_url`, `AES-256-GCM` envelope encryption) enforce structural controls only when operators uphold four external preconditions: (1) runtime `PG_DSN` connects as non-superuser `nce_app` (never `rolsuper`), (2) `NCE_MASTER_KEY` (`>= 32` random bytes) is stored outside source control and backed up securely, (3) TLS is terminated at the reverse proxy (`Caddyfile` / `docker-compose.mtls.yml`), and (4) Redis remains reachable in `NCE_ENV=production` so single-use HMAC nonces and `ToolGovernanceCache` operate without tripping fail-closed rejections.
 
 ---
 

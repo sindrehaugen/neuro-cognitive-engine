@@ -341,7 +341,7 @@ If any database reports `"down"` the engine dispatches an alert and the HTTP sta
 | `top_k` | integer | no | `5` | Maximum results (alias for `limit`) |
 | `limit` | integer | no | `5` | Maximum results |
 | `offset` | integer | no | `0` | Pagination offset |
-| `as_of` | string (ISO 8601 UTC) | no | — | Time-travel: return memories valid at this timestamp |
+| `as_of` | string (ISO 8601 UTC) | no | — | Point-in-time filter: return records active at this UTC timestamp |
 
 ### curl
 

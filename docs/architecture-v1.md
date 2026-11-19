@@ -21,12 +21,12 @@ flowchart TB
     Agent["Downstream Agent Fleet\n(JWT Bearer / mTLS)"]
   end
 
-  subgraph System["Sovereign Cognitive Boundary"]
+  subgraph System["Multi-Tenant Retrieval & Governance Boundary"]
     NCE["Neuro Cognitive Engine (NCE)\nv3.6.0"]
   end
 
   subgraph Downstream["External & Edge Dependencies"]
-    LLM["LLM Provider (Consolidation/NLI)\n(OpenAI / Anthropic / Local)"]
+    LLM["LLM Provider (Summarization / NLI Tiebreaker)\n(OpenAI / Anthropic / Local)"]
     Emb["Cognitive Sidecar / Embedding Engine\n(Jina 768-dim / Edge Server)"]
   end
 
@@ -42,7 +42,7 @@ flowchart TB
   Sources -->|Webhooks / Change Feeds| NCE
   NCE -->|Syncs/Pulls Documents| Sources
   NCE -->|Vector Embeddings HTTP| Emb
-  NCE -->|Consolidation / NLI Reasoning| LLM
+  NCE -->|Summarization / NLI Tiebreaker| LLM
 ```
 
 ---
@@ -74,7 +74,7 @@ flowchart TB
 
   subgraph Datastores["Quad-Database Stack"]
     PG[("PostgreSQL + pgvector\n(Metadata, Graph, RLS session setting,\nRange partitioning)")]
-    Mongo[("MongoDB\n(Raw Episodic & Code Archive\nWORM layout)")]
+    Mongo[("MongoDB\n(Raw Document & Code Payload Store)")]
     Redis[("Redis\n(Job Queue, Locks, TTL Cache)")]
     MinIO[("MinIO S3-Compatible\n(Media, Replay Payload Cache)")]
   end
@@ -107,7 +107,7 @@ flowchart TB
 NCE version 3.6.0 exposes six distinct entry points, isolating workloads across dedicated runtimes:
 
 ### 2.1 `server.py` — MCP stdio Server
-- **Role**: Entry point for IDE integration (Cursor, Claude Desktop). Envelopes the core cognitive engine in the Model Context Protocol (MCP) using the stdio transport.
+- **Role**: Entry point for IDE integration (Cursor, Claude Desktop). Exposes the retrieval, graph, and governance engine over Model Context Protocol (MCP) stdio transport (complemented by `mcp_gateway_server.py` for remote Streamable HTTP `/mcp` sessions).
 - **Protocol**: JSON-RPC 2.0 over standard input/output.
 - **Authentication**: OS process boundary — the stdio client spawns this server and supplies its own env, so it already holds any key it would present; `NCE_MCP_API_KEY` is a configuration/defence-in-depth value, not a check against the caller. Tenant isolation is enforced separately via `NCE_MCP_NAMESPACE_ID` pinning.
 - **Lifecycle**: Initiated when the IDE launches the agent. A garbage collector background loop (`run_gc_loop`), a quota Redis-flush loop, a re-embedder task, and an outbox relay loop are co-launched as tracked asyncio tasks by `nce/mcp_stdio_main.py:run_stdio_server()` after the engine connects.
@@ -237,7 +237,7 @@ flowchart TD
 
 ## 5. Background Worker & Cron Tasks
 
-Background systems operate outside the MCP stdio path to maintain data purity, renew subscriptions, enforce retention, anchor tamper-proof proofs, and trigger cognitive updates:
+Background workers and schedulers run outside interactive request paths to index source files, renew bridge subscriptions, enforce retention, anchor Merkle chain digests, and run scheduled HDBSCAN summarization:
 
 ### 5.1 RQ Workflows
 The `start_worker.py` daemon processes operations enqueued by entry points:
@@ -252,7 +252,7 @@ The `nce/cron.py` process drives **17 scheduled jobs** orchestrated through APSc
 | :-: | :--- | :--- | :--- | :--- |
 | **1** | `bridge_subscription_renewal` | Every $N$ min (`BRIDGE_CRON_INTERVAL_MINUTES`, def 45) | `bridge_subscription_renewal`<br>TTL: $N\text{m} + 60\text{s}$ | Scans document-bridge OAuth subscriptions expiring within `BRIDGE_RENEWAL_LOOKAHEAD_HOURS` (SharePoint, Google Drive, Dropbox) and executes provider renewal API calls via `renew_expiring_subscriptions(pool)`. Failed renewals transition rows to `DEGRADED`. |
 | **2** | `phase_2_1_reembedding` | Every $M$ min (`REEMBED_CRON_INTERVAL_MINUTES`, def 60) | `reembedding`<br>TTL: $M\text{m} + 60\text{s}$ | Sweeps PostgreSQL and MongoDB via `ReembeddingWorker` to generate updated vectors when the active embedding model configuration changes. Coalesced (`max_instances=1`) to prevent overlapping runs. |
-| **3** | `sleep_consolidation` | Every $C$ min (`CONSOLIDATION_CRON_INTERVAL_MINUTES`, def 360) | `sleep_consolidation`<br>TTL: $\min(C\text{m}, 7200\text{s}) + 60\text{s}$ | Scans namespaces with `metadata.consolidation.enabled=true`, clusters episodic memories via HDBSCAN, and synthesizes abstract consolidated memory records via `ConsolidationWorker`. |
+| **3** | `sleep_consolidation` | Every $C$ min (`CONSOLIDATION_CRON_INTERVAL_MINUTES`, def 360) | `sleep_consolidation`<br>TTL: $\min(C\text{m}, 7200\text{s}) + 60\text{s}$ | Scans namespaces with `metadata.consolidation.enabled=true`, clusters raw embeddings via HDBSCAN, and writes Pydantic-validated summary records via `ConsolidationWorker`. |
 | **4** | `event_log_partition_maintenance` | Monthly (`0 0 1 * *` UTC) | `event_log_partition_maintenance`<br>TTL: 3600s | Invokes `SELECT nce_ensure_event_log_monthly_partitions(cfg.NCE_PARTITION_LOOKAHEAD_MONTHS)` to ensure future monthly table partitions exist in PostgreSQL; updates `EVENT_LOG_PARTITION_MONTHS_AHEAD` Prometheus gauge. |
 | **5** | `saga_recovery` | Every 5 min (fixed interval) | `saga_recovery`<br>TTL: 600s | Sweeps `saga_execution_log` for sagas stuck in `pg_committed` state older than 5 minutes. Verifies memory existence in PostgreSQL and completes the saga with a `saga_recovered` event, or marks `failed` for human review. |
 | **6** | `outbox_relay` | Every $S$ sec (`OUTBOX_RELAY_INTERVAL_SECONDS`, def 5) | `outbox_relay`<br>TTL: $\max(2S\text{s}, 30\text{s})$ | Polls pending outbox notification events (`run_outbox_relay_once`) from the WORM ledger and delivers them to external webhook subscribers with exponential retry backoff. |
@@ -260,7 +260,7 @@ The `nce/cron.py` process drives **17 scheduled jobs** orchestrated through APSc
 | **8** | `d365_weekly_full_sync` | Weekly (`0 2 * * 0` UTC Sun) | `d365_weekly_full_sync`<br>TTL: 82800s (23h) | Executes an unfiltered full-refresh pass against Dynamics 365 Dataverse for all D365-enabled namespaces to detect/retire deleted records (`detect_and_retire_deletions`) and re-seed watermark cursor baselines. |
 | **9** | `d365_netbox_bridge` | Every $B$ min (`NCE_D365_NETBOX_BRIDGE_INTERVAL_MINUTES`, def 120, min 10) | `d365_netbox_bridge`<br>TTL: $B\text{m} + 60\text{s}$ | Cross-references D365 Accounts and FunctionalLocations with NetBox Tenants and Sites via `D365NetBoxBridge.run_full_bridge_sync`. Active when `NCE_D365_NETBOX_BRIDGE_ENABLED=true`. |
 | **10** | `actor_trust_scores` | Hourly (`IntervalTrigger(hours=1)`) | `actor_trust_scores`<br>TTL: 3660s | Recomputes Laplace-smoothed trust scores in `actor_trust` per namespace by aggregating `quarantine_confirmed` and `quarantine_rejected` WORM events with logarithmic contradiction penalties ($\text{trust} \in [0.1, 0.95]$), preserving WORM invariants. |
-| **11** | `phase_2_2_decay_prune` | Fixed 60 min (`DECAY_PRUNE_INTERVAL_MINUTES`, constant in `nce/temporal_decay.py`; not configurable at runtime) | `decay_prune`<br>TTL: 3660s (60m + 60s) | Ebbinghaus temporal decay sweep (`register_decay_jobs` in `nce/temporal_decay.py`). Soft-deletes (`valid_to = now()`) expired memories whose retention score drops below threshold ($R < 0.15$) based on memory class half-life stability. |
+| **11** | `phase_2_2_decay_prune` | Fixed 60 min (`DECAY_PRUNE_INTERVAL_MINUTES`, constant in `nce/temporal_decay.py`; not configurable at runtime) | `decay_prune`<br>TTL: 3660s (60m + 60s) | Configurable exponential time-decay sweep (`register_decay_jobs` in `nce/temporal_decay.py`). Soft-deletes (`valid_to = now()`) expired records whose retention score drops below threshold ($R < 0.15$) based on record-class half-life. |
 | **12** | `product_eol_watcher` | Every $E$ min (`NCE_PRODUCT_EOL_WATCHER_INTERVAL_MINUTES`, def 360, min 5) | `product_eol_watcher`<br>TTL: $E\text{m} + 60\text{s}$ | Creates `replaced_by` Knowledge Graph edges to successor SKUs (`do_check_eol`), without mutating prices or catalog rows directly — **only when an EOL signal is supplied.** As shipped the sole working signal is the `NCE_PRODUCT_EOL_LIST` env var; the manufacturer-adapter tier is not implemented and the catalog-scan tier needs `product_catalog` columns that are not in the shipped schema, so with that var unset the job runs on schedule and is a no-op. See `docs/engines/product-admin.md` §4.1. |
 | **13** | `agreements_coverage_watcher` | Every $A$ min (`NCE_AGREEMENTS_COVERAGE_WATCHER_INTERVAL_MINUTES`, def 1440, min 5) | `agreements_coverage_watcher`<br>TTL: $A\text{m} + 60\text{s}$ | Evaluates SLA and contract coverage matrices (`do_coverage_matrix`) for namespaces with `metadata.agreements.enabled=true` and emits throttled alerts for `expiry` and revenue `leakage` flags. |
 | **14** | `economy_recurring_recognition` | Daily (def 1440 min / 24h, min 60) | `economy_recurring_recognition`<br>TTL: 86460s (24h + 60s) | Runs ratable 1/12 monthly recurring revenue recognition (`do_recognize_recurring`) for namespaces with `metadata.economy.enabled=true`, fetching contracts from `economy_contracts` and writing balance-guaranteed GL postings with `action_idempotency` deduplication. |

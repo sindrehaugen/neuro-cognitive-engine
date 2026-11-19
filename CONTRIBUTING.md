@@ -1,131 +1,94 @@
 # Contributing to NCE Core
 
-Thank you for contributing to the **Neuro-Cognitive Engine (NCE)**! This document provides instructions for setting up a local development environment, adhering to code quality gates, generating schema artifacts, and respecting core architectural invariants.
+Thank you for your interest in **NCE (`neuro-cognitive-engine`)**—an ongoing May 2026 R&D project exploring multi-database systems architecture, PostgreSQL forced Row-Level Security, envelope cryptography, and grounded MCP workflows. This guide covers local environment setup, CI quality gates, schema/doc generators, and core architectural boundaries.
 
 ---
 
-## The Cardinal Rule: Domain-Agnostic Core
+## Core Boundary Rule: Keep Core Domain-Agnostic
 
 > [!IMPORTANT]
-> **Never hardcode vertical engine slugs or industry-specific domain logic in NCE Core.**
+> **Never hardcode business-domain table names, vendor connector slugs, or vertical workflow logic inside `neuro-cognitive-engine`.**
 
-NCE Core is strictly a domain-agnostic cognitive memory, reasoning, and multi-tenant substrate.
-- Specific business domains (such as Sales, Procurement, System Design, Economy, Odoo, and Salesforce) belong exclusively in external plugin packages such as [`sindrehaugen/nce-vertical-engines`](https://github.com/sindrehaugen/nce-vertical-engines).
-- Core interacts with domain extensions solely through declared entry-point interfaces (`nce.plugins`), generic resource surfaces (`nce/resource_surface/`), and standard events (`nce/events.py`).
-- Pull requests introducing domain-specific table names, business logic, or vertical module imports into Core will be rejected.
+`neuro-cognitive-engine` provides the domain-agnostic four-store persistence, retrieval, security, governance, and `nce.connectors` SDK substrate:
+
+- Standalone CAD/BIM/workspace file and API connectors belong in [`sindrehaugen/nce-app-engines`](https://github.com/sindrehaugen/nce-app-engines) (`nce_apps`).
+- Business, ERP/CRM, compliance, and infrastructure prototype modules belong in [`sindrehaugen/nce-vertical-engines`](https://github.com/sindrehaugen/nce-vertical-engines) (`nce_verticals`).
+- Core interacts with extensions strictly via `nce.plugins` entry points, `nce.connectors` SDK primitives, generic resource surfaces (`nce/resource_surface/`), and standard event contracts.
 
 ---
 
-## Development Setup
+## Local Development Setup
 
-NCE requires **Python 3.10+** (Python 3.12 recommended for runtime alignment) and access to local or containerized backing services (PostgreSQL with `pgvector`, MongoDB, Redis, and MinIO).
-
-### 1. Clone & Create Virtual Environment
+NCE requires **Python 3.10+** (Python 3.12 matches CI container images) and Docker for running local PostgreSQL (`pgvector`), MongoDB, Redis, and MinIO containers.
 
 ```bash
 git clone https://github.com/sindrehaugen/neuro-cognitive-engine.git
 cd neuro-cognitive-engine
 
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 2. Install Development Dependencies
-
-Install Core in editable mode with development tooling:
-
-```bash
-pip install -e ".[dev]"
-# Or install dependencies from requirements:
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ---
 
-## Code Quality Gates
+## Quality & Verification Gates
 
-Every pull request must pass the automated CI quality gates before merge review:
-
-### 1. Linting & Formatting (Ruff)
-
-We use [Ruff](https://astral.sh/ruff) for rapid linting and code formatting:
+Every pull request must pass linting, formatting, type-checking, documentation integrity, and unit/security test suites:
 
 ```bash
-# Check code style and rules
-ruff check .
+# 1. Ruff lint + format check + documentation/link/anti-metaphor gate
+make lint
 
-# Verify formatting without mutating files
-ruff format --check .
+# 2. Static type checking
+make typecheck
 
-# Apply formatting fixes
-ruff format .
-```
-
-### 2. Static Type Checking (Mypy)
-
-Core enforces strict type hints across the entire codebase:
-
-```bash
-mypy nce/
-```
-
-### 3. Test Suites (Pytest)
-
-Run unit tests, Row-Level Security checks, and mock-backed orchestrator suites (`unit`, `integration`, and `perf` markers are registered in `pyproject.toml`):
-
-```bash
-# Run unit and mock tests (excludes live/integration/perf suites)
+# 3. Fast unit, security, schema-drift, and doc-ratchet tests
 pytest tests/ -m "not integration and not perf and not live"
 
-# Run integration tests against running local services
+# 4. Live multi-store integration tests (requires `make local-up` or `make up`)
 pytest -m integration
-
-# Run 100k-row hot-path & multi-agent LLM-loop benchmarks
-python scripts/profile_100k_hotpaths.py --phase optimized --iterations 30
-python scripts/profile_llm_agent_loop.py --agents 10 --turns 4
 ```
 
 ---
 
-## Plugin Extension Seam & Dual SQL Migration Ledgers (`nce.plugins`)
+## Plugin Extension Seam & Isolated SQL Migration Ledgers (`nce.plugins`)
 
-External domain packages (such as `nce-vertical-engines`) integrate via the `nce.plugins` entry-point group (see [`docs/plugin_development.md`](docs/plugin_development.md)):
+External plugin packages register via `[project.entry-points."nce.plugins"]` (see [`docs/plugin_development.md`](docs/plugin_development.md)):
 
-- **`NCEPlugin` & `PluginCapabilities`:** Plugins declare `tenant_rls_tables`, `global_tables`, and `unmanaged_pg_sites` via `get_capabilities()` and register per-tenant bootstrap rows in `on_namespace_created(conn, namespace_id)`.
-- **Dual SQL Migration Ledgers:** Core migrations (`nce/migrations/001_enable_rls.sql`–`038_v351_hotpath_rls_and_indexes.sql`) record bare filenames in `applied_migrations`, whereas plugin migrations record `{plugin_scope}:{filename}` (`nce_verticals:037_bom_line_priced.sql`), preventing cross-repo numbering collisions.
+- **`NCEPlugin` & `PluginCapabilities`:** Plugins declare `tenant_rls_tables`, `global_tables`, and `unmanaged_pg_sites` via `get_capabilities()` so Core's startup `verify_rls_catalog_consistency()` enforces `FORCE ROW LEVEL SECURITY` across both Core (`39` forced-RLS tables out of `42` Core SQL tables) and all installed plugin tables.
+- **Scoped Migration Ledgers:** Core migrations (`nce/migrations/001_enable_rls.sql`–`041_app_connections_vault.sql` + `optional/010_citus_sharding.sql`) record bare filenames in `applied_migrations`, whereas plugins record `<plugin_scope>:<filename>` (e.g., `nce_apps:001_shared_cad_tables.sql`, `nce_verticals:001_shared_spine.sql`), avoiding cross-repo numbering collisions.
 
 ---
 
 ## Schema, Lockfile & Surface Generators
 
-NCE enforces schema drift detection, lockfile reproducibility, and documentation synchronicity via mechanical generators. If you modify database migrations, dependencies, MCP tool definitions, or API route signatures, run the corresponding scripts:
+When modifying SQL migrations, dependencies, MCP tool specs, or HTTP routes, run the corresponding verification/generation scripts:
 
 ```bash
-# 1. Verify that database migrations match the declarative schema definitions (43 Core SQL tables)
+# Verify declarative schema parity across all 42 Core SQL tables
 python scripts/check_schema_drift.py
 
-# 2. Refresh transitive dependency lockfile (requirements.lock)
+# Refresh locked transitive dependencies (requirements.lock)
 make lockfile
 
-# 3. Regenerate OpenAPI specifications (in a Pure-Core environment without plugins mounted)
+# Regenerate Pure-Core OpenAPI and API surface docs (with no external plugins mounted)
 NCE_ENABLED_ENGINES=none python scripts/gen_openapi.py
-
-# 4. Regenerate surface documentation and markdown indexes
 NCE_ENABLED_ENGINES=none python scripts/gen_api_docs.py
 
-# 5. Verify relative markdown links, anchors, 100% NCE_* config parity, and brand-wall hygiene
+# Verify relative links, #anchors, NCE_* config parity, anti-metaphor rules, and brand wall
 python scripts/check_docs_integrity.py
 python scripts/verify_docs_links_and_syntax.py
 ```
 
 > [!NOTE]
-> **Generated Files & `.gitattributes` §10.5b Bot Guard:** Never hand-edit `docs/_generated/*` or `openapi.json`. After merging a PR to `main`, if a post-merge `github-actions[bot]` surface-regeneration workflow runs, always `git pull --ff-only origin main` before tagging or branching.
+> **Generated Files & Post-Merge Sync:** Never hand-edit `docs/_generated/*`, `docs/API.md`, or `openapi.json`. Keep documentation prose grounded in concrete database, cryptographic, and retrieval mechanics rather than biological metaphors or commercial product claims.
 
 ---
 
 ## Pull Request Guidelines
 
-1. **Focused Scope:** Keep PRs targeted to a single issue or capability.
-2. **Deterministic Tests:** Include automated unit tests covering happy paths, edge cases, and tenant RLS isolation.
-3. **Commit Messages:** Follow conventional commit formatting (`feat:`, `fix:`, `refactor:`, `docs:`).
-4. **Documentation:** Update relevant markdown files under `docs/` and run `scripts/verify_docs_links_and_syntax.py` before submitting.
+1. **Focused Scope:** Keep PRs scoped to one cohesive fix or feature.
+2. **Deterministic Tests:** Cover happy paths, failure/rollback paths, and tenant RLS boundaries.
+3. **Conventional Commits:** Prefix commit titles with `feat:`, `fix:`, `refactor:`, `docs:`, or `chore:`.
+4. **Clean Brand Wall:** Public repositories must contain zero references to private downstream organizations or proprietary projects.

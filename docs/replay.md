@@ -1,207 +1,132 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 236e4dc (main) · **Last-audited:** 2026-11-19
 
-# Memory Replay Engine
+# Deterministic Event Replay & Sandbox Forking
 
-The Memory Replay Engine (Phase 2.3) allows observational streaming and active simulation of memory timelines. It is the primary tool for debugging complex agent behaviours and testing new cognitive strategies.
+The replay subsystem (`nce/replay.py`) streams, reconstructs, or forks namespace state from the append-only WORM `event_log` for audit verification, regression testing, and isolated configuration comparisons.
 
-## Replay Modes
+---
 
-NCE ships three distinct replay modes, each mapping to a separate class in `nce/replay.py`.
+## 1. Replay Modes
 
-| Mode | Class | Writes to target? | LLM re-execution? |
-|---|---|---|---|
-| Observational | `ObservationalReplay` | No | No |
-| Forked | `ForkedReplay` | Yes (isolated namespace) | Optional |
-| Reconstructive | `ReconstructiveReplay` | Yes (empty namespace) | No |
+NCE implements three replay strategies mapped to dedicated classes in `nce/replay.py`:
 
-### 1. Observational Replay
+| Mode | Class | Writes to Target Namespace? | External LLM Calls? | Outbound Actuation |
+| :--- | :--- | :--- | :--- | :--- |
+| **Observational** | `ObservationalReplay` | No (read-only cursor) | No | None |
+| **Reconstructive** | `ReconstructiveReplay` | Yes (empty target namespace) | No | Fenced (`is_replay_sandbox`) |
+| **Forked** | `ForkedReplay` | Yes (isolated target namespace) | Optional (`re-execute` only) | Fenced (`is_replay_sandbox`) |
 
-Read-only stream of `event_log` rows for a namespace/seq range. Engine state is never modified. Internally uses an asyncpg server-side cursor (`prefetch=50`) so the full event log is never loaded into Python heap. Every streamed row is HMAC-verified before yielding; a `DataIntegrityError` aborts the stream immediately.
+### 1.1 Observational Replay (`ObservationalReplay`)
 
-Yielded items per run:
+Streams `event_log` rows read-only for a `namespace_id` and sequence window using an `asyncpg` server-side cursor (`prefetch=50`) so large logs never materialize in Python heap memory. Every row's RFC 8785 JCS `HMAC-SHA256` signature is verified before yielding; any mismatch raises `DataIntegrityError` and aborts the stream.
 
-```
-{"type": "event",    <event_fields> }
+```text
+{"type": "event",    ...event_fields}
 {"type": "progress", "run_id": "...", "events_streamed": N}
 {"type": "complete", "run_id": "...", "events_streamed": N}
 {"type": "error",    "run_id": "...", "message": "..."}
 ```
 
-### 2. Forked Replay (Simulation)
+### 1.2 Forked Sandbox Replay (`ForkedReplay`)
 
-Replays source events into an isolated **target namespace**, potentially changing the outcome. The fork is controlled by a `FrozenForkConfig` (Pydantic `frozen=True`), which guarantees WORM-compliant replay integrity — `setattr` is blocked at the model level for the lifetime of the run.
+Replays events from a source namespace up to `fork_seq` into a separate **target namespace** governed by an immutable `FrozenForkConfig` (Pydantic `frozen=True`):
 
-Two sub-modes:
+- **`deterministic` sub-mode (default):** Serves historical model outputs from content-addressed MinIO objects (`event_log.llm_payload_uri`), verifying the object's `SHA-256` digest against `event_log.llm_payload_hash` before applying each event.
+- **`re-execute` sub-mode:** Invokes the configured model adapter fresh (with optional `config_overrides` for `llm_provider`, `llm_model`, `llm_credentials`, `llm_temperature`) inside the isolated target namespace to evaluate prompt or model changes without touching source tenant rows.
+- **Outbound Actuation & Webhook Fencing (`is_replay_sandbox`):** Target replay namespaces carry sandbox fencing metadata so outbound webhooks, ERP mutations, and hardware/OT connector write calls fail closed rather than re-triggering external side effects during replay.
 
-- **`deterministic`** — LLM responses are served from the MinIO payload cache (`event_log.llm_payload_uri`), making the fork byte-identical to the source run up to `fork_seq`. The cached payload's SHA-256 hash is re-verified against `event_log.llm_payload_hash` before use.
-- **`re-execute`** — The LLM provider is called fresh, optionally with `config_overrides` (keys: `llm_provider`, `llm_model`, `llm_credentials`, `llm_temperature`), so the fork intentionally diverges.
+### 1.3 Reconstructive Replay (`ReconstructiveReplay`)
 
-### 3. Reconstructive Replay
+Rebuilds state deterministically into an empty target namespace through `end_seq` without invoking external model providers, then computes `SHA-256` state digests over both namespaces and records `source_state_digest`, `target_state_digest`, and `digest_match` in `replay_runs`.
 
-Applies source events to an empty target namespace to reproduce byte-identical state at `end_seq`. Unlike `ForkedReplay`, no LLM payload resolution is performed — all events are applied deterministically. On completion, SHA-256 state digests are computed for both namespaces and stored in `replay_runs` (`source_state_digest`, `target_state_digest`, `digest_match`).
+---
 
-## Forked Replay Signal Flow
+## 2. Forked Replay Execution Flow
 
 ```mermaid
 sequenceDiagram
-    participant Controller as Replay Controller
-    participant Engine as Replay Engine
-    participant Source as Source Namespace (Log)
-    participant Target as Target Namespace (Isolated)
-    participant LLM as LLM Provider
+    participant Admin as "Admin Caller"
+    participant Engine as "ForkedReplay (nce/replay.py)"
+    participant Source as "Source Namespace (event_log)"
+    participant MinIO as "MinIO Response Cache"
+    participant LLM as "LLM Adapter (Optional)"
+    participant Target as "Target Sandbox Namespace"
 
-    Controller->>Engine: execute(frozen_config)
-    Engine->>Source: REPEATABLE READ snapshot: SELECT events <= fork_seq
+    Admin->>Engine: execute(FrozenForkConfig)
+    Engine->>Source: REPEATABLE READ snapshot (SELECT events <= fork_seq)
 
-    loop Per Event
+    loop Each Source Event
         alt replay_mode == "re-execute"
-            Engine->>LLM: Call with original prompt + config_overrides
-            LLM-->>Engine: New Response
+            Engine->>LLM: Execute prompt with config_overrides
+            LLM-->>Engine: Fresh structured output
         else replay_mode == "deterministic"
-            Engine->>Engine: Fetch + verify payload from MinIO
+            Engine->>MinIO: Fetch llm_payload_uri + verify SHA-256 hash
+            MinIO-->>Engine: Verified historical payload
         end
 
-        Engine->>Target: handler(conn, src_event, ctx, llm_payload, overrides)
+        Engine->>Target: Apply registered event handler in isolated RLS session
         Engine->>Target: append_event(parent_event_id=source_event.id)
-        Note over Target: Fresh HMAC-SHA256 over fork fields
+        Note over Target: Fresh JCS HMAC-SHA256 over target namespace & seq
     end
 
-    Engine-->>Controller: complete / error
+    Engine-->>Admin: Replay run status (success / failed)
 ```
 
-## Alternate Causal Provenance
+---
 
-A key feature of forked replay is **Alternate Causal Provenance**.
+## 3. Fork Provenance Lineage
 
-- Each replayed event receives a new UUID (`uuid5(target_namespace_id, str(source_event_id))`), a new `event_seq`, and a new `occurred_at` timestamp.
-- The `parent_event_id` field is set to the **source event's UUID**, linking the fork event back to the original timeline.
-- A **fresh HMAC-SHA256 signature** is computed over the fork's own fields: `fork namespace_id`, `fork event_seq`, `fork occurred_at`, and `source parent_event_id`. This is the "alternate causal provenance" contract specified in the module docstring (`nce/replay.py:20-22`).
-- LLM payloads for deterministic forks are copied to a new MinIO URI under `nce-llm-payloads/fork/<target_ns>/<source_event_id>.json`, independently addressable from the source payload.
+Every event written into a forked target namespace preserves cryptographic lineage back to its source event:
 
-## Handler Registry
+- Deterministic fork event ID: `uuid5(target_namespace_id, str(source_event_id))` with its own monotonic `event_seq` and `occurred_at` in the target namespace.
+- `parent_event_id` points to the **source event UUID**, allowing `get_event_provenance` to walk across fork boundaries.
+- A fresh JCS `HMAC-SHA256` signature is computed over `(target namespace_id, target event_seq, target occurred_at, source parent_event_id)`.
+- Cached model payloads for deterministic forks are copied to `nce-llm-payloads/fork/<target_ns>/<source_event_id>.json` so target retention and cleanup remain independent of the source namespace.
 
-The engine uses a **decorator registry** (`_HANDLER_REGISTRY`) to map event types to execution logic. The `_register` decorator is defined at `nce/replay.py:563`:
+---
 
-```python
-def _register(event_type: str) -> Callable[[HandlerFn], HandlerFn]:
-    """Decorator: register a coroutine as the handler for *event_type*."""
-    def _dec(fn: HandlerFn) -> HandlerFn:
-        _HANDLER_REGISTRY[event_type] = fn
-        return fn
-    return _dec
-```
+## 4. Exhaustive Handler Registry & Resumption
 
-Handler coverage is validated exhaustively at `ForkedReplay.__init__` and `ReconstructiveReplay.__init__` time via `_validate_handler_coverage()`, which compares registry keys against the full `EventType` union. A missing handler raises `ReplayHandlerMissingError` before any events are processed.
+`ForkedReplay.__init__` and `ReconstructiveReplay.__init__` call `_validate_handler_coverage()` against the complete `EventType` union before processing row `1`; any unhandled `EventType` raises `ReplayHandlerMissingError` immediately.
 
-### Registered Handlers
+| Event Type Group | Strategy in `nce/replay.py` | Target State Mutation |
+| :--- | :--- | :--- |
+| `store_memory` | `_handle_store_memory` | `INSERT` into `memories`, copy MongoDB payload, carry `memory_salience` |
+| `forget_memory` | `_handle_forget_memory` | `UPDATE memories SET valid_to` |
+| `boost_memory` | `_handle_boost_memory` | `UPSERT memory_salience` |
+| `resolve_contradiction` | `_handle_resolve_contradiction` | `UPDATE contradictions` + ATMS invalidation |
+| `consolidation_run` | `_handle_consolidation_run` | `INSERT memories` + `kg_nodes` / `kg_edges` + `memory_salience` |
+| `pii_redaction`, `snapshot_created`, `unredact` | Provenance handlers | Appends audit lineage row to target `event_log` |
+| Namespace / migration / saga / A2A audit events | `_handle_fork_provenance_only` | Appends audit lineage row to target `event_log` |
 
-| Event type | Handler / strategy | State mutation |
-|---|---|---|
-| `store_memory` | `_handle_store_memory` | INSERT into `memories`; copies MongoDB doc; carries salience |
-| `forget_memory` | `_handle_forget_memory` | UPDATE `memories` SET `valid_to` |
-| `boost_memory` | `_handle_boost_memory` | UPSERT `memory_salience` |
-| `resolve_contradiction` | `_handle_resolve_contradiction` | UPDATE `contradictions` |
-| `consolidation_run` | `_handle_consolidation_run` | INSERT `memories` + KG nodes/edges + `memory_salience` |
-| `pii_redaction` | `_handle_pii_redaction` | Provenance only |
-| `snapshot_created` | `_handle_snapshot_created` | Provenance only |
-| `unredact` | `_handle_unredact` | Provenance only |
-| 13 namespace/migration types | `_handle_fork_provenance_only` | Provenance only |
-| 11 audit/saga/sharing types | `_handle_fork_provenance_only` | Provenance only |
+### Crash Resumption & `replay_runs` Ledger
 
-The "provenance-only" contract means the event is written to the fork's `event_log` for audit lineage but no additional state mutation is applied.
+`replay_runs` (`nce/schema.sql`, extended by `014_replay_runs_digest.sql`) enforces `FORCE ROW LEVEL SECURITY` (`source_namespace_id = get_nce_namespace()`) and checkpoints progress every `10` events. On restart with `_existing_run_id`, the engine queries `MAX(event_seq)` already tagged with `params->>'replay_run_id'` in the target namespace and resumes at `prior_max + 1`. Each event executes inside its own Saga transaction.
 
-To add support for a new event type, register a handler in `nce/replay.py`:
+---
 
-```python
-@_register("my_new_event")
-async def _handle_my_new_event(
-    conn: asyncpg.Connection,
-    src: _EventRow,
-    ctx: ReplayContext | uuid.UUID,
-    llm_payload: dict | None,
-    config_overrides: dict | None,
-) -> dict[str, Any]:
-    # Apply state change to target namespace
-    return {"status": "applied"}
-```
+## 5. Admin MCP Tools
 
-## Persistence: `replay_runs` Table
+All replay tools require `admin` scope (`admin_api_key` on `stdio` or `admin`-scoped token on `/mcp`):
 
-Replay runs are tracked in the `replay_runs` table, defined in `nce/schema.sql:652`. The digest columns (`source_state_digest`, `target_state_digest`, `digest_match`) were added by migration `014_replay_runs_digest.sql`.
-
-```sql
-CREATE TABLE IF NOT EXISTS replay_runs (
-    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    source_namespace_id  UUID NOT NULL REFERENCES namespaces(id),
-    target_namespace_id  UUID REFERENCES namespaces(id),
-    mode                 TEXT NOT NULL,       -- observational | reconstructive | forked
-    replay_mode          TEXT NOT NULL DEFAULT 'deterministic',
-    start_seq            BIGINT NOT NULL,
-    end_seq              BIGINT,
-    divergence_seq       BIGINT,
-    config_overrides     JSONB,
-    status               TEXT NOT NULL,       -- running | success | failed | aborted
-    events_applied       BIGINT NOT NULL DEFAULT 0,
-    started_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-    finished_at          TIMESTAMPTZ,
-    error                TEXT,
-    source_state_digest  TEXT,               -- added by migration 014
-    target_state_digest  TEXT,               -- added by migration 014
-    digest_match         BOOLEAN              -- added by migration 014
-);
-```
-
-RLS is enforced: `tenant_isolation_policy` gates all rows on `source_namespace_id = get_nce_namespace()`.
-
-Progress is written every 10 events (`_PROGRESS_INTERVAL = 10`).
-
-## Resumption and Idempotency
-
-If a forked or reconstructive replay is interrupted, the run can be resumed by re-calling `execute()` with `_existing_run_id`. Before processing any events, the engine queries the target namespace for the highest `event_seq` already tagged with the `replay_run_id`:
-
-```sql
-SELECT COALESCE(MAX(event_seq), 0)
-FROM event_log
-WHERE namespace_id = $target
-  AND params->>'replay_run_id' = $run_id
-```
-
-It then advances `start_seq` to `(prior_max + 1)`, skipping already-applied events. Each event is applied in its own Saga transaction on a dedicated connection, so a crash never leaves a partial event partially written.
-
-## MCP Tools
-
-Four MCP tools are registered in `nce/mcp_stdio_tools.py` (all require `admin_api_key`):
-
-| Tool | Required args | Description |
-|---|---|---|
-| `replay_observe` | `namespace_id` | Stream events read-only; optional `start_seq`, `end_seq`, `agent_id_filter`, `max_events` (default 500) |
-| `replay_fork` | `source_namespace_id`, `target_namespace_id`, `fork_seq` | Fork a namespace; optional `start_seq`, `replay_mode` (default `deterministic`), `config_overrides`, `agent_id_filter`; returns `run_id` immediately |
-| `replay_reconstruct` | `source_namespace_id`, `target_namespace_id`, `end_seq` | Reconstruct byte-identical state; optional `start_seq`, `agent_id_filter`; returns `run_id` immediately |
-| `replay_status` | `run_id` | Poll status and progress of any active or completed replay run |
-
-A fifth related tool `get_event_provenance` (requires `memory_id`) returns the full `parent_event_id` causal chain for a memory, traversed up to 50 hops with each hop HMAC-verified.
-
-### `replay_fork` example
+| Tool | Required Parameters | Mechanical Behavior |
+| :--- | :--- | :--- |
+| `replay_observe` | `namespace_id` | Read-only HMAC-verified stream (`start_seq`, `end_seq`, `agent_id_filter`, `max_events` default `500`) |
+| `replay_fork` | `source_namespace_id`, `target_namespace_id`, `fork_seq` | Launches async `deterministic` or `re-execute` sandbox fork; returns `run_id` |
+| `replay_reconstruct` | `source_namespace_id`, `target_namespace_id`, `end_seq` | Reconstructs state into an empty namespace and verifies SHA-256 state digest |
+| `replay_status` | `run_id` | Returns status, `events_applied`, `digest_match`, and error details |
+| `get_event_provenance` | `memory_id` | Walks `parent_event_id` up to `50` hops, verifying each hop's HMAC signature |
 
 ```json
 {
-  "source_namespace_id": "aaaaaaaa-...",
-  "target_namespace_id": "bbbbbbbb-...",
+  "source_namespace_id": "00000000-0000-4000-8000-000000000001",
+  "target_namespace_id": "00000000-0000-4000-8000-000000000002",
   "fork_seq": 120,
   "replay_mode": "re-execute",
   "config_overrides": {
     "llm_provider": "anthropic",
-    "llm_model": "claude-opus-4-5",
+    "llm_model": "claude-sonnet-4-5",
     "llm_temperature": 0.2
-  },
-  "admin_api_key": "..."
+  }
 }
 ```
-
-Returns immediately:
-
-```json
-{"run_id": "cccccccc-..."}
-```
-
-Poll with `replay_status` until `status` is `"success"` or `"failed"`.

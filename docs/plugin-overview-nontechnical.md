@@ -1,64 +1,47 @@
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
+> **Status:** shipped · **Verified-against:** 236e4dc (main) · **Last-audited:** 2026-11-19
 
-# NCE Plugins — What They Do
-### A plain-language overview for non-technical colleagues
+# NCE Extension Plugins — Plain-Language Overview
 
----
-
-## The short version
-
-NCE (Neuro-Cognitive Engine) connects to two major platforms your team already uses — **Microsoft Dynamics 365** and **NetBox** — and gives AI assistants a deep, live understanding of both. Instead of an AI that answers generic questions, you get one that actually knows your customers, your open cases, your network, and your infrastructure history.
+> **Project Context:** NCE is an ongoing personal R&D project started in early May 2026. The extension modules below are experimental prototypes (`[Beta]`) built to test how AI assistants can read structured business and engineering systems safely with human approval gates—not turnkey commercial replacements for your existing software.
 
 ---
 
-## Dynamics 365 Plugin
+## What Problem Do Plugins Solve?
 
-**What is it?**
-NCE hooks directly into your Dynamics 365 / Dataverse environment and continuously reads your CRM data — incidents, accounts, contacts, and opportunities. It turns that data into searchable, connected memory that an AI assistant can reason over.
+Out of the box, NCE Core provides secure multi-tenant search, versioned audit logs, and access controls. Optional plugin packages connect that foundation to specific file formats and software platforms (such as **Microsoft Dynamics 365**, **NetBox**, or CAD/BIM files) so an MCP-enabled assistant (like Claude Desktop or Cursor) can look up structured project records and draft updates for human review.
 
-**What can it do?**
+ Plugins are split into two optional R&D packages:
 
-| Capability | What it means in practice |
-|---|---|
-| **Live case lookup** | Ask the AI about any ticket by number and get the full picture: case details, all attached notes, activity history, and how it connects to other known issues. |
-| **SLA breach monitoring** | NCE watches every incident against its SLA deadline and logs a tamper-proof record the moment a breach occurs. You get a chronological breach history you can query at any time — no manual tracking. |
-| **Client stress tracking** | NCE reads the tone and language of case notes over time and builds a frustration curve per account. If a client's stress score passes a threshold across multiple incidents, it raises a burnout alert — so you can intervene proactively, before a customer escalates or churns. |
-| **On-demand sync** | An operator or AI agent can trigger an immediate sync of all CRM entities (accounts, contacts, opportunities, incidents, work orders, agreements, customer assets, functional locations, knowledge articles) at any time, without waiting for the scheduled cycle. |
-| **Per-tenant control** | The D365 integration can be enabled or disabled independently per tenant/team — useful for rollouts or isolating test environments. |
-
-**Who benefits?**
-Support leads, account managers, and operations teams. The AI stops being a generic chatbot and becomes a colleague that has actually read every case, remembers every SLA commitment, and notices when a client relationship is deteriorating.
+1. **Application Connectors (`nce-app-engines`, `[Beta]`):** 20 standalone connectors for engineering and workspace files/APIs (AutoCAD DXF, Revit/IFC BIM, KiCad, WSCAD, SketchUp, Visio, Draw.io, Power BI, Microsoft 365, and others).
+2. **Business & Infrastructure Domain Engines (`nce-vertical-engines`, `[Beta]`):** 29 prototype schemas and workflows covering CRM/ERP sync, network inventory, procurement, agreements, support, and system design.
 
 ---
 
-## NetBox Plugin
+## Example 1: Dynamics 365 CRM Integration (`nce-vertical-engines`)
 
-**What is it?**
-NCE connects to your NetBox instance — the source of truth for your physical and virtual infrastructure — and builds a cognitive map of your entire network: every site, rack, device, cable run, and circuit. It then does things with that map that NetBox alone cannot.
-
-**What can it do?**
-
-| Capability | What it means in practice |
-|---|---|
-| **Full infrastructure map** | NCE automatically pulls your complete topology — sites, racks, devices, connections — and turns it into a searchable, connected knowledge graph. Ask the AI "what devices are in rack 3 in Oslo?" and it knows. |
-| **Unknown asset discovery** | NCE compares live telemetry against the official NetBox inventory. If something is talking on the network that isn't registered, NCE flags it and drafts the missing entry for review — reducing the gap between real infrastructure and documented infrastructure. |
-| **Root-cause circuit escalation** | When a device failure is detected, NCE applies causal analysis (Pearl's do-calculus) to determine whether a specific circuit provider's degradation *actually caused* the failure — not just correlated with it. If the answer is yes, it auto-generates an upstream escalation ticket. No more manual "was it the ISP?" investigation. |
-| **Cognitive dashboard inside NetBox** | A lightweight plugin for NetBox shows NCE's intelligence directly on device, rack, and site detail pages — stress trend, ahead-of-time fault map, real-time incident feed, active replay runs, and pending learning queue — without leaving the tool your team already uses. |
-| **D365 bridge** | When a Dynamics 365 incident is linked to network infrastructure, NCE can cross-reference the two: "this customer case is about the same circuit that failed last Tuesday." The bridge connects your CRM and your network view automatically. |
-
-**Who benefits?**
-Network engineers, NOC teams, and infrastructure managers. Root-cause analysis that used to take an hour of manual correlation now surfaces in seconds. Unknown assets are found before they become a security or compliance problem. And your NetBox stays more accurate because NCE actively flags gaps.
+| Capability | Practical Workflow |
+| :--- | :--- |
+| **Case & Account Lookup** | Query open support tickets, account records, attached notes, and related history inside a tenant-isolated workspace without copying spreadsheets by hand. |
+| **SLA Breach Logging** | Compare ticket timestamps against configured SLA windows and record chronological breach events in NCE's append-only audit log for review. |
+| **On-Demand or Scheduled Sync** | Pull incremental updates from Dataverse on a schedule or trigger a targeted refresh for accounts, contacts, incidents, work orders, and agreements. |
+| **Tenant-Scoped Isolation** | Enable or disable Dataverse sync per workspace (`namespace_id`) with encrypted credential storage (`AES-256-GCM`). *(Optional workplace/sentiment telemetry hooks exist in schema only and are disabled by default: `NCE_ENABLE_WORKPLACE_TELEMETRY=false`.)* |
 
 ---
 
-## Together
+## Example 2: NetBox Infrastructure Integration (`nce-vertical-engines`)
 
-When both plugins are active, NCE can connect the dots across domains that are normally siloed:
-
-> *"The client in D365 has been escalating for two weeks. Their frustration score is high. The circuit serving their site had two provider-confirmed degradation events in that window. NCE flagged both — with evidence — and the escalation was drafted automatically."*
-
-That kind of cross-domain awareness is what NCE is built for.
+| Capability | Practical Workflow |
+| :--- | :--- |
+| **Searchable Topology Graph** | Sync sites, racks, devices, cables, and circuits from NetBox into NCE's graph tables (`kg_nodes` / `kg_edges`) to answer multi-hop topology questions (e.g., *"which devices sit downstream of rack 3?"*). |
+| **Inventory Drift Flagging** | Compare observed network inventory against registered NetBox records and queue discrepancies for an engineer to review. |
+| **Upstream Dependency Correlation** | Walk directed circuit-to-device dependency edges during an outage to highlight candidate shared upstream links and draft incident notes for NOC review. |
+| **CRM-to-Site Cross-Reference** | Link Dynamics 365 customer sites with NetBox functional locations so support engineers can see whether an open ticket coincides with a known site maintenance window or circuit alert. |
 
 ---
 
-*For technical details, see `docs/d365_integration_reference.md` and `docs/netbox_and_cognitive_extensions.md`. Questions: ask the NCE team.*
+## Human-in-the-Loop Safety Boundaries
+
+- **Confirm-First Writes (`@governed`):** Actions that create or modify external records default to `pending_approval` until a human operator explicitly confirms them (`confirm=True`) within configured value and rate limits.
+- **Qualified Human Review Required:** Any engineering, electrical, accounting, or compliance calculations produced by prototype plugins are drafting aids for qualified specialists, never automated sign-off.
+
+For technical specifications, see [docs/plugin_development.md](plugin_development.md), [`nce-app-engines`](https://github.com/sindrehaugen/nce-app-engines), and [`nce-vertical-engines`](https://github.com/sindrehaugen/nce-vertical-engines).

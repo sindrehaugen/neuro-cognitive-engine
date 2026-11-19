@@ -1,166 +1,100 @@
 # Security Policy & Cryptographic Architecture
 
-The Neuro-Cognitive Engine (NCE) is built for mission-critical enterprise environments requiring rigorous data isolation, auditability, and tamper-proof cryptographic boundaries. This document outlines our supported versions, vulnerability reporting process, and cryptographic security architecture.
+**Project Scope Notice:** The Neuro-Cognitive Engine (`neuro-cognitive-engine`) is an **ongoing personal Research & Development (R&D) project started in early May 2026** to implement and test multi-tenant database isolation, envelope cryptography, and governed MCP workflows. While security controls are engineered fail-closed and verified via automated CI suites, this repository is maintained by an individual researcher—not a commercial vendor—and has not undergone independent third-party cryptographic or penetration-test certification.
 
 ---
 
-## Supported Versions
+## Supported Branches (R&D Maintenance)
 
-Security patches and updates are actively maintained for the following release branches:
+Security fixes target the active `main` branch (`3.6.x`):
 
-| Version | Supported | Status |
+| Version Line | Maintained | Notes |
 | :--- | :--- | :--- |
-| **3.5.x** | :white_check_mark: Yes | Current Stable Release (v3.5.4: Pure-ASGI Auth/Rate-Limit Stack, Fail-Closed Entra Prod Gate, Worker/Cron Seccomp Parity & Air-Gapped ONNX) |
-| **3.4.x** | :white_check_mark: Yes | Maintenance Release (Cognitive Scalability, WORM Advisory Locks & Hybrid RRF) |
-| **3.3.x** | :white_check_mark: Yes | Maintenance Release (Streamable HTTP `/mcp` Gateway & Envelope Crypto) |
-| **3.0.x**–**3.2.x** | :white_check_mark: Yes | Long-Term Support (LTS) Baseline (Decoupled Core & Plugin Architecture) |
-| **< 3.0.0** | :x: No | End of Life (Legacy TriMCP monolithic releases) |
+| **`3.6.x` (`main`)** | Yes | Current R&D baseline: Core Connector SDK (`nce.connectors`), `app_connections` vault (`041`), pure-ASGI middleware, baked offline ONNX embeddings, partition forced RLS (`040`), `nce_app` least-privilege grants (`039`). |
+| **`< 3.6.0`** | Best-effort / Superseded | Earlier May–November 2026 R&D iterations; upgrade to `3.6.x` on `main`. |
 
 ---
 
-## Vulnerability Disclosure Policy
+## Reporting a Security Issue
 
-We take system security seriously and appreciate coordinated vulnerability disclosure.
+If you identify a vulnerability in `neuro-cognitive-engine` or its companion R&D plugin repositories (`nce-app-engines`, `nce-vertical-engines`):
 
-### Reporting a Vulnerability
-
-If you discover a security vulnerability in NCE Core or official plugins:
-1. **Do not create a public issue.** Public bug trackers are never used for undisclosed security flaws.
-2. Email your findings directly to **security@sindrehaugen.no** (or submit via GitHub Private Vulnerability Reporting on `sindrehaugen/neuro-cognitive-engine`).
-3. Include detailed reproduction steps, proof-of-concept scripts or payloads, affected components/endpoints, and an assessment of potential impact.
-
-### Response Timelines & SLA
-
-- **Initial Response:** Within **48 hours** of report receipt.
-- **Triage & Severity Assessment:** Within **5 business days**, classifying according to CVSS v3.1.
-- **Remediation & Patch Release:** Critical vulnerabilities are prioritized for targeted out-of-band hotfixes within **14 business days**.
-- **Public Disclosure / Embargo:** We adhere to a standard **90-day coordinated disclosure timeline** from initial triage, allowing downstream enterprise deployments sufficient window to apply updates before technical details are published.
+1. **Avoid opening a public GitHub issue** for exploitable vulnerabilities before a fix is available.
+2. Report via **GitHub Private Vulnerability Reporting** on `sindrehaugen/neuro-cognitive-engine` or email **security@sindrehaugen.no**.
+3. Include reproduction steps, affected files/endpoints, and impact details. Reports are triaged on a best-effort basis (no commercial SLA).
 
 ---
 
-## Authentication & Cryptographic Architecture
+## Implemented Security Controls & Trust Boundaries
 
-NCE's security model enforces defense-in-depth across the entire data lifecycle and communication plane.
-
-```
+```text
                      ┌──────────────────────────────────────────────┐
-                     │            Inbound Communication             │
+                     │             Inbound HTTP / MCP               │
                      └──────────────────────┬───────────────────────┘
                                             │
-               ┌────────────────────────────┴───────────────────────────┐
-               │                                                        │
-               ▼                                                        ▼
-   ┌───────────────────────┐                                ┌───────────────────────┐
-   │    Admin REST API     │                                │  Agent-to-Agent (A2A) │
-   │   (admin_server.py)   │                                │   (a2a_server.py)     │
-   ├───────────────────────┤                                ├───────────────────────┤
-   │ - HMAC-SHA256 (3-Hdr) │                                │ - Atomic 1-time grant │
-   │ - Replay Nonce Cache  │                                │ - Ed25519 / RS256 JWT │
-   │ - Fail-closed prod    │                                │ - Scope confinement  │
-   └───────────┬───────────┘                                └───────────┬───────────┘
-               │                                                        │
-               └────────────────────────────┬───────────────────────────┘
-                                            │
+        ┌───────────────────────────────────┼───────────────────────────────────┐
+        ▼                                   ▼                                   ▼
+┌───────────────────────┐       ┌───────────────────────┐       ┌───────────────────────┐
+│   Streamable /mcp     │       │    Admin REST API     │       │  A2A Federation API   │
+│ (mcp_gateway_server)  │       │   (admin_server.py)   │       │   (a2a_server.py)     │
+├───────────────────────┤       ├───────────────────────┤       ├───────────────────────┤
+│ - Scoped Bearer Token │       │ - 3-Header HMAC-SHA256│       │ - Pinned RS256/ES256  │
+│ - Fail-closed Redis   │       │ - Redis Nonce Replay  │       │ - SHA-256 Grant Hash  │
+│ - HTTP 413 Body Cap   │       │ - Optional Edge mTLS  │       │ - Owner-RLS Execution │
+└───────────┬───────────┘       └───────────┬───────────┘       └───────────┬───────────┘
+            └───────────────────────────────┼───────────────────────────────────┘
                                             ▼
                        ┌────────────────────────────────────────┐
-                       │     PostgreSQL 16 Multi-Tenant RLS     │
+                       │     PostgreSQL 16 Forced Tenant RLS    │
                        │   set_config('nce.namespace_id', ...)  │
                        │     (SELECT get_nce_namespace())       │
                        └────────────────────┬───────────────────┘
-                                            │
                                             ▼
                        ┌────────────────────────────────────────┐
-                       │        WORM Append-Only Ledger         │
-                       │        prevent_mutation trigger        │
-                       │        SHA-256 Merkle-Chain Log        │
+                       │      Append-Only WORM event_log        │
+                       │   prevent_mutation + advisory xact lock│
+                       │   RFC 8785 JCS HMAC-SHA256 Merkle Chain│
                        └────────────────────────────────────────┘
 ```
 
-### 1. Administrative HMAC-SHA256 Three-Header Protocol
+### 1. Three-Header Admin `HMAC-SHA256` & Replay Nonces
 
-All administrative and operational REST endpoints (`/api/*`) require strict cryptographic request authentication via three mandatory HTTP headers:
+Administrative REST endpoints (`/api/*` on `admin_server.py`) verify three headers (`nce/auth.py`):
 
-- `X-NCE-Timestamp`: UNIX timestamp in UTC (seconds or milliseconds). The server enforces a strict sliding time window (`±300 seconds` by default) to reject stale or pre-dated requests.
-- `X-NCE-Nonce`: A cryptographically random unique nonce string (minimum 16 bytes).
-- `Authorization`: `HMAC-SHA256 <signature>`, computed as:
-  $$\text{HMAC-SHA256}(\text{key} = NCE\_API\_KEY, \text{msg} = \text{timestamp} + ":" + \text{nonce} + ":" + \text{method} + ":" + \text{path} + ":" + \text{SHA256}(\text{body}))$$
+- `X-NCE-Timestamp`: UTC Unix epoch seconds checked against `NCE_CLOCK_SKEW_TOLERANCE_S` (default `90` seconds).
+- `X-NCE-Nonce`: Unique per-request nonce atomically claimed in Redis (`SET nce:nonce:<nonce> 1 NX PX <2*skew_ms>`).
+- `Authorization`: `HMAC-SHA256 <hex_digest>` computed with `NCE_API_KEY` over newline-joined `METHOD\nPATH\nTIMESTAMP` (appending `\nSHA256_HEX(body)` when the request body is non-empty), compared via `hmac.compare_digest`.
 
-### 2. Distributed Anti-Replay Nonce Store
+When `NCE_ENV=production` and `NCE_HMAC_NONCE_REQUIRED=true` (default), missing or unreachable Redis nonce state fails **closed** (`-32002` / HTTP `401`).
 
-To protect against replay attacks:
-- The server validates inbound request nonces against a Redis-backed distributed cache.
-- Nonces are stored with a Time-To-Live (TTL) matching the timestamp expiration window.
-- Duplicate nonce presentation within the valid drift window results in immediate `HTTP 401 Unauthorized` rejection with audit log recording.
+### 2. Fail-Closed Startup & Override Guards
 
-### 3. Fail-Closed Production Configuration Guards
+- **`NCE_MASTER_KEY` Enforcement:** Importing or booting NCE without `>= 32` UTF-8 bytes of `NCE_MASTER_KEY` raises `RuntimeError` immediately; weak repeating patterns are rejected in production.
+- **No Production Override:** `NCE_ADMIN_OVERRIDE=true` is hard-blocked when `NCE_ENV=production` (`live_admin_override_enabled()` returns `False` and startup raises `RuntimeError`).
+- **Password Hashing:** `NCE_ADMIN_PASSWORD` requires `$pbkdf2$...` or Argon2id digests in production.
 
-Security controls in `nce/config.py` are engineered to fail closed:
-- **Administrative Override Suppression:** `live_admin_override_enabled()` strictly enforces that whenever `NCE_ENV=production` or `cfg.IS_PROD` evaluates to true, administrative overrides (`NCE_ADMIN_OVERRIDE`) are unconditionally disabled (`False`). No environment flag can override production security constraints at runtime.
-- **Secret Strength Validation:** Production startup enforces minimum key length constraints ($\ge 32$ UTF-8 bytes for `NCE_MASTER_KEY` and `NCE_API_KEY`).
-- **Encrypted Storage:** Passwords require PBKDF2/Argon2 hashing; plain-text credentials in production environments raise immediate startup exceptions.
+### 3. Forced PostgreSQL Row-Level Security (`scoped_pg_session`)
 
-### 4. Atomic One-Time A2A Grant Tokens
+- All **39** tenant-scoped Core tables (**38** single-namespace tables in `EXPECTED_TENANT_RLS_TABLES` plus `a2a_grants` in `EXPECTED_SPECIAL_RLS_TABLES`, out of `42` Core SQL tables; dynamically joined by `110` forced-RLS tables in `nce-vertical-engines` and `58` forced-RLS tables in `nce-app-engines` when installed) enforce `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` across parent tables and child partitions (`040_partition_rls_and_key_confinement.sql`).
+- `scoped_pg_session(pool, namespace_id)` binds `set_config('nce.namespace_id', $1, true)` inside the transaction, evaluated via the `STABLE PARALLEL SAFE` `(SELECT get_nce_namespace())` `InitPlan` pattern (`038_v351_hotpath_rls_and_indexes.sql`).
+- **Operator Role Requirement:** Database-level RLS blocks cross-tenant queries only when the runtime `PG_DSN` connects as the non-superuser `nce_app` role (`039_nce_app_runtime_role_grants.sql`) rather than a PostgreSQL `rolsuper` / `BYPASSRLS` account. `verify_rls_catalog_consistency()` validates catalog flags on boot.
 
-Agent-to-Agent (A2A) cross-network federation operates under zero-trust authorization:
-- Cross-agent memory sharing and remote tool dispatch require an ephemeral, cryptographically signed delegation token (`nce/a2a.py`).
-- **Atomic Single-Use Consumption:** Tokens are redeemed via atomic database/Redis operations (`GETDEL` or SQL `UPDATE ... WHERE state = 'ACTIVE' RETURNING *`). This eliminates time-of-check to time-of-use (TOCTOU) race conditions and guarantees that tokens cannot be double-spent or concurrently replayed.
-- **Scope & Principal Pinning:** Every grant token binds explicitly to issuing tenant, target tenant, allowed tool/skill namespaces, and an explicit time-to-live.
+### 4. Envelope Encryption (`TCDEK\x01`) & Cryptographic Erasure
 
-### 5. Multi-Tenant Row-Level Security (PostgreSQL RLS)
+- Per-record `AES-256-GCM` Data Encryption Keys (`encryption_deks` / `wrapped_dek`) are wrapped under versioned Key Encryption Keys derived from `NCE_MASTER_KEY` (Argon2id `time_cost=3, memory_cost=64 MiB` or PBKDF2-HMAC-SHA256 600k iterations).
+- Unwrapped DEKs live in a bounded 300s LRU (`maxsize=512`) backed by mutable `bytearray` buffers zeroed in-place upon eviction or `forget_memory` / `shred_memory` / `crypto_shred_subject`.
+- Tenant connector credentials in `app_connections` (`041_app_connections_vault.sql`) are encrypted via `TenantConnectionVault` and never returned in plaintext by `/admin/plugins/api/connections`.
 
-NCE isolates tenant data at the storage layer rather than relying on application-level filtering:
-- Every tenant relational table (`36` Core + `96` Vertical = `132` total forced-RLS tables) enforces PostgreSQL Row-Level Security (`ENABLE ROW LEVEL SECURITY; FORCE ROW LEVEL SECURITY;`).
-- Session isolation is bound per transaction via `scoped_pg_session(pool, namespace_id)`, which executes `SELECT set_config('nce.namespace_id', $1, true), set_config('hnsw.iterative_scan', 'relaxed_order', true)` in a single round-trip and evaluates policies via the `STABLE PARALLEL SAFE` `(SELECT get_nce_namespace())` `InitPlan` pattern.
-- Any query attempting cross-tenant access without administrative bypass raises a database-level violation, ensuring complete tenant confinement even in the event of an application logic defect.
+### 5. Append-Only WORM `event_log` & Canonical Signing
 
-### 6. WORM Event Log Immutability & Advisory Locks
+- `prevent_mutation()` triggers block `UPDATE`, `DELETE`, and `TRUNCATE` on `event_log` and `event_parents`.
+- Per-namespace `pg_advisory_xact_lock` (`acquire_event_log_worm_lock`, migration `036`) serializes concurrent event appends per tenant so `chain_hash` SHA-256 Merkle links cannot race.
+- Payloads are canonically serialized per RFC 8785 (JCS) and signed with rotatable `HMAC-SHA256` keys (`signing_keys`, confined behind `SECURITY DEFINER` helpers in migration `040`).
 
-The central audit and event history ledger (`event_log`) guarantees Write-Once-Read-Many (WORM) auditability and strict transactional ordering:
-- **Database Trigger:** The `prevent_mutation` trigger intercepts and aborts any SQL `UPDATE`, `DELETE`, or `TRUNCATE` operations on `event_log`.
-- **Per-Namespace Advisory Locks:** Migration `036` introduces `acquire_event_log_worm_lock(p_namespace_id UUID)` executed via a `BEFORE INSERT` trigger (`trg_event_log_worm_advisory_lock`) using PostgreSQL `pg_advisory_xact_lock(hashtext('nce_worm_event_log'), hashtext(p_namespace_id::text))`. This serializes concurrent writes strictly per namespace, eliminating Merkle chain concurrency races while avoiding global bottlenecks.
-- **Cryptographic Hash Chaining:** Every event record incorporates the SHA-256 hash of its predecessor, forming a tamper-evident Merkle chain from the namespace genesis.
-- **Deterministic Replay:** The immutable event log enables deterministic point-in-time reconstruction (`as_of`) and counterfactual branching without mutating historical state.
+### 6. Pure-ASGI Body Limits, SSRF Defense & Replay Fencing
 
-### 7. Ingress Protection & BoundedBodyMiddleware
+- **HTTP `413` Ingress Cap:** Pure-ASGI `BoundedBodyMiddleware` (`NCE_MAX_HTTP_BODY_BYTES`, default `10 MiB`) aborts oversized request streams before buffering.
+- **SSRF Egress Validation:** `validate_outbound_url` rejects RFC 1918 subnets, loopback, link-local (`169.254.0.0/16`), CGNAT (`100.64.0.0/10`), and IPv4-mapped IPv6 (`::ffff:169.254.169.254`) unless explicitly listed in `NCE_SSRF_ALLOWLIST_HOSTS`.
+- **Replay Sandbox Fencing:** Forked/reconstructed replay runs mark target sessions `is_replay_sandbox` to block outbound webhooks and external connector mutations.
 
-All HTTP entrypoints (Admin REST, Streamable HTTP `/mcp` Gateway, A2A federation, and Webhook Receiver) are protected by ASGI `BoundedBodyMiddleware`:
-- **Hard Payload Ceiling:** Reads are strictly capped by `live_max_http_body_bytes()` (configured via `NCE_MAX_HTTP_BODY_BYTES`, default 10 MiB).
-- **HTTP 413 Enforcement:** Payloads exceeding the configured ceiling are rejected immediately with `HTTP 413 Payload Too Large` before buffering or JSON parsing, preventing Denial of Service (DoS) and memory exhaustion attacks.
-
-### 8. SSRF Blindspot Closures & Outbound Egress Guard
-
-Outbound HTTP communications (OAuth document bridges, external notifications, and outbound webhooks) are validated by `validate_outbound_url`:
-- **Private & Reserved Range Rejection:** Hard-blocks RFC 1918 private subnets, loopback (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16`), and broadcast addresses.
-- **CGNAT Blindspot Closure:** Explicitly blocks Carrier-Grade NAT (CGNAT) space (`100.64.0.0/10`) to prevent intranet and shared-infrastructure traversal.
-- **IPv4-Mapped IPv6 Traversal Blocking:** Resolves and validates embedded IPv4 addresses in IPv6 notations (e.g. `::ffff:169.254.169.254`), closing cloud metadata exfiltration vectors (AWS/GCP/Azure IMDS).
-- **Outbound Webhook Registration & Delivery Gate:** Target URLs for webhooks are verified against `NCE_SSRF_ALLOWLIST_HOSTS` at both subscription registration and outbound event dispatch.
-
-### 9. Hierarchical KEK/DEK Envelope Encryption & Provable Crypto-Shredding
-
-Data privacy and cryptographic isolation leverage hierarchical envelope encryption (`nce/envelope.py` and `nce/crypto/envelope.py`):
-- **Versioned KEK Ring & Bounded Zeroing DEK Cache:** Master secret (`NCE_MASTER_KEY`) derives versioned Key Encryption Keys (KEKs). Unwrapped DEKs are cached in a bounded 300s TTL LRU (`_UNWRAPPED_DEK_CACHE`, max 512 entries) backed by mutable `bytearray` buffers that are zeroed in-place on eviction or shredding.
-- **Per-Subject DEK Wrapping:** Relational records (`memories`, `encryption_deks`) store AES-256-GCM wrapped Data Encryption Keys (`wrapped_dek`).
-- **GDPR Provable Forgetting:** Right-to-be-forgotten requests (`shred_memory`, `forget_memory`, `crypto_shred_subject`) permanently nullify `wrapped_dek` and purge the in-memory DEK cache. Without the key, encrypted content and corresponding `search_tsv` tokens become mathematically unrecoverable, producing verifiable RFC 8785 canonical shredding receipts.
-
-### 10. Automated Static Analysis & Quality CI Gates
-
-Continuous Integration enforces strict automated security scanning:
-- **Ruff `S` (flake8-bandit):** Strict AST-level detection of common security flaws, unsafe shell invocations, and cryptographic misconfigurations.
-- **Ruff `ASYNC` & `DTZ`:** Static rules preventing event-loop stalls and timezone-naive datetime bugs.
-- **Bandit Scans:** Automated high-severity Bandit scans in CI gate all PR merges with zero permitted security exceptions.
-
----
-
-## Encryption Standards
-
-| Scope | Cryptographic Primitive | Implementation |
-| :--- | :--- | :--- |
-| **Data in Transit** | TLS 1.3 / mTLS | Mandatory in production (`NCE_ADMIN_MTLS_ENABLED=true`) |
-| **Ingress Protection** | `BoundedBodyMiddleware` | Capped at `NCE_MAX_HTTP_BODY_BYTES`, HTTP `413` |
-| **API Signatures** | HMAC-SHA256 | Admin three-header protocol with distributed nonces |
-| **Data at Rest (Vault)** | AES-256-GCM | Master-key wrapped secrets and credentials |
-| **Envelope Encryption** | KEK / DEK AES-256-GCM | Per-record encrypted DEKs with provable GDPR crypto-shredding |
-| **A2A Delegation** | RS256 / Ed25519 | Ephemeral asymmetric JWT grants, atomic single-use redemption |
-| **Integrity Ledger** | SHA-256 Merkle Chain | Hash-chained WORM audit log with per-namespace advisory locks |
-
-For further architectural details, refer to `docs/enterprise_security.md` and `docs/signing.md`.
+See [docs/enterprise_security.md](docs/enterprise_security.md), [docs/multi_tenancy.md](docs/multi_tenancy.md), [docs/signing.md](docs/signing.md), and [docs/pii.md](docs/pii.md) for full implementation details.

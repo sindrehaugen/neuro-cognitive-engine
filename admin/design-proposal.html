@@ -652,10 +652,10 @@ const ENGINES_DATA = {
     ],
     headers: ['Wave', 'Component', 'Mechanism', 'Status', 'Latency'],
     rows: [
-      ['Wave I-1', 'Episodic Memory', 'HNSW Vector Cosine Sim', '<span class="pill win">Active</span>', '4.2ms search'],
+      ['Wave I-1', 'Raw Record Store', 'HNSW Vector Cosine Sim', '<span class="pill win">Active</span>', '4.2ms search'],
       ['Wave I-2', 'GraphRAG Graph', 'Ontological BFS Traversal', '<span class="pill win">Active</span>', '12ms 3-hop'],
     ],
-    feed: [{ text: 'Sleep consolidation cycle compressed 14 000 events into 320 nodes.', time: '04:00', src: 'consolidation' }],
+    feed: [{ text: 'Background HDBSCAN summarization compressed 14 000 records into 320 summary nodes.', time: '04:00', src: 'consolidation' }],
   },
   automation: {
     title: 'Automation & Approval Tiers',
@@ -898,22 +898,22 @@ function renderAdminWorkspace(wsKey) {
     },
     cognitive: {
       title: 'Cognitive Substrate & Memory Lab',
-      meta: 'Ebbinghaus Decay · HDBSCAN Consolidation · ATMS Lab',
+      meta: 'Exponential Time-Decay · HDBSCAN Summarization · ATMS Dependency Tracker',
       html: `
         <div class="admin-grid">
           <div class="admin-card">
-            <h3>Ebbinghaus 6-Class Retention</h3>
+            <h3>Configurable 6-Class Time-Decay</h3>
             <p>Mathematically modeled temporal decay curves (λ) across Episodic, Working, Semantic, Procedural, Causal, and Core Architectural memory.</p>
             <span class="pill cobalt">Retention Active</span>
           </div>
           <div class="admin-card">
-            <h3>HDBSCAN Sleep Consolidation</h3>
+            <h3>HDBSCAN Background Summarization</h3>
             <p>Nightly unsupervised clustering and episodic event distillation into the Knowledge Graph.</p>
             <button class="btn primary" style="margin-top:6px;">Trigger Consolidation</button>
           </div>
           <div class="admin-card">
             <h3>De Kleer ATMS Contradiction Lab</h3>
-            <p>Assumption-based Truth Maintenance System arbitrating incompatible premises.</p>
+            <p>Assumption-based dependency tracking flagging conflicting upstream premises.</p>
             <span class="pill win">0 Active Contradictions</span>
           </div>
         </div>

@@ -2,6 +2,8 @@
 
 # NCE `v3.5.2` — 100k-Row Deep Profiling, Hot-Path Optimization & Sub-50ms LLM-Loop Report
 
+> **Benchmark Scope Notice:** Figures in this report were captured on a controlled single-host Docker container testbed against synthetic R&D datasets. They document engineering regression baselines and index/middleware deltas, not commercial multi-tenant SLA guarantees.
+
 **Repository:** `sindrehaugen/neuro-cognitive-engine` (`v3.5.2`) + `sindrehaugen/nce-vertical-engines` (`v3.5.2`)  
 **Dataset (`nce_v352_perf`):** `100,000` `memories` + Mongo `episodes` (`TCDEK\x01` AES-256-GCM envelope-encrypted), `20,000` `memory_salience`, `5,000` `kg_nodes`, `15,000` `kg_edges`, `10,000` signed WORM `event_log` rows (`Tenant-Perf`) + `500` canary rows (`Tenant-Canary`).
 

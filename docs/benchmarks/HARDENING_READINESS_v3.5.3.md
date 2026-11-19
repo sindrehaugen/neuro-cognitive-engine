@@ -1,5 +1,7 @@
 # NCE `v3.5.3` Zero-Trust Hardening & Live Readiness Certification Report
 
+> **Benchmark Scope Notice:** Figures in this report were captured on a controlled single-host Docker container testbed against synthetic R&D datasets. They document engineering regression baselines and index/middleware deltas, not commercial multi-tenant SLA guarantees.
+
 **Release Baseline:** `neuro-cognitive-engine` `v3.5.3` (`nce-vertical-engines` `v4.2.1` integration verified)  
 **Certification Date:** `2026-11-18`  
 **Methodology:** Live 19-container Docker Compose stack on internal bridge isolation (`nce_edge`, `nce_data` internal, `nce_sandbox` internal), loopback Caddy edge ingress (`127.0.0.1:8082`), and reproducible pure-Core/3-layer test verification.

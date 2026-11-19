@@ -1,10 +1,8 @@
 > **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
 
-# Doc 59 — Shared Core Autonomy Governance Guide
+# Doc 59 — Shared Core C2 Action Governance Guide (`@governed`)
 
-> **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
-
-The NCE Shared Core Autonomy Governance model (component **C2**) provides a centralized, deterministic execution wrapper designed to enforce safety bounds on autonomous operations across all engines. Governed mutating operations must navigate a strict series of checks designed to limit the risk of run-away automation, poison-record creation, and un-audited state mutations.
+The NCE Shared Core **C2 Action Governance** wrapper (`nce/autonomy/`) provides a deterministic confirm-first execution gate around mutating MCP tools and plugin handlers. Governed mutating operations must navigate a strict series of checks designed to limit the risk of run-away automation, poison-record creation, and un-audited state mutations.
 
 This guide outlines the system design, the `@governed` decorator, policy evaluation logic, idempotency, kill switches, and transactional safety guarantees.
 
@@ -14,7 +12,7 @@ This guide outlines the system design, the `@governed` decorator, policy evaluat
 
 As defined in the Shared-Core Foundation, **Contract B** mandates that every **Actor/Autonomous** tool passing mutating commands must traverse a unified gate:
 1. **Default to Human Confirmation**: Operations do not execute autonomously unless explicitly pre-authorized and within safety bounds.
-2. **Earned Autonomy**: Tools can earn the path of autonomous execution by validating precision and remaining within value/volume ceilings.
+2. **Bounded Policy Thresholds**: Pre-confirmed calls still pass value ceilings, sliding-window volume caps, counterparty allowlists, and risk-flag checks before executing.
 3. **Unified Audit Trail**: Every action must be recorded to the `v3_cognitive_ledger` (via the NCE core `event_log`).
 4. **Idempotency Enforcement**: Prevent duplicate side effects across engine boundaries and during network-replay conditions.
 

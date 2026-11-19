@@ -173,7 +173,7 @@ The `TOOL_REGISTRY` contains 135 Tools divided into 66 shared/platform core tool
 - **`store_artifact`** *(Exposed in stdio)*: Ingest large binary artifacts (media, PDFs, diagnostic logs) into object storage and associate metadata with the Quad-Stack.
 - **`store_media`** *(Exposed in stdio)*: Store media payloads with tenant-isolated S3/MinIO reference pointers.
 - **`semantic_search`** *(Exposed in stdio)*: Execute cosine similarity vector search over pgvector memory embeddings.
-- **`get_recent_context`** *(Exposed in stdio)*: Retrieve the N most recent episodic memory entries for an agent session.
+- **`get_recent_context`** *(Exposed in stdio)*: Retrieve the N most recent raw interaction/document records (`episodic`) for a caller session.
 - **`boost_memory`** *(Exposed in stdio)*: Boost salience weight of a memory for attention ranking in context synthesis.
 - **`forget_memory`** *(Exposed in stdio)*: Soft-delete or decay salience to 0.0 for an agent memory.
 - **`unredact_memory`** *(Exposed in stdio)*: Administrative decryption and de-pseudonymization of PII-redacted memory entities.
@@ -186,7 +186,7 @@ The `TOOL_REGISTRY` contains 135 Tools divided into 66 shared/platform core tool
 
 ##### Knowledge Graph & GraphRAG
 - **`graph_search`** *(Exposed in stdio)*: Execute GraphRAG breadth-first search (BFS) traversal over the knowledge graph (`kg_nodes`, `kg_edges`).
-- **`neuromorphic_search`** *(Exposed in stdio)*: Hybrid neuromorphic activation spread over knowledge graph associative clusters.
+- **`neuromorphic_search`** *(Exposed in stdio)*: Weighted, cycle-safe `WITH RECURSIVE` multi-hop traversal over `kg_nodes` and `kg_edges`.
 
 ##### External Document Bridges (OAuth)
 - **`connect_bridge`** *(Exposed in stdio)*: Initiate OAuth connection flow for SharePoint, Google Drive, or Dropbox document bridges.

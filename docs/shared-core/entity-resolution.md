@@ -254,7 +254,7 @@ To record *why* a value was chosen, the system invokes `append_survivorship_prov
 
 * **Model Version:** Hardcoded to `survivorship/v1` to differentiate from machine-learning cognitive traces.
 * **Audit Payload:** Serialized inside the `tlx_scores` JSONB column. Captures the winning value, source, winning reason, and a full snapshot of all evaluated candidates.
-* **Empathic Tensor:** Set to `[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]` (a zero-tensor placeholder required by database constraints).
+* **`v3_cognitive_ledger` Vector Column:** Initialized to `[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]` (optional telemetry hooks are disabled by default via `NCE_ENABLE_WORKPLACE_TELEMETRY=false`).
 
 #### Provenance payload structure:
 ```json

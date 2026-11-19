@@ -329,7 +329,7 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`. Scope is the 
 Examples:
 
 ```
-feat(nce): add spreading-activation recall path with LTP/LTD weights
+feat(nce): add weighted recursive CTE graph traversal and bounded edge-weight updates
 
 fix(schema): guard kg_nodes hash-partition migration against duplicate constraint
 

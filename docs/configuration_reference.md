@@ -300,7 +300,7 @@ SMTP sends via port 587 using STARTTLS (`aiosmtplib`). Host is configured progra
 |---|---|---|---|
 | `CONSOLIDATION_DECAY_SOURCES` | `bool` | `false` | When `true`, soft-decays source memories following a successful consolidation run. |
 | `CONSOLIDATION_CRON_INTERVAL_MINUTES` | `int` | `360` | Interval in minutes between consolidation cron runs (6 hours default). |
-| `CONSOLIDATION_HALF_LIFE_DAYS` | `float` | `30.0` | Ebbinghaus half-life decay parameter for memory salience (days). |
+| `CONSOLIDATION_HALF_LIFE_DAYS` | `float` | `30.0` | Exponential half-life decay parameter (days) for `nce/salience.py` relevance scoring. |
 | `NCE_MAX_DERIVATION_DEPTH` | `int` | `2` | Derivation depth ceiling. Memories at or above this depth are excluded from clustering input to prevent runaway hallucination compounding (minimum `1`). |
 | `NCE_DERIVATION_CONFIDENCE_DECAY` | `float` | `0.85` | Per-generation confidence decay factor $\gamma$: derived KG edge confidence is multiplied by $\gamma^{\text{depth}}$ upon insertion (range 0.0–1.0). |
 | `CRON_STARTUP_JITTER_MAX_SECONDS` | `float` | `60.0` | Maximum random startup delay in seconds applied before first cron execution to prevent thundering-herd database spikes (`0` disables). |
@@ -317,7 +317,7 @@ SMTP sends via port 587 using STARTTLS (`aiosmtplib`). Host is configured progra
 | `REEMBED_MAX_TEXT_CHARS` | `int` | `4096` | Maximum characters sent to embedding model per memory record (minimum `256`). |
 | `REEMBED_CRON_INTERVAL_MINUTES` | `int` | `60` | Interval in minutes between background re-embedding sweeps (minimum `1`). |
 | `NCE_REEMBED_VRAM_HIGH_WATERMARK` | `float` | `0.85` | Fraction of total CUDA VRAM at which embedding is paused to prevent OOM (range 0.1–0.99). |
-| `NCE_REEMBED_VRAM_MAX_PRESSURE_WAITS` | `int` | `12` | Number of sleep cycles under VRAM pressure before raising `VRAMPressureError` (minimum `0`). |
+| `NCE_REEMBED_VRAM_MAX_PRESSURE_WAITS` | `int` | `12` | Number of polling backoff waits under VRAM pressure before raising `VRAMPressureError` (minimum `0`). |
 | `NCE_REEMBED_GATE_SAMPLE` | `int` | `200` | Number of randomly sampled memories used to evaluate nearest-neighbor overlap for migration commit (minimum `1`). |
 | `NCE_REEMBED_GATE_MIN_OVERLAP` | `float` | `0.6` | Minimum Jaccard neighbor overlap ratio required to pass migration quality gate (range 0.0–1.0). |
 | `NCE_REEMBED_GATE_K` | `int` | `10` | Number of nearest neighbors retrieved per sample point during migration validation (minimum `1`). |
@@ -502,7 +502,7 @@ SMTP sends via port 587 using STARTTLS (`aiosmtplib`). Host is configured progra
 | `NCE_CHAIN_VERIFY_INTERVAL_MINUTES` | `int` | `120` | Interval in minutes between cryptographic Merkle chain verification runs (minimum `5`). |
 | `NCE_CHAIN_VERIFY_STARTUP_DEPTH` | `int` | `500` | Number of recent Merkle chain entries verified at server startup (`0` disables startup verification, minimum `0`). |
 
-### 19g. Spreading Activation Telemetry & Gamification
+### 19g. Graph Traversal Weighting & Active-Learning Feedback
 
 | Variable | Type | Default | Description |
 |---|---|---|---|

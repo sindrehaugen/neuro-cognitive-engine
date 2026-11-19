@@ -1,5 +1,7 @@
 # NCE `v3.5.4` Pure-ASGI, Baked Air-Gapped ONNX & Hardening Certification Report
 
+> **Benchmark Scope Notice:** Figures in this report were captured on a controlled single-host Docker container testbed against synthetic R&D datasets. They document engineering regression baselines and index/middleware deltas, not commercial multi-tenant SLA guarantees.
+
 > **Status:** shipped · **Verified-against:** 6b20959 (main) · **Last-audited:** 2026-11-18
 
 **Release:** `neuro-cognitive-engine` `v3.5.4`  

@@ -1,8 +1,8 @@
 > **Status:** shipped · **Verified-against:** 7304330 (main) · **Last-audited:** 2026-08-17
 
-# Agent-to-Agent (A2A) Protocol
+# Cross-Namespace Query Federation (A2A Protocol)
 
-The Agent-to-Agent (A2A) Protocol (Phase 3.1) is a specialized framework for secure, scoped memory sharing and multi-agent service coordination between independent AI agents. It allows Agent A to grant specific permissions to Agent B to access portions of its memory or Knowledge Graph, and invoke vertical engine skills without compromising full namespace isolation.
+The A2A service (`nce/a2a_server.py` and `nce/a2a.py`) implements scoped, SHA-256 hash-grant and JWT-authenticated cross-namespace query federation. An owning tenant mints a time-bounded grant token (`a2a_grants`) authorizing a caller to execute read-scoped queries against the owner's namespace while executing strictly inside the owner's PostgreSQL `scoped_pg_session` RLS boundary.
 
 ---
 
@@ -110,8 +110,8 @@ The A2A HTTP server (`nce/a2a_server.py` on port `8004`) exposes an agent capabi
 
 | Skill ID | Display Name | Purpose | Key Parameters |
 | :--- | :--- | :--- | :--- |
-| `recall_relevant_context` | Recall Relevant Context | Retrieves high-salience episodic and semantic memories for a task or query context. | `namespace_id` (req, UUID), `query` (req, str), `limit` (int, default 5) |
-| `archive_session` | Archive Cognitive Session | Concludes and archives an agent working session into durable episodic memory. | `namespace_id` (req, UUID), `session_id` (req, str), `summary` (str) |
+| `recall_relevant_context` | Recall Relevant Context | Retrieves top-ranked raw (`episodic`) and summarized (`semantic`) records for a query context. | `namespace_id` (req, UUID), `query` (req, str), `limit` (int, default 5) |
+| `archive_session` | Archive Working Session | Persists a completed client session summary as a durable raw interaction record (`episodic`). | `namespace_id` (req, UUID), `session_id` (req, str), `summary` (str) |
 | `find_related_decisions` | Find Related Decisions | Traverses the knowledge graph to locate causal provenance and related architectural decisions. | `namespace_id` (req, UUID), `decision_type` (req, str), `topic` (str) |
 | `verify_memory_integrity` | Verify Memory Integrity | Computes cryptographic integrity and causal chain hash verification over memory blobs. | `namespace_id` (req, UUID), `memory_id` (req, UUID) |
 | `get_cognitive_state` | Get Cognitive State | Returns real-time working memory metrics, active salience maps, and quota utilization. | `namespace_id` (req, UUID), `agent_id` (req, str) |

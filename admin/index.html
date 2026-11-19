@@ -1298,7 +1298,7 @@
               </div>
               <div class="pt-3 border-t border-slate-100">
                 <span class="block text-slate-500 font-sans font-semibold mb-1">Night-Worker Action Cycle</span>
-                <p class="text-slate-400 leading-relaxed font-sans text-[10.5px]">Cognitive consolidation identifies, links, and de-duplicates high-salience semantic relationships during sleep cycles, committing refined facts back to the Graph Database.</p>
+                <p class="text-slate-400 leading-relaxed font-sans text-[10.5px]">Background HDBSCAN summarization clusters, links, and deduplicates high-relevance graph relationships during sleep cycles, committing refined facts back to the Graph Database.</p>
               </div>
             </div>
           </template>
@@ -1455,7 +1455,7 @@
       <div class="border-b border-slate-200 pb-2.5 mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
         <div>
           <h2 class="text-lg font-bold font-hanken tracking-tight text-slate-900 uppercase">Cognitive engine visualisation</h2>
-          <p class="text-xs text-slate-500 mt-1">Salience decay map, consolidation trace pipeline, and memory context drawer</p>
+          <p class="text-xs text-slate-500 mt-1">Time-decay relevance map, background summarization trace pipeline, and record context drawer</p>
         </div>
         <div class="flex flex-wrap items-end gap-2">
           <label class="text-[10px] font-mono text-slate-500">
@@ -1595,7 +1595,7 @@
                 </div>
                 <div class="text-[10px] text-slate-500">assertion <span class="text-slate-800 font-semibold" x-text="pt.assertion_type || '—'"></span></div>
                 <div class="rounded border border-slate-100 bg-slate-50 p-2 font-mono text-[10px] space-y-1">
-                  <p class="uppercase text-slate-400 font-bold">Decay steps (Ebbinghaus)</p>
+                  <p class="uppercase text-slate-400 font-bold">Time-decay steps (exponential half-life)</p>
                   <p x-text="'λ = ln(2) / half_life = ' + decayLambda().toFixed(6) + ' day⁻¹'"></p>
                   <p x-text="'stored salience (row) = ' + fmt(pt.raw_salience)"></p>
                   <p x-text="'age since memory created ≈ ' + fmt(pt.age_days) + ' d'"></p>
@@ -4152,7 +4152,7 @@
       } else if (pathname === '/api/admin/tools') {
         payload = {
           mcp_tools: [
-            { name: 'store_memory', type: 'mcp', category: 'Core Tri-Stack', enabled: true, description: 'Persist episodic/semantic memory with Ed25519 signature' },
+            { name: 'store_memory', type: 'mcp', category: 'Core Tri-Stack', enabled: true, description: 'Persist raw or summarized records with JCS HMAC-SHA256 provenance' },
             { name: 'semantic_search', type: 'mcp', category: 'Core Tri-Stack', enabled: true, description: 'Hybrid HNSW pgvector + BM25 + MMR reranking search' },
             { name: 'graph_search', type: 'mcp', category: 'Core Tri-Stack', enabled: true, description: 'GraphRAG BFS traversal with temporal as_of filter' },
             { name: 'do_calculate_cable_drop', type: 'mcp', category: 'System Design (NEK 400 / DNV)', enabled: true, description: 'NEK 400-5-52 / IEC 60364-5-52 ampacity, ΔU% & k²S² adiabatic check' },
@@ -4183,7 +4183,7 @@
             {
               section: 'Cron intervals',
               keys: [
-                { key: 'NCE_CONSOLIDATION_INTERVAL_MINS', effective_value: 30, source: 'default', reload_class: 'WARM', type: 'int', is_secret: false, description: 'Sleep-consolidation HDBSCAN cycle interval in minutes' }
+                { key: 'NCE_CONSOLIDATION_INTERVAL_MINS', effective_value: 30, source: 'default', reload_class: 'WARM', type: 'int', is_secret: false, description: 'Background HDBSCAN summarization job interval in minutes' }
               ]
             }
           ]
@@ -4312,7 +4312,7 @@
       } catch (_) { /* ignore */ }
     }
 
-    /** Vanilla canvas rAF loop: salience decay scatter (Age × decayed salience). */
+    /** Vanilla canvas rAF loop: time-decay relevance scatter (Age × decayed score). */
     const TriMCP_CognitiveDecayMap = (function () {
       function colorForAssertion(t) {
         const key = (t || '').toLowerCase();

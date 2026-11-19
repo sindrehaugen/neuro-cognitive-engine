@@ -2,7 +2,7 @@
 
 # NCE IT Admin Guide
 
-This guide provides IT administrators with the necessary instructions to deploy, configure, and maintain NCE in an enterprise environment. It focuses on infrastructure-as-code (IaC) deployments, network security, and identity integration.
+This guide documents self-hosted sandbox, staging pilot, and cloud-IaC setup procedures for NCE (an ongoing May 2026 personal R&D project), covering network port boundaries, identity mapping, and OAuth bridge registration.
 
 ## 1. Infrastructure Deployment (Cloud Mode)
 
