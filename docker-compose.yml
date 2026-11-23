@@ -908,7 +908,7 @@ services:
           memory: 256M
 
   ops-elm:
-    image: ollama/ollama:0.6.2
+    image: ollama/ollama:0.40.16
     profiles:
       - ops-elm
     container_name: nce-ops-elm
